@@ -1,0 +1,50 @@
+{#-
+  OpenAPI Example Generation Macros
+  Generates sample values for API documentation.
+-#}
+
+{#- Generate an example value for a field -#}
+{#- for_update: use alternative values for update requests -#}
+{#- enums: shared enums dict for resolving enum field values -#}
+{% macro example_value(field, field_name, for_update=false, enums=none) -%}
+{%- set api_name = field.api_field_name | default(field_name) -%}
+{%- if field.type == 'uuid' -%}
+"123e4567-e89b-12d3-a456-426614174000"
+{%- elif field.type == 'text' and 'email' in field_name.lower() -%}
+"{% if for_update %}updated.{% endif %}user@example.com"
+{%- elif field.type == 'text' and field_name == 'username' -%}
+"{% if for_update %}updated_{% endif %}john_doe"
+{%- elif field.type == 'text' and 'name' in field_name.lower() -%}
+"{% if for_update %}Updated {% endif %}{{ field_name.replace('_', ' ').title() }}"
+{%- elif field.type == 'text' -%}
+"{% if for_update %}updated_{% endif %}{{ field_name }}_example"
+{%- elif field.type == 'longtext' -%}
+"This is a {% if for_update %}updated {% endif %}longer text field with more content."
+{%- elif field.type == 'reference' -%}
+"ref-123e4567"
+{%- elif field.type == 'financial' -%}
+"{% if for_update %}2000{% else %}1000{% endif %}"
+{%- elif field.type == 'percentage' -%}
+"{% if for_update %}0.2{% else %}0.15{% endif %}"
+{%- elif field.type == 'counter' -%}
+{% if for_update %}84{% else %}42{% endif %}
+{%- elif field.type == 'boolean' -%}
+{% if field.default == false %}false{% else %}true{% endif %}
+{%- elif field.type == 'datetime' -%}
+"2025-12-31T23:59:59Z"
+{%- elif field.type == 'enum' -%}
+{%- set enum_val = field.default | default('') -%}
+{%- if not enum_val and field.enum_name is defined and enums is mapping and field.enum_name in enums -%}
+{%- set ev = enums[field.enum_name].get('values', []) -%}
+{%- if ev -%}
+{%- set first = ev[1] if for_update and ev | length > 1 else ev[0] -%}
+{%- set enum_val = first.value if first is mapping else first -%}
+{%- endif -%}
+{%- endif -%}
+"{{ (enum_val or 'UNKNOWN') | upper }}"
+{%- elif field.type == 'json_object' -%}
+{"key": "value", "nested": {"data": 123}}
+{%- elif field.type == 'json_array' -%}
+["item1", "item2", "item3"]
+{%- endif -%}
+{%- endmacro %}

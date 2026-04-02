@@ -1,0 +1,143 @@
+{#-
+  Test Utility Macros
+  Shared macros for contract test generation.
+-#}
+
+{#- Macro to check if entity needs unique_suffix -#}
+{% macro needs_unique_suffix(entity) -%}
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_request | default(false) %}
+{% if field.required or (field.primary_key | default(false) and not field.auto_generate | default(true)) %}
+{% if field.type == 'text' and (field.unique | default(false) or 'email' in field_name.lower()) %}
+true
+{%- elif field.primary_key | default(false) and not field.auto_generate | default(true) %}
+true
+{%- endif %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{%- endmacro %}
+
+{#- Macro to get proper enum value -#}
+{% macro get_enum_value(enum_name, field_default='', alternative=false, enums=none) -%}
+{%- if field_default and not alternative -%}
+{{ field_default }}
+{%- elif enums and enum_name in enums -%}
+{%- set enum_def = enums[enum_name] -%}
+{%- set enum_values = enum_def.get('values', []) -%}
+{%- if enum_values and enum_values|length > 0 -%}
+{%- if alternative and enum_values|length > 1 -%}
+{%- set selected_value = enum_values[1] -%}
+{%- else -%}
+{%- set selected_value = enum_values[0] -%}
+{%- endif -%}
+{%- if selected_value is string -%}
+{{ selected_value | upper }}
+{%- elif selected_value is mapping and 'value' in selected_value -%}
+{{ selected_value.value | upper }}
+{%- else -%}
+active
+{%- endif -%}
+{%- else -%}
+active
+{%- endif -%}
+{%- else -%}
+active
+{%- endif -%}
+{%- endmacro %}
+
+{#- Macro to format financial test values -#}
+{% macro format_test_financial(value, scale=8) -%}
+{{- value | normalize_decimal -}}
+{%- endmacro %}
+
+{#- Macro to check if a test scenario should be generated -#}
+{% macro should_generate_test(entity, scenario_keywords) -%}
+{%- if entity.tests and entity.tests.scenarios -%}
+  {%- set keywords_list = scenario_keywords if scenario_keywords is iterable and scenario_keywords is not string else [scenario_keywords] -%}
+  {%- for scenario in entity.tests.scenarios -%}
+    {%- for keyword in keywords_list -%}
+      {%- if keyword in scenario -%}true{% endif -%}
+    {%- endfor -%}
+  {%- endfor -%}
+{%- else -%}
+true
+{%- endif -%}
+{%- endmacro %}
+
+{#- ============================================================================
+    MACRO: build_test_data_fields
+    ============================================================================
+    Generates test data field assignments for an entity.
+
+    This macro consolidates the repetitive test data generation pattern used
+    across many test methods (POST, PUT, filtering, validation tests, etc.).
+
+    Parameters:
+    - entity: The entity definition
+    - field_to_fixture: Mapping of FK field names to fixture names
+    - prefix: Prefix for unique field values (e.g., 'filter', 'minimal', 'update')
+    - skip_field: Field name to skip (for missing required field tests)
+    - only_required: If true, only include required fields (default: true)
+    - constraints: Global constraints dict for range validation
+    - enums: Global enums dict for enum values
+
+    Usage:
+        {{ entity_name.lower() }}_data: dict[str, Any] = {
+    {{ build_test_data_fields(entity, field_to_fixture, 'test', '', true, constraints, enums) }}
+        }
+-#}
+{% macro build_test_data_fields(entity, field_to_fixture, prefix='test', skip_field='', only_required=true, constraints=none, enums=none) -%}
+{% for field_name, field in entity.fields.items() %}
+{% if field_name != skip_field and not field.api_exclude_request | default(false) %}
+{% set is_required = field.required or (field.primary_key | default(false) and not field.auto_generate | default(false)) %}
+{% if is_required or not only_required %}
+{% if field.type == 'reference' %}
+            "{{ field.api_field_name | default(field_name) }}": {{ field_to_fixture[field_name] }},
+{% elif field.type == 'text' and 'email' in field_name.lower() %}
+            "{{ field.api_field_name | default(field_name) }}": f"{{ prefix }}.{unique_suffix}@example.com",
+{% elif field.type == 'text' and (field.unique | default(false) or (field.primary_key | default(false) and not field.auto_generate | default(false))) %}
+            "{{ field.api_field_name | default(field_name) }}": f"{{ prefix }}_{unique_suffix}",
+{% elif field.type == 'text' or field.type == 'longtext' %}
+            "{{ field.api_field_name | default(field_name) }}": "{% if field.max_length is defined and field.max_length <= 3 %}{{ prefix[:3] }}{% elif field.max_length is defined and field.max_length <= 10 %}{{ prefix[:10] }}{% else %}{{ prefix }}_value{% endif %}",
+{% elif field.type == 'financial' %}
+{% set has_range = namespace(found=false) %}{% if field.constraints %}{% for constraint in field.constraints %}{% if constraint.type in ['range', 'range_or_null'] %}{% set has_range.found = true %}{% if constraint.max is defined and constraint.max | float <= 1.0 %}            "{{ field.api_field_name | default(field_name) }}": "{{ (constraint.max | float / 2) | normalize_decimal }}",
+{% elif constraint.max is defined and constraint.max | float < 100.0 %}            "{{ field.api_field_name | default(field_name) }}": "{{ (constraint.max | float / 2) | normalize_decimal }}",
+{% elif constraint.max_ref is defined and constraints and constraint.max_ref in constraints %}{% set max_val = constraints[constraint.max_ref]['value'] | float %}{% if max_val <= 1.0 %}            "{{ field.api_field_name | default(field_name) }}": "{{ 0.5 | normalize_decimal }}",
+{% else %}            "{{ field.api_field_name | default(field_name) }}": "{{ 100 | normalize_decimal }}",
+{% endif %}{% else %}            "{{ field.api_field_name | default(field_name) }}": "{{ 100 | normalize_decimal }}",
+{% endif %}{% endif %}{% endfor %}{% if not has_range.found %}            "{{ field.api_field_name | default(field_name) }}": "{{ 100 | normalize_decimal }}",
+{% endif %}{% else %}            "{{ field.api_field_name | default(field_name) }}": "{{ 100 | normalize_decimal }}",
+{% endif %}
+{% elif field.type == 'percentage' %}
+{% set has_range = namespace(found=false) %}{% if field.constraints %}{% for constraint in field.constraints %}{% if constraint.type in ['range', 'range_or_null'] %}{% set has_range.found = true %}{% if constraint.max is defined and constraint.max | float <= 0.05 %}            "{{ field.api_field_name | default(field_name) }}": "{{ (constraint.max | float / 2) | normalize_decimal }}",
+{% elif constraint.max_ref is defined and constraints and constraint.max_ref in constraints %}{% set max_val = constraints[constraint.max_ref]['value'] | float %}{% if max_val <= 0.05 %}            "{{ field.api_field_name | default(field_name) }}": "{{ (max_val / 2) | normalize_decimal }}",
+{% else %}            "{{ field.api_field_name | default(field_name) }}": "{{ 0.15 | normalize_decimal }}",
+{% endif %}{% else %}            "{{ field.api_field_name | default(field_name) }}": "{{ 0.15 | normalize_decimal }}",
+{% endif %}{% endif %}{% endfor %}{% if not has_range.found %}            "{{ field.api_field_name | default(field_name) }}": "{{ 0.15 | normalize_decimal }}",
+{% endif %}{% else %}            "{{ field.api_field_name | default(field_name) }}": "{{ 0.15 | normalize_decimal }}",
+{% endif %}
+{% elif field.type == 'counter' %}
+{% set has_range = namespace(found=false) %}{% if field.constraints %}{% for constraint in field.constraints %}{% if constraint.type == 'range' %}{% set has_range.found = true %}{% set mid_val = ((constraint.min | int) + (constraint.max | int)) / 2 %}            "{{ field.api_field_name | default(field_name) }}": {{ mid_val | int }},
+{% endif %}{% endfor %}{% if not has_range.found %}            "{{ field.api_field_name | default(field_name) }}": 10,
+{% endif %}{% else %}            "{{ field.api_field_name | default(field_name) }}": 10,
+{% endif %}
+{% elif field.type == 'boolean' %}
+            "{{ field.api_field_name | default(field_name) }}": True,
+{% elif field.type == 'enum' %}
+            "{{ field.api_field_name | default(field_name) }}": "{{ get_enum_value(field.enum_name, field.default, false, enums) }}",
+{% elif field.type == 'datetime' %}
+{% if 'end' in field_name or '_to' in field_name %}
+            "{{ field.api_field_name | default(field_name) }}": "2100-01-02T00:00:00Z",
+{% else %}
+            "{{ field.api_field_name | default(field_name) }}": "2099-12-31T23:59:59Z",
+{% endif %}
+{% elif field.type == 'json_array' %}
+            "{{ field.api_field_name | default(field_name) }}": ["item1", "item2"],
+{% elif field.type == 'json_object' %}
+            "{{ field.api_field_name | default(field_name) }}": {"key": "value"},
+{% endif %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{%- endmacro %}

@@ -1,0 +1,55 @@
+{#-
+  Enum Definitions Template
+  Generates Python enum classes for a domain.
+
+  Modes:
+  - create: Generate complete file with header and docstring
+  - append: Generate only enum classes to append to existing file
+-#}
+{% from "_shared/_base.j2" import generated_marker, section_divider %}
+{% if mode == 'create' %}
+{{ generated_marker() }}
+
+"""
+Enum definitions for application models.
+
+This module centralizes all enumeration types used across the application,
+providing type-safe, maintainable constants for status fields, types, and categories.
+
+Design Decision: Using StrEnum (Python 3.11+) for:
+- Type safety at Python level (IDE autocomplete, mypy validation)
+- Automatic JSON serialization (FastAPI/Pydantic compatibility)
+- Database-level validation (SQLAlchemy Enum creates CHECK constraints)
+- Single source of truth for valid values across models and API
+
+Architecture: Enums are organized by functional domain for easy navigation.
+All Enum values use UPPERCASE for consistency with Python enum conventions.
+"""
+
+from enum import StrEnum
+
+{% endif %}
+{% if section_header %}
+{{ section_divider(section_header) }}
+
+{% endif %}
+{% for enum_name, enum_def in enums.items() %}
+
+class {{ enum_name }}(StrEnum):
+    """{{ enum_def.description | default(enum_name | replace('_', ' ') + '.') }}"""
+
+{% for value in enum_def["values"] %}
+{% if value is mapping %}
+{# Explicit name/value/description object #}
+{% if value.description %}
+    {{ value.name }} = "{{ value.value | upper }}"  # {{ value.description }}
+{% else %}
+    {{ value.name }} = "{{ value.value | upper }}"
+{% endif %}
+{% else %}
+{# Simple string: auto-generate UPPER_CASE name and value #}
+    {{ value | upper }} = "{{ value | upper }}"
+{% endif %}
+{% endfor %}
+
+{% endfor %}

@@ -1,0 +1,94 @@
+{#-
+  Custom SQLAlchemy Types Template
+  Generates custom column types for specific data requirements
+-#}
+{% from "_shared/_base.j2" import generated_marker %}
+{{ generated_marker() }}
+
+"""
+Custom SQLAlchemy types for database models.
+
+This module provides custom column types that handle specific data requirements:
+- PortableNumeric: Decimal type that works correctly across SQLite and PostgreSQL.
+  On PostgreSQL it uses native NUMERIC; on SQLite it stores as String to preserve
+  precision.
+- PortableUuid: UUID type that accepts both string and uuid.UUID input.
+  Wraps SQLAlchemy's native Uuid type so route handlers can pass string IDs
+  directly from Pydantic model_dump() without manual conversion.
+
+Backward compatibility: SqliteNumeric is an alias for PortableNumeric.
+"""
+
+from decimal import Decimal
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import Numeric, String, TypeDecorator, Uuid
+
+
+{% raw %}class PortableNumeric(TypeDecorator):
+    """
+    Dialect-aware Decimal column type.
+
+    On PostgreSQL (and other databases with native NUMERIC): uses the native
+    Numeric type for full precision.
+
+    On SQLite: stores decimals as strings to preserve precision, since SQLite
+    lacks a true decimal type and would otherwise lose precision via REAL.
+
+    Example:
+        balance = Column(PortableNumeric(18, 8), nullable=False)
+    """
+
+    impl = String  # default impl; overridden per-dialect in load_dialect_impl
+    cache_ok = True
+
+    def __init__(self, precision: int = 28, scale: int = 18, *args: Any, **kwargs: Any):
+        self.precision = precision
+        self.scale = scale
+        super().__init__(*args, **kwargs)
+
+    def load_dialect_impl(self, dialect: Any) -> Any:
+        """Select native Numeric on PostgreSQL, String on SQLite."""
+        if dialect.name == "sqlite":
+            return dialect.type_descriptor(String())
+        return dialect.type_descriptor(Numeric(self.precision, self.scale))
+
+    def process_bind_param(self, value: Decimal | None, dialect: Any) -> Any:
+        if value is None:
+            return None
+        if dialect.name == "sqlite":
+            return str(value)
+        return value
+
+    def process_result_value(self, value: Any, dialect: Any) -> Decimal | None:
+        if value is None:
+            return None
+        return Decimal(str(value))
+
+
+# Backward compatibility alias
+SqliteNumeric = PortableNumeric
+
+
+class PortableUuid(TypeDecorator):
+    """
+    UUID type that accepts both string and uuid.UUID input.
+
+    Wraps SQLAlchemy's Uuid so that route handlers can pass string UUIDs
+    (from Pydantic model_dump()) directly. On PostgreSQL, uses the native
+    UUID type; on SQLite, stores as CHAR(32).
+
+    Example:
+        id = Column(PortableUuid, primary_key=True, default=uuid.uuid4)
+        user_id = Column(PortableUuid, ForeignKey("users.id"))
+    """
+
+    impl = Uuid
+    cache_ok = True
+
+    def process_bind_param(self, value: Any, dialect: Any) -> Any:
+        if value is not None and isinstance(value, str):
+            return UUID(value)
+        return value
+{% endraw %}

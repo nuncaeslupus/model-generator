@@ -1,0 +1,439 @@
+{#-
+  Constraints Template
+  Generates constraint constants for database and API validation.
+
+  Modes:
+  - create: Generate complete file with header, docstring, and imports
+  - append: Generate only new constants to append to existing file
+-#}
+{% from "_shared/_base.j2" import generated_marker, section_divider %}
+{% if mode == 'create' %}
+{{ generated_marker() }}
+
+"""
+Shared validation constraints for database and API models.
+
+This module serves as the SINGLE SOURCE OF TRUTH for all numeric constraints,
+business rules, and validation ranges used across database models and API validators.
+
+When a constraint needs to change, update it here and it will apply to both:
+- Database CHECK constraints (backend/src/models/{domain}.py)
+- API Pydantic validators (backend/src/api/models/requests.py)
+
+Organization:
+- Constants are grouped by constraint type (percentages, prices, etc.)
+- Documented with business meaning and units
+- Use Decimal for precise financial calculations
+"""
+
+from decimal import Decimal
+
+{% endif %}
+{% if section_header %}
+{{ section_divider(section_header) }}
+
+{% endif %}
+{% for constraint in constraints %}
+{% if constraint.type == 'length' %}
+# {{ constraint.description | default('Minimum length for ' + constraint.field) }}
+{{ constraint.name }} = {{ constraint.value | default(3) }}
+
+{% elif constraint.type == 'pattern' %}
+# {{ constraint.description | default('Regex pattern for ' + constraint.field) }}
+{{ constraint.name }} = r"{{ constraint.value | default('^.*$') }}"
+
+{% elif constraint.type == 'decimal' %}
+# {{ constraint.description | default('Value for ' + constraint.field) }}
+{{ constraint.name }} = Decimal("{{ constraint.value | default('0') }}")
+
+{% elif constraint.type == 'non_negative' or constraint.type == 'positive' %}
+# {{ constraint.description | default('Minimum value for ' + constraint.field + ' (' + constraint.type + ')') }}
+{{ constraint.name }} = Decimal("{{ constraint.value | default('0') }}")
+
+{% elif constraint.type == 'range' or constraint.type == 'range_or_null' %}
+{% if constraint.is_min %}
+# {{ constraint.description | default('Minimum value for ' + constraint.field) }}
+{{ constraint.name }} = Decimal("{{ constraint.value | default('0') }}")
+{% else %}
+# {{ constraint.description | default('Maximum value for ' + constraint.field) }}
+{{ constraint.name }} = Decimal("{{ constraint.value | default('1') }}")
+{% endif %}
+
+{% else %}
+# {{ constraint.description | default('Constraint for ' + constraint.field) }}
+{{ constraint.name }} = {% if constraint.value is not none %}{% if constraint.type == 'integer' %}{{ constraint.value }}{% else %}Decimal("{{ constraint.value }}"){% endif %}{% else %}None{% endif %}
+
+{% endif %}
+{% endfor %}
+{% if mode == 'create' and include_helpers %}
+{{ section_divider('HELPER FUNCTIONS') }}
+
+
+def validate_percentage(value: Decimal | None, allow_null: bool = False) -> bool:
+    """
+    Validate that value is a valid percentage (0.0 to 1.0).
+
+    Args:
+        value: Decimal value to validate (or None)
+        allow_null: Whether None/NULL is acceptable
+
+    Returns:
+        True if valid, False otherwise
+    """
+    if value is None:
+        return allow_null
+    return Decimal("0") <= value <= Decimal("1")
+
+
+def validate_non_negative(value: Decimal) -> bool:
+    """
+    Validate that value is non-negative (>= 0).
+
+    Used for: balances, volumes, fees, costs, counts
+
+    Args:
+        value: Decimal value to validate
+
+    Returns:
+        True if valid, False otherwise
+    """
+    return value >= Decimal("0")
+
+
+def validate_positive(value: Decimal) -> bool:
+    """
+    Validate that value is positive (> 0).
+
+    Used for: prices, quantities, sizes that cannot be zero
+
+    Args:
+        value: Decimal value to validate
+
+    Returns:
+        True if valid, False otherwise
+    """
+    return value > Decimal("0")
+
+
+def validate_negative(value: Decimal) -> bool:
+    """
+    Validate that value is negative (< 0).
+
+    Used for: losses, debts, negative P&L
+
+    Args:
+        value: Decimal value to validate
+
+    Returns:
+        True if valid, False otherwise
+    """
+    return value < Decimal("0")
+
+
+def validate_non_positive(value: Decimal) -> bool:
+    """
+    Validate that value is non-positive (<= 0).
+
+    Used for: values that can be zero or negative but not positive
+
+    Args:
+        value: Decimal value to validate
+
+    Returns:
+        True if valid, False otherwise
+    """
+    return value <= Decimal("0")
+
+
+def validate_range(
+    value: Decimal | None,
+    min_val: Decimal,
+    max_val: Decimal,
+    allow_null: bool = False,
+) -> bool:
+    """
+    Validate that value is within a specified range [min_val, max_val].
+
+    Args:
+        value: Decimal value to validate
+        min_val: Minimum allowed value (inclusive)
+        max_val: Maximum allowed value (inclusive)
+        allow_null: Whether None/NULL is acceptable
+
+    Returns:
+        True if valid, False otherwise
+    """
+    if value is None:
+        return allow_null
+    return min_val <= value <= max_val
+
+
+{{ section_divider('SQL CHECK CONSTRAINT HELPER FUNCTIONS') }}
+
+
+def check_positive(field_name: str) -> str:
+    """
+    Generate SQL CHECK constraint for positive values (> 0).
+
+    Args:
+        field_name: Name of the database column
+
+    Returns:
+        SQL constraint string
+
+    Example:
+        >>> check_positive("price")
+        'CAST(price AS NUMERIC) > 0'
+    """
+    return f"CAST({field_name} AS NUMERIC) > 0"
+
+
+def check_non_negative(field_name: str) -> str:
+    """
+    Generate SQL CHECK constraint for non-negative values (>= 0).
+
+    Args:
+        field_name: Name of the database column
+
+    Returns:
+        SQL constraint string
+
+    Example:
+        >>> check_non_negative("balance")
+        'CAST(balance AS NUMERIC) >= 0'
+    """
+    return f"CAST({field_name} AS NUMERIC) >= 0"
+
+
+def check_positive_or_null(field_name: str) -> str:
+    """
+    Generate SQL CHECK constraint for positive values or NULL (> 0 OR NULL).
+
+    Args:
+        field_name: Name of the database column
+
+    Returns:
+        SQL constraint string
+
+    Example:
+        >>> check_positive_or_null("max_price")
+        'CAST(max_price AS NUMERIC) > 0 OR max_price IS NULL'
+    """
+    return f"CAST({field_name} AS NUMERIC) > 0 OR {field_name} IS NULL"
+
+
+def check_non_negative_or_null(field_name: str) -> str:
+    """
+    Generate SQL CHECK constraint for non-negative values or NULL (>= 0 OR NULL).
+
+    Args:
+        field_name: Name of the database column
+
+    Returns:
+        SQL constraint string
+
+    Example:
+        >>> check_non_negative_or_null("fee")
+        'CAST(fee AS NUMERIC) >= 0 OR fee IS NULL'
+    """
+    return f"CAST({field_name} AS NUMERIC) >= 0 OR {field_name} IS NULL"
+
+
+def check_negative(field_name: str) -> str:
+    """
+    Generate SQL CHECK constraint for negative values (< 0).
+
+    Args:
+        field_name: Name of the database column
+
+    Returns:
+        SQL constraint string
+
+    Example:
+        >>> check_negative("loss_amount")
+        'CAST(loss_amount AS NUMERIC) < 0'
+    """
+    return f"CAST({field_name} AS NUMERIC) < 0"
+
+
+def check_negative_or_null(field_name: str) -> str:
+    """
+    Generate SQL CHECK constraint for negative values or NULL (< 0 OR NULL).
+
+    Args:
+        field_name: Name of the database column
+
+    Returns:
+        SQL constraint string
+
+    Example:
+        >>> check_negative_or_null("pnl")
+        'CAST(pnl AS NUMERIC) < 0 OR pnl IS NULL'
+    """
+    return f"CAST({field_name} AS NUMERIC) < 0 OR {field_name} IS NULL"
+
+
+def check_non_positive(field_name: str) -> str:
+    """
+    Generate SQL CHECK constraint for non-positive values (<= 0).
+
+    Args:
+        field_name: Name of the database column
+
+    Returns:
+        SQL constraint string
+
+    Example:
+        >>> check_non_positive("credit_balance")
+        'CAST(credit_balance AS NUMERIC) <= 0'
+    """
+    return f"CAST({field_name} AS NUMERIC) <= 0"
+
+
+def check_non_positive_or_null(field_name: str) -> str:
+    """
+    Generate SQL CHECK constraint for non-positive values or NULL (<= 0 OR NULL).
+
+    Args:
+        field_name: Name of the database column
+
+    Returns:
+        SQL constraint string
+
+    Example:
+        >>> check_non_positive_or_null("discount")
+        'CAST(discount AS NUMERIC) <= 0 OR discount IS NULL'
+    """
+    return f"CAST({field_name} AS NUMERIC) <= 0 OR {field_name} IS NULL"
+
+
+def check_range(
+    field_name: str,
+    min_val: Decimal,
+    max_val: Decimal,
+    allow_null: bool = False,
+) -> str:
+    """
+    Generate SQL CHECK constraint for range validation.
+
+    Args:
+        field_name: Name of the database column
+        min_val: Minimum allowed value (inclusive)
+        max_val: Maximum allowed value (inclusive)
+        allow_null: Whether to allow NULL values
+
+    Returns:
+        SQL constraint string
+
+    Example:
+        >>> check_range("percentage", Decimal("0"), Decimal("1"))
+        'CAST(percentage AS NUMERIC) >= 0 AND CAST(percentage AS NUMERIC) <= 1'
+        >>> check_range("score", Decimal("1"), Decimal("10"), allow_null=True)
+        'CAST(score AS NUMERIC) >= 1 AND CAST(score AS NUMERIC) <= 10 OR score IS NULL'
+    """
+    constraint = (
+        f"CAST({field_name} AS NUMERIC) >= {min_val} "
+        f"AND CAST({field_name} AS NUMERIC) <= {max_val}"
+    )
+    if allow_null:
+        constraint += f" OR {field_name} IS NULL"
+    return constraint
+
+
+def check_percentage(field_name: str, allow_null: bool = False) -> str:
+    """
+    Generate SQL CHECK constraint for percentage values (0.0 to 1.0).
+
+    Args:
+        field_name: Name of the database column
+        allow_null: Whether to allow NULL values
+
+    Returns:
+        SQL constraint string
+
+    Example:
+        >>> check_percentage("win_rate")
+        'CAST(win_rate AS NUMERIC) >= 0 AND CAST(win_rate AS NUMERIC) <= 1'
+        >>> check_percentage("dd", allow_null=True)
+        'CAST(dd AS NUMERIC) >= 0 AND CAST(dd AS NUMERIC) <= 1 OR dd IS NULL'
+    """
+    return check_range(field_name, Decimal("0"), Decimal("1"), allow_null)
+
+
+def check_datetime_order(
+    start_field: str, end_field: str, allow_equal: bool = True
+) -> str:
+    """
+    Generate SQL CHECK constraint to ensure end datetime is after start datetime.
+
+    Args:
+        start_field: Name of the start datetime column
+        end_field: Name of the end datetime column
+        allow_equal: Whether start and end can be equal (default: True)
+
+    Returns:
+        SQL constraint string
+
+    Example:
+        >>> check_datetime_order("start_date", "end_date")
+        'end_date >= start_date'
+        >>> check_datetime_order("open_time", "close_time", allow_equal=False)
+        'close_time > open_time'
+    """
+    operator = ">=" if allow_equal else ">"
+    return f"{end_field} {operator} {start_field}"
+
+
+def check_greater_than_field(
+    field_name: str, reference_field: str, allow_equal: bool = False
+) -> str:
+    """
+    Generate SQL CHECK constraint ensuring one field is greater than another.
+
+    Args:
+        field_name: Name of the field that should be greater
+        reference_field: Name of the field to compare against
+        allow_equal: Whether values can be equal (default: False)
+
+    Returns:
+        SQL constraint string
+
+    Example:
+        >>> check_greater_than_field("high", "low")
+        'CAST(high AS NUMERIC) > CAST(low AS NUMERIC)'
+        >>> check_greater_than_field("max_price", "min_price", allow_equal=True)
+        'CAST(max_price AS NUMERIC) >= CAST(min_price AS NUMERIC)'
+    """
+    operator = ">=" if allow_equal else ">"
+    return f"CAST({field_name} AS NUMERIC) {operator} CAST({reference_field} AS NUMERIC)"
+
+
+{{ section_divider('GENERIC CONSTANTS') }}
+#
+# Note: PERCENTAGE_MIN/MAX are generated from constraints.json
+# Only include truly generic constants that aren't domain-specific
+
+# File size constraints
+MIN_FILE_SIZE = 0  # bytes
+MAX_FILE_SIZE = 1024 * 1024 * 100  # 100 MB
+
+# Session duration constraints (in seconds)
+MIN_SESSION_DURATION = 60  # 1 minute
+MAX_SESSION_DURATION = 86400  # 24 hours
+
+# Token expiry constraints (in seconds)
+MIN_TOKEN_EXPIRY = 300  # 5 minutes
+MAX_TOKEN_EXPIRY = 31536000  # 1 year
+
+# Rate limit window constraints (in seconds)
+MIN_RATE_LIMIT_WINDOW = 1  # 1 second
+MAX_RATE_LIMIT_WINDOW = 86400  # 24 hours
+
+# Counter/quantity constraints
+MIN_POSITIVE_COUNT = 1
+MIN_MAX_SESSIONS = 1
+MAX_MAX_SESSIONS = 100
+MIN_RETRY_ATTEMPTS = 0
+MAX_RETRY_ATTEMPTS = 10
+
+{% endif %}

@@ -1,0 +1,50 @@
+{#-
+  API Utilities Template
+  Generates utility functions for API formatting (financial, percentage, etc.)
+-#}
+{% from "_shared/_base.j2" import generated_marker %}
+{{ generated_marker() }}
+
+"""
+API utility functions for formatting data.
+
+This module provides formatting helpers used by API routes:
+- normalize_decimal: Normalize Decimal values for API responses (drops trailing zeros)
+"""
+
+from decimal import Decimal
+from typing import Any
+
+
+{% raw %}def normalize_decimal(value: "Decimal | Any | None") -> str | None:
+    """
+    Normalize a Decimal value for API responses by dropping trailing zeros.
+
+    Args:
+        value: Decimal value to normalize
+
+    Returns:
+        Normalized string representation, or None if value is None
+
+    Examples:
+        >>> normalize_decimal(Decimal("2.50000000"))
+        "2.5"
+        >>> normalize_decimal(Decimal("49000.0"))
+        "49000"
+        >>> normalize_decimal(Decimal("0.00000000"))
+        "0"
+        >>> normalize_decimal(Decimal("0.00000001"))
+        "0.00000001"
+        >>> normalize_decimal(None)
+        None
+    """
+    if value is None:
+        return None
+
+    normalized = value.normalize()
+    # normalize() can produce scientific notation for large/small values (e.g. "5E+3").
+    # Use fixed-point format to avoid that.
+    if "E" in str(normalized):
+        return f"{normalized:f}"
+    return str(normalized)
+{% endraw %}

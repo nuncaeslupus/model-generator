@@ -1,0 +1,12 @@
+{#-
+  Database Package Init Template
+  Exports get_session for API routes
+-#}
+{% from "_shared/_base.j2" import generated_marker %}
+{{ generated_marker() }}
+
+"""Database package - provides session management."""
+
+from .engine import get_session
+
+__all__ = ["get_session"]

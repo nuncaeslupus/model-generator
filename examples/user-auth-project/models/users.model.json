@@ -1,0 +1,533 @@
+{
+    "$schema": "../../../src/model_generator/schema/model.schema.json",
+    "domain": "users",
+    "description": "User authentication and authorization entities",
+    "section_header": "USER & AUTHENTICATION MODELS",
+    "dependencies": ["bcrypt>=4.0.0"],
+    "entities": {
+        "User": {
+            "table": "users",
+            "description": "Platform user account for authentication",
+            "fields": {
+                "id": {
+                    "type": "uuid",
+                    "primary_key": true,
+                    "auto_generate": true,
+                    "description": "Unique user identifier"
+                },
+                "username": {
+                    "type": "text",
+                    "max_length": 50,
+                    "min_length": 3,
+                    "required": true,
+                    "unique": true,
+                    "api_exclude_update": true,
+                    "constraints": [
+                        {
+                            "type": "length",
+                            "min_ref": "USERNAME_MIN_LENGTH"
+                        }
+                    ],
+                    "description": "Unique username for login"
+                },
+                "email": {
+                    "type": "text",
+                    "max_length": 255,
+                    "required": true,
+                    "unique": true,
+                    "api_exclude_update": true,
+                    "description": "User email address (used for notifications and recovery)"
+                },
+                "password_hash": {
+                    "type": "text",
+                    "max_length": 255,
+                    "min_length": 8,
+                    "required": true,
+                    "api_field_name": "password",
+                    "api_exclude_response": true,
+                    "api_exclude_update": true,
+                    "description": "User password (will be hashed before storage)"
+                },
+                "first_name": {
+                    "type": "text",
+                    "max_length": 100,
+                    "description": "User first name"
+                },
+                "last_name": {
+                    "type": "text",
+                    "max_length": 100,
+                    "description": "User last name"
+                },
+                "timezone": {
+                    "type": "text",
+                    "max_length": 50,
+                    "default": "UTC",
+                    "description": "User timezone for display (IANA format)"
+                },
+                "status": {
+                    "type": "enum",
+                    "enum_name": "UserStatus",
+                    "enum_existing": true,
+                    "default": "ACTIVE",
+                    "api_readonly": true,
+                    "description": "Account status (ACTIVE, INACTIVE, SUSPENDED)"
+                },
+                "last_login_at": {
+                    "type": "datetime",
+                    "api_readonly": true,
+                    "timestamp_after": "created_at",
+                    "description": "Timestamp of most recent successful login"
+                },
+                "email_verified": {
+                    "type": "boolean",
+                    "default": false,
+                    "api_readonly": true,
+                    "description": "Whether email has been verified"
+                }
+            },
+            "timestamps": {
+                "created": true,
+                "updated": true
+            },
+            "relationships": {
+                "user_sessions": {
+                    "type": "one_to_many",
+                    "target": "UserSession",
+                    "back_populates": "user",
+                    "cascade": "all, delete-orphan"
+                },
+                "api_keys": {
+                    "type": "one_to_many",
+                    "target": "ApiKey",
+                    "back_populates": "user",
+                    "cascade": "all, delete-orphan"
+                },
+                "user_roles": {
+                    "type": "one_to_many",
+                    "target": "UserRole",
+                    "foreign_keys": [
+                        "user_id"
+                    ],
+                    "back_populates": "user",
+                    "cascade": "all, delete-orphan"
+                },
+                "portfolios": {
+                    "type": "one_to_many",
+                    "target": "Portfolio",
+                    "back_populates": "user",
+                    "cascade": "all, delete-orphan"
+                }
+            },
+            "indexes": [
+                {
+                    "fields": [
+                        "email"
+                    ]
+                },
+                {
+                    "fields": [
+                        "username"
+                    ]
+                },
+                {
+                    "fields": [
+                        "status"
+                    ]
+                }
+            ],
+            "api": {
+                "enabled": true,
+                "prefix": "users",
+                "endpoints": [
+                    "list",
+                    "create",
+                    "get",
+                    "update",
+                    "delete"
+                ],
+                "pagination": true
+            },
+            "tests": {
+                "enabled": true
+            }
+        },
+        "UserSession": {
+            "table": "user_sessions",
+            "description": "Active user authentication session",
+            "fields": {
+                "id": {
+                    "type": "uuid",
+                    "primary_key": true,
+                    "auto_generate": true,
+                    "description": "Unique session identifier"
+                },
+                "user_id": {
+                    "type": "reference",
+                    "reference_table": "users",
+                    "required": true,
+                    "on_delete": "CASCADE",
+                    "description": "User who owns this session"
+                },
+                "session_token": {
+                    "type": "text",
+                    "max_length": 255,
+                    "required": true,
+                    "unique": true,
+                    "api_exclude_response": true,
+                    "api_exclude_update": true,
+                    "description": "Opaque session token (stored hashed)"
+                },
+                "ip_address": {
+                    "type": "text",
+                    "max_length": 45,
+                    "description": "Client IP address at session creation"
+                },
+                "user_agent": {
+                    "type": "text",
+                    "max_length": 500,
+                    "description": "Client user agent string"
+                },
+                "expires_at": {
+                    "type": "datetime",
+                    "required": true,
+                    "api_exclude_update": true,
+                    "timestamp_after": "created_at",
+                    "description": "When this session expires"
+                },
+                "last_activity_at": {
+                    "type": "datetime",
+                    "api_readonly": true,
+                    "timestamp_after": "created_at",
+                    "description": "Last time session was used"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether session is currently valid"
+                }
+            },
+            "timestamps": {
+                "created": true,
+                "updated": true
+            },
+            "relationships": {
+                "user": {
+                    "type": "many_to_one",
+                    "target": "User",
+                    "back_populates": "user_sessions"
+                }
+            },
+            "indexes": [
+                {
+                    "fields": [
+                        "session_token"
+                    ]
+                },
+                {
+                    "fields": [
+                        "user_id"
+                    ]
+                },
+                {
+                    "fields": [
+                        "expires_at"
+                    ]
+                },
+                {
+                    "fields": [
+                        "user_id",
+                        "is_active"
+                    ]
+                }
+            ],
+            "api": {
+                "enabled": true,
+                "prefix": "sessions",
+                "endpoints": [
+                    "list",
+                    "create",
+                    "get",
+                    "delete"
+                ]
+            },
+            "tests": {
+                "enabled": true
+            }
+        },
+        "ApiKey": {
+            "table": "api_keys",
+            "description": "API access key for programmatic access",
+            "fields": {
+                "id": {
+                    "type": "uuid",
+                    "primary_key": true,
+                    "auto_generate": true,
+                    "description": "Unique API key identifier"
+                },
+                "user_id": {
+                    "type": "reference",
+                    "reference_table": "users",
+                    "required": true,
+                    "on_delete": "CASCADE",
+                    "api_exclude_update": true,
+                    "description": "User who owns this API key"
+                },
+                "name": {
+                    "type": "text",
+                    "max_length": 100,
+                    "required": true,
+                    "description": "Human-readable name for this key"
+                },
+                "key_hash": {
+                    "type": "text",
+                    "max_length": 255,
+                    "required": true,
+                    "unique": true,
+                    "api_exclude_response": true,
+                    "api_exclude_update": true,
+                    "description": "Hashed API key (raw key shown only once at creation)"
+                },
+                "permissions": {
+                    "type": "json_array",
+                    "list_type": "str",
+                    "description": "List of permissions: ['read', 'trade', 'manage']"
+                },
+                "ip_whitelist": {
+                    "type": "json_array",
+                    "list_type": "str",
+                    "description": "Allowed IPs (empty = allow all)"
+                },
+                "rate_limit_per_minute": {
+                    "type": "counter",
+                    "default": 60,
+                    "constraints": [
+                        {
+                            "type": "non_negative"
+                        }
+                    ],
+                    "description": "Max API calls per minute"
+                },
+                "expires_at": {
+                    "type": "datetime",
+                    "description": "Optional expiration date"
+                },
+                "last_used_at": {
+                    "type": "datetime",
+                    "api_readonly": true,
+                    "description": "Last time this key was used"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether key is currently enabled"
+                }
+            },
+            "timestamps": {
+                "created": true,
+                "updated": true
+            },
+            "relationships": {
+                "user": {
+                    "type": "many_to_one",
+                    "target": "User",
+                    "back_populates": "api_keys"
+                }
+            },
+            "indexes": [
+                {
+                    "fields": [
+                        "key_hash"
+                    ]
+                },
+                {
+                    "fields": [
+                        "user_id"
+                    ]
+                },
+                {
+                    "fields": [
+                        "user_id",
+                        "is_active"
+                    ]
+                },
+                {
+                    "fields": [
+                        "expires_at"
+                    ]
+                }
+            ],
+            "api": {
+                "enabled": true,
+                "prefix": "api-keys"
+            },
+            "tests": {
+                "enabled": true
+            }
+        },
+        "Role": {
+            "table": "roles",
+            "description": "User role for access control",
+            "fields": {
+                "id": {
+                    "type": "uuid",
+                    "primary_key": true,
+                    "auto_generate": true
+                },
+                "name": {
+                    "type": "text",
+                    "max_length": 50,
+                    "required": true,
+                    "unique": true,
+                    "api_exclude_update": true,
+                    "description": "Role name (admin, trader, viewer)"
+                },
+                "description": {
+                    "type": "longtext",
+                    "description": "What this role allows"
+                },
+                "permissions": {
+                    "type": "json_array",
+                    "list_type": "str",
+                    "required": true,
+                    "description": "Permissions granted by this role"
+                },
+                "is_system_role": {
+                    "type": "boolean",
+                    "default": false,
+                    "api_exclude_update": true,
+                    "description": "Whether this is a protected system role"
+                }
+            },
+            "timestamps": {
+                "created": true,
+                "updated": true
+            },
+            "relationships": {
+                "user_roles": {
+                    "type": "one_to_many",
+                    "target": "UserRole",
+                    "back_populates": "role",
+                    "cascade": "all, delete-orphan"
+                }
+            },
+            "indexes": [
+                {
+                    "fields": [
+                        "name"
+                    ]
+                },
+                {
+                    "fields": [
+                        "is_system_role"
+                    ]
+                }
+            ],
+            "api": {
+                "enabled": true,
+                "prefix": "roles"
+            },
+            "tests": {
+                "enabled": true
+            }
+        },
+        "UserRole": {
+            "table": "user_roles",
+            "description": "User-role assignment with audit info",
+            "fields": {
+                "id": {
+                    "type": "uuid",
+                    "primary_key": true,
+                    "auto_generate": true
+                },
+                "user_id": {
+                    "type": "reference",
+                    "reference_table": "users",
+                    "required": true,
+                    "on_delete": "CASCADE",
+                    "api_exclude_update": true,
+                    "description": "User receiving the role"
+                },
+                "role_id": {
+                    "type": "reference",
+                    "reference_table": "roles",
+                    "required": true,
+                    "on_delete": "CASCADE",
+                    "api_exclude_update": true,
+                    "description": "Role being assigned"
+                },
+                "granted_by": {
+                    "type": "reference",
+                    "reference_table": "users",
+                    "on_delete": "SET NULL",
+                    "api_exclude_update": true,
+                    "description": "Admin who granted this role"
+                },
+                "granted_at": {
+                    "type": "datetime",
+                    "server_default": true,
+                    "api_readonly": true,
+                    "description": "When role was granted"
+                },
+                "expires_at": {
+                    "type": "datetime",
+                    "description": "Optional temporary role expiration"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether assignment is currently active"
+                }
+            },
+            "timestamps": {
+                "created": true,
+                "updated": true
+            },
+            "relationships": {
+                "user": {
+                    "type": "many_to_one",
+                    "target": "User",
+                    "foreign_keys": [
+                        "user_id"
+                    ],
+                    "back_populates": "user_roles"
+                },
+                "role": {
+                    "type": "many_to_one",
+                    "target": "Role",
+                    "back_populates": "user_roles"
+                }
+            },
+            "indexes": [
+                {
+                    "fields": [
+                        "user_id"
+                    ]
+                },
+                {
+                    "fields": [
+                        "role_id"
+                    ]
+                },
+                {
+                    "fields": [
+                        "is_active"
+                    ]
+                },
+                {
+                    "fields": [
+                        "user_id",
+                        "role_id"
+                    ],
+                    "unique": true
+                }
+            ],
+            "api": {
+                "enabled": true,
+                "prefix": "user-roles"
+            },
+            "tests": {
+                "enabled": true
+            }
+        }
+    }
+}

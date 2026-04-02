@@ -1,0 +1,53 @@
+{#-
+  __init__.py Template for API Models Package
+  Generates exports for all response and request models across domain files.
+
+  This template receives:
+  - domains: List of domain files with their entities and model types
+  - config: Stack configuration
+-#}
+{% from "_shared/_base.j2" import generated_marker, section_divider %}
+{{ generated_marker() }}
+
+"""
+Application API Models.
+
+This package contains all Pydantic models for API requests and responses.
+"""
+
+{% for domain in domains %}
+# {{ domain.section | default(domain.name | upper + ' MODELS') }}
+{% if domain.response_models %}
+from .{{ domain.name }}_response import (
+{% for model in domain.response_models | sort %}
+    {{ model }},
+{% endfor %}
+)
+{% endif %}
+{% if domain.request_models %}
+from .{{ domain.name }}_requests import (
+{% for model in domain.request_models | sort %}
+    {{ model }},
+{% endfor %}
+)
+{% endif %}
+
+{% endfor %}
+{% set all_models = [] %}
+{% for domain in domains %}
+{% if domain.response_models %}
+{% for model in domain.response_models %}
+{% set _ = all_models.append(model) %}
+{% endfor %}
+{% endif %}
+{% if domain.request_models %}
+{% for model in domain.request_models %}
+{% set _ = all_models.append(model) %}
+{% endfor %}
+{% endif %}
+{% endfor %}
+__all__ = [
+{% for model in all_models | sort %}
+    "{{ model }}",
+{% endfor %}
+]

@@ -1,0 +1,35 @@
+{#-
+  __init__.py Template for Database Models Package
+  Generates exports for all models across all domain files.
+
+  This template receives:
+  - domains: List of domain files with their entities
+  - config: Stack configuration
+-#}
+{% from "_shared/_base.j2" import generated_marker %}
+{{ generated_marker() }}
+
+"""
+{{ config.project.name }} Database Models.
+
+{{ config.project.description }}
+"""
+
+# Base and shared modules
+from .base import Base
+
+{% for domain in domains %}
+# {{ domain.section | default(domain.name | capitalize + ' Models') }}
+from .{{ domain.file }} import (
+{% for entity in domain.entities | sort %}
+    {{ entity }},
+{% endfor %}
+)
+
+{% endfor %}
+__all__ = [
+    "Base",
+{% for entity in domains | map(attribute='entities') | sum(start=[]) | sort %}
+    "{{ entity }}",
+{% endfor %}
+]

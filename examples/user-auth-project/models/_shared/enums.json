@@ -1,0 +1,79 @@
+{
+    "enums": {
+        "UserStatus": {
+            "description": "User account status",
+            "values": [
+                {
+                    "name": "ACTIVE",
+                    "value": "ACTIVE",
+                    "description": "User account is active and can log in"
+                },
+                {
+                    "name": "INACTIVE",
+                    "value": "INACTIVE",
+                    "description": "User account is inactive"
+                },
+                {
+                    "name": "SUSPENDED",
+                    "value": "SUSPENDED",
+                    "description": "User account has been suspended"
+                }
+            ]
+        },
+        "TransactionType": {
+            "description": "Type of financial transaction",
+            "values": [
+                {
+                    "name": "DEPOSIT",
+                    "value": "DEPOSIT",
+                    "description": "Funds deposited into portfolio"
+                },
+                {
+                    "name": "WITHDRAWAL",
+                    "value": "WITHDRAWAL",
+                    "description": "Funds withdrawn from portfolio"
+                },
+                {
+                    "name": "BUY",
+                    "value": "BUY",
+                    "description": "Asset purchase transaction"
+                },
+                {
+                    "name": "SELL",
+                    "value": "SELL",
+                    "description": "Asset sale transaction"
+                },
+                {
+                    "name": "TRANSFER",
+                    "value": "TRANSFER",
+                    "description": "Transfer between portfolios"
+                }
+            ]
+        },
+        "TransactionStatus": {
+            "description": "Status of a financial transaction",
+            "values": [
+                {
+                    "name": "PENDING",
+                    "value": "PENDING",
+                    "description": "Transaction initiated but not yet processed"
+                },
+                {
+                    "name": "COMPLETED",
+                    "value": "COMPLETED",
+                    "description": "Transaction successfully completed"
+                },
+                {
+                    "name": "FAILED",
+                    "value": "FAILED",
+                    "description": "Transaction failed"
+                },
+                {
+                    "name": "CANCELLED",
+                    "value": "CANCELLED",
+                    "description": "Transaction cancelled by user or system"
+                }
+            ]
+        }
+    }
+}

@@ -1,0 +1,215 @@
+{#-
+  API Response Model Template (Multi-Entity)
+  Generates Pydantic response models for all entities in a domain
+-#}
+{% from "_shared/_base.j2" import generated_marker, section_divider, section_header %}
+{{ generated_marker() }}
+
+"""
+{{ model.section_header | default(model.domain | upper + ' MODELS') }} - API Response Models.
+
+{{ model.description | default('API response models for ' + model.domain + '.') | wrap(88) }}
+
+This module contains:
+{% for entity_name, entity in model.entities.items() %}
+- {{ entity_name }}Response: Response model for {{ entity_name }}
+{% endfor %}
+"""
+{% set ns = namespace(
+    has_any=false,
+    enum_imports=[],
+    needs_validators=[]
+) %}
+{#- Scan all entities for required imports -#}
+{% for entity_name, entity in model.entities.items() %}
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_response | default(false) %}
+{% if field.type in ['json_object', 'json_array'] %}{% set ns.has_any = true %}{% endif %}
+{% if field.type == 'enum' and field.enum_name not in ns.enum_imports %}{% set _ = ns.enum_imports.append(field.enum_name) %}{% endif %}
+{% if field.type == 'financial' and 'validate_non_negative_decimal' not in ns.needs_validators %}{% set _ = ns.needs_validators.append('validate_non_negative_decimal') %}{% endif %}
+{% if field.type == 'percentage' and 'validate_percentage' not in ns.needs_validators %}{% set _ = ns.needs_validators.append('validate_percentage') %}{% endif %}
+{% if field.type == 'counter' and 'validate_non_negative_int' not in ns.needs_validators %}{% set _ = ns.needs_validators.append('validate_non_negative_int') %}{% endif %}
+{% endif %}
+{% endfor %}
+{% if entity.timestamps is defined and entity.timestamps.created and entity.timestamps.updated %}
+{% if 'validate_timestamp_after' not in ns.needs_validators %}{% set _ = ns.needs_validators.append('validate_timestamp_after') %}{% endif %}
+{% endif %}
+{#- Check for timestamp_after validations on datetime fields -#}
+{% for field_name, field in entity.fields.items() %}
+{% if field.type == 'datetime' and field.timestamp_after is defined %}
+{% if 'validate_timestamp_after' not in ns.needs_validators %}{% set _ = ns.needs_validators.append('validate_timestamp_after') %}{% endif %}
+{% endif %}
+{% endfor %}
+{% endfor %}
+
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+{% if ns.has_any %}
+from typing import Any, Self
+{% else %}
+from typing import Self
+{% endif %}
+
+{% if ns.enum_imports %}
+from {{ config.paths.database_models | path_to_import }}.enums import {{ ns.enum_imports | join(', ') }}
+{% endif %}
+{% if ns.needs_validators %}
+from {{ config.paths.api_models.rsplit('/', 1)[0] | path_to_import }}.validators import {{ ns.needs_validators | join(', ') }}
+{% endif %}
+
+
+{{ section_divider(model.section_header | default(model.domain | upper + ' MODELS')) }}
+
+{% for entity_name, entity in model.entities.items() %}
+
+class {{ entity_name }}Response(BaseModel):
+    """
+    Response model for {{ entity_name }} - matches {{ entity_name }} database model.
+
+    Attributes:
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_response | default(false) %}
+        {{ field_name }}: {{ field.description | default(field_name | replace('_', ' ') | capitalize + '.') | wrap(88, 12, "        " + field_name + ": ") }}
+{% endif %}
+{% endfor %}
+{% if entity.timestamps is defined and entity.timestamps.created %}
+        created_at: Timestamp when the record was created.
+{% endif %}
+{% if entity.timestamps is defined and entity.timestamps.updated %}
+        updated_at: Timestamp when the record was last updated.
+{% endif %}
+    """
+
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_response | default(false) %}
+{% if field.type == 'uuid' %}
+    {{ field_name }}: str | None
+{% elif field.type in ['text', 'longtext'] %}
+    {{ field_name }}: str | None
+{% elif field.type == 'reference' %}
+    {{ field_name }}: str | None
+{% elif field.type in ['financial', 'percentage'] %}
+    {{ field_name }}: str | None
+{% elif field.type == 'counter' %}
+    {{ field_name }}: int | None
+{% elif field.type == 'boolean' %}
+    {{ field_name }}: bool | None
+{% elif field.type == 'datetime' %}
+    {{ field_name }}: str | None
+{% elif field.type == 'enum' %}
+    {{ field_name }}: {{ field.enum_name }} | None
+{% elif field.type == 'json_object' %}
+    {{ field_name }}: dict[str, Any] | None
+{% elif field.type == 'json_array' %}
+    {{ field_name }}: list[{{ field.list_type | default('Any') }}] | None
+{% endif %}
+{% endif %}
+{% endfor %}
+{% if entity.timestamps is defined and entity.timestamps.created %}
+    created_at: str | None
+{% endif %}
+{% if entity.timestamps is defined and entity.timestamps.updated %}
+    updated_at: str | None
+{% endif %}
+
+{{ section_header('OpenAPI Configuration') }}
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_response | default(false) %}
+{% set api_name = field.api_field_name | default(field_name) %}
+{% if field.type == 'uuid' %}
+                "{{ api_name }}": "{{ '123e4567-e89b-12d3-a456-426614174000' }}",
+{% elif field.type == 'text' and 'email' in field_name.lower() %}
+                "{{ api_name }}": "user@example.com",
+{% elif field.type == 'text' and field_name == 'username' %}
+                "{{ api_name }}": "john_doe",
+{% elif field.type == 'text' and 'name' in field_name.lower() %}
+                "{{ api_name }}": "{{ field_name.replace('_', ' ').title() }}",
+{% elif field.type == 'text' %}
+                "{{ api_name }}": "{{ field_name }}_example",
+{% elif field.type == 'longtext' %}
+                "{{ api_name }}": "This is a longer text field with more content.",
+{% elif field.type == 'reference' %}
+                "{{ api_name }}": "ref-123e4567",
+{% elif field.type == 'financial' %}
+                "{{ api_name }}": "1000",
+{% elif field.type == 'percentage' %}
+                "{{ api_name }}": "0.15",
+{% elif field.type == 'counter' %}
+                "{{ api_name }}": 42,
+{% elif field.type == 'boolean' %}
+                "{{ api_name }}": {% if field.default == false %}False{% else %}True{% endif %},
+{% elif field.type == 'datetime' %}
+                "{{ api_name }}": "2025-12-31T23:59:59Z",
+{% elif field.type == 'enum' %}
+                "{{ api_name }}": "{{ field.default | default('active') }}",
+{% elif field.type == 'json_object' %}
+                "{{ api_name }}": {"key": "value", "nested": {"data": 123}},
+{% elif field.type == 'json_array' %}
+                "{{ api_name }}": ["item1", "item2", "item3"],
+{% endif %}
+{% endif %}
+{% endfor %}
+{% if entity.timestamps is defined and entity.timestamps.created %}
+                "created_at": "2025-01-01T12:00:00Z",
+{% endif %}
+{% if entity.timestamps is defined and entity.timestamps.updated %}
+                "updated_at": "2025-01-15T14:30:00Z",
+{% endif %}
+            }
+        }
+    )
+
+{% set validated_fields = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_response | default(false) %}
+{% if field.type == 'financial' %}
+{% set _ = validated_fields.append({'name': field_name, 'validator': 'validate_non_negative_decimal'}) %}
+{% elif field.type == 'percentage' %}
+{% set _ = validated_fields.append({'name': field_name, 'validator': 'validate_percentage'}) %}
+{% elif field.type == 'counter' %}
+{% set _ = validated_fields.append({'name': field_name, 'validator': 'validate_non_negative_int'}) %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% if validated_fields %}
+{{ section_header('Field Validators') }}
+{% for vf in validated_fields %}
+    _validate_{{ vf.name }} = field_validator("{{ vf.name }}")({{ vf.validator }})
+{% endfor %}
+
+{% endif %}
+{#- Collect timestamp_after validations for this entity -#}
+{% set timestamp_validations = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if field.type == 'datetime' and field.timestamp_after is defined and not field.api_exclude_response | default(false) %}
+{% set _ = timestamp_validations.append({'field': field_name, 'after': field.timestamp_after}) %}
+{% endif %}
+{% endfor %}
+{% if entity.timestamps is defined and entity.timestamps.created and entity.timestamps.updated %}
+{{ section_header('Model Validators') }}
+    @model_validator(mode="after")
+    def validate_timestamps(self) -> Self:
+        """Validate timestamp ordering: created_at <= updated_at."""
+        validate_timestamp_after(self.updated_at, self.created_at, "updated_at", "created_at")
+{% for tv in timestamp_validations %}
+        if self.{{ tv.field }}:
+            validate_timestamp_after(self.{{ tv.field }}, self.{{ tv.after }}, "{{ tv.field }}", "{{ tv.after }}")
+{% endfor %}
+        return self
+
+{% elif timestamp_validations %}
+{{ section_header('Model Validators') }}
+    @model_validator(mode="after")
+    def validate_timestamps(self) -> Self:
+        """Validate timestamp ordering."""
+{% for tv in timestamp_validations %}
+        if self.{{ tv.field }}:
+            validate_timestamp_after(self.{{ tv.field }}, self.{{ tv.after }}, "{{ tv.field }}", "{{ tv.after }}")
+{% endfor %}
+        return self
+
+{% endif %}
+{% endfor %}

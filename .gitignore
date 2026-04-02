@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type checking
+.mypy_cache/
+
+# Linting
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Mutation testing
+mutants/
+mutmut-stats.json
+
+# Local development
+*.local
+.env
+
+# Temporary files
+tmp/
+
+# Example project generated output
+examples/*/backend/
+examples/*/tests/
+examples/*/alembic/
+examples/*/alembic.ini
+examples/*/pyproject.toml
+examples/*/uv.lock
+examples/*/.venv/
+examples/*/*.db
+examples/*/.coverage
+examples/*/.pytest_cache/
+examples/*/.ruff_cache/
+examples/*/.mypy_cache/
+examples/*/mutants/
+examples/*/mutmut-stats.json

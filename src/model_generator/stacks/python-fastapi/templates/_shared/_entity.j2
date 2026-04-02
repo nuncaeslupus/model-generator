@@ -1,0 +1,48 @@
+{#-
+  Entity Utility Macros
+  Primary key extraction, name transformations, and entity utilities.
+-#}
+
+{#- Get the primary key field name for an entity -#}
+{% macro get_primary_key_field(entity) -%}
+{%- for field_name, field in entity.fields.items() -%}
+{%- if field.primary_key | default(false) -%}
+{{ field.api_field_name | default(field_name) }}
+{%- endif -%}
+{%- endfor -%}
+{%- endmacro %}
+
+{#- Pluralize a name (simple English rules) -#}
+{#- Handles: y -> ies, s/x/ch/sh -> es, otherwise -> s -#}
+{% macro pluralize(name) -%}
+{%- if name.endswith('y') and name[-2:-1] not in 'aeiou' -%}
+{{ name[:-1] }}ies
+{%- elif name.endswith(('s', 'x', 'ch', 'sh')) -%}
+{{ name }}es
+{%- else -%}
+{{ name }}s
+{%- endif -%}
+{%- endmacro %}
+
+{#- Convert snake_case to kebab-case for URL paths -#}
+{% macro to_kebab_case(name) -%}
+{{ name | replace('_', '-') }}
+{%- endmacro %}
+
+{#- Convert CamelCase to snake_case -#}
+{% macro to_snake_case(name) -%}
+{%- set ns = namespace(result='') -%}
+{%- for char in name -%}
+{%- if char.isupper() and loop.index0 > 0 -%}
+{%- set ns.result = ns.result ~ '_' ~ char.lower() -%}
+{%- else -%}
+{%- set ns.result = ns.result ~ char.lower() -%}
+{%- endif -%}
+{%- endfor -%}
+{{ ns.result }}
+{%- endmacro %}
+
+{#- Get entity display name (snake_case to Title Case) -#}
+{% macro entity_display_name(entity_name) -%}
+{{ entity_name.replace('_', ' ').title() }}
+{%- endmacro %}

@@ -1,0 +1,126 @@
+{#-
+  API Validators Template
+  Generates validation utilities for API request/response models
+-#}
+{% from "_shared/_base.j2" import generated_marker, section_divider %}
+{{ generated_marker() }}
+
+"""
+API validation utilities.
+
+Provides reusable validators for Pydantic models:
+- Decimal/numeric validators
+- Integer validators
+- String validators
+- Timestamp validators
+"""
+
+import re
+from collections.abc import Callable
+from decimal import Decimal, InvalidOperation
+from typing import Any
+
+{{ section_divider('DECIMAL VALIDATORS') }}
+
+
+def validate_non_negative_decimal(value: Any) -> str | None:
+    """Validate that a decimal value is non-negative (>= 0)."""
+    if value is None:
+        return value
+    try:
+        decimal_value = Decimal(str(value))
+        if decimal_value < 0:
+            raise ValueError("Value must be non-negative")
+        return str(value)
+    except InvalidOperation:
+        raise ValueError("Invalid decimal value") from None
+
+
+def validate_positive_decimal(value: Any) -> str | None:
+    """Validate that a decimal value is positive (> 0)."""
+    if value is None:
+        return value
+    try:
+        decimal_value = Decimal(str(value))
+        if decimal_value <= 0:
+            raise ValueError("Value must be positive")
+        return str(value)
+    except InvalidOperation:
+        raise ValueError("Invalid decimal value") from None
+
+
+def validate_percentage(value: Any) -> str | None:
+    """Validate that a decimal value is a valid percentage (0 to 1)."""
+    if value is None:
+        return value
+    try:
+        decimal_value = Decimal(str(value))
+        if decimal_value < 0 or decimal_value > 1:
+            raise ValueError("Percentage must be between 0 and 1")
+        return str(value)
+    except InvalidOperation:
+        raise ValueError("Invalid decimal value") from None
+
+
+{{ section_divider('INTEGER VALIDATORS') }}
+
+
+def validate_non_negative_int(value: int | None) -> int | None:
+    """Validate that an integer value is non-negative (>= 0)."""
+    if value is None:
+        return value
+    if value < 0:
+        raise ValueError("Value must be non-negative")
+    return value
+
+
+def validate_positive_int(value: int | None) -> int | None:
+    """Validate that an integer value is positive (> 0)."""
+    if value is None:
+        return value
+    if value <= 0:
+        raise ValueError("Value must be positive")
+    return value
+
+
+{{ section_divider('STRING VALIDATORS') }}
+
+
+def validate_email_format(value: str) -> str:
+    """Validate that a string is a valid email format."""
+    # Basic email regex
+    email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    if not re.match(email_pattern, value):
+        raise ValueError("Invalid email format")
+    return value
+
+
+def validate_username_length(value: str) -> str:
+    """Validate username length (typically 3-50 characters)."""
+    if len(value) < 3:
+        raise ValueError("Username must be at least 3 characters")
+    if len(value) > 50:
+        raise ValueError("Username must be at most 50 characters")
+    return value
+
+
+def validate_min_length(min_length: int) -> Callable[[str], str]:
+    """Create a validator for minimum string length."""
+    def validator(value: str) -> str:
+        if len(value) < min_length:
+            raise ValueError(f"Value must be at least {min_length} characters")
+        return value
+    return validator
+
+
+{{ section_divider('TIMESTAMP VALIDATORS') }}
+
+
+def validate_timestamp_after(
+    later: Any, earlier: Any, later_field: str, earlier_field: str
+) -> None:
+    """Validate that one timestamp is after another."""
+    if later is None or earlier is None:
+        return
+    if later < earlier:
+        raise ValueError(f"{later_field} must be after {earlier_field}")

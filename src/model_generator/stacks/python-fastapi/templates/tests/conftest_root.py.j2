@@ -1,0 +1,113 @@
+{#-
+  Test Conftest Root Template
+  Generates the root conftest.py with database and client fixtures
+-#}
+{% from "_shared/_base.j2" import generated_marker %}
+{{ generated_marker() }}
+
+"""
+Root test configuration and fixtures.
+
+Provides:
+- Database session fixture with automatic rollback
+- TestClient fixture for API testing
+- Factory session configuration
+"""
+
+import os
+import tempfile
+from collections.abc import AsyncGenerator, Generator
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from {{ database_models_import }}.base import Base
+from {{ main_import }} import app
+from {{ engine_import }} import get_session
+
+
+@pytest.fixture(scope="session")
+def client() -> Generator[TestClient, None, None]:
+    """
+    TestClient fixture with database dependency override.
+
+    Creates a single in-memory SQLite database for the entire test session.
+    Tests don't conflict because:
+    - UUID primary keys are unique per test
+    - Unique string fields use unique_suffix = str(uuid.uuid4())[:8]
+
+    With xdist parallel testing, each worker gets its own session-scoped database.
+    """
+    # Create temporary database file
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+
+    sync_url = f"sqlite:///{db_path}"
+    async_url = f"sqlite+aiosqlite:///{db_path}"
+
+    # Create sync engine for table setup
+    sync_engine = create_engine(
+        sync_url,
+        connect_args={"check_same_thread": False},
+    )
+
+    # Create async engine for API operations
+    async_engine = create_async_engine(
+        async_url,
+        connect_args={"check_same_thread": False},
+    )
+
+    async_session_local = async_sessionmaker(
+        async_engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    # Create all tables
+    Base.metadata.create_all(bind=sync_engine)
+
+    async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
+        async with async_session_local() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+    app.dependency_overrides.clear()
+
+    # Cleanup
+    sync_engine.dispose()
+
+    # Remove temporary database
+    try:
+        os.unlink(db_path)
+    except OSError:
+        pass
+
+
+def _get_factory_classes() -> list[Any]:
+    """Import and return all factory classes."""
+    factories = []
+    try:
+        import factory
+{% for domain in domains %}
+        from {{ factories_import }} import {{ domain }} as {{ domain }}_factories
+        for name in dir({{ domain }}_factories):
+            obj = getattr({{ domain }}_factories, name)
+            if isinstance(obj, type) and issubclass(obj, factory.alchemy.SQLAlchemyModelFactory):
+                factories.append(obj)
+{% endfor %}
+    except ImportError:
+        pass  # Factories not generated yet
+    return factories
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Suppress known third-party deprecation warnings."""
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore:There is no current event loop:DeprecationWarning",
+    )

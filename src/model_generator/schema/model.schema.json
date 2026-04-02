@@ -1,0 +1,684 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://model-generator/model.schema.json",
+    "title": "Multi-Entity Model Definition Schema",
+    "description": "Schema for defining multiple related database entities in a single domain file",
+    "type": "object",
+    "required": [
+        "domain",
+        "entities"
+    ],
+    "additionalProperties": false,
+    "properties": {
+        "$schema": {
+            "type": "string",
+            "description": "Reference to this schema for validation"
+        },
+        "domain": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Domain name in snake_case (e.g., users, orders, invoices)"
+        },
+        "description": {
+            "type": "string",
+            "description": "Human-readable description of the domain"
+        },
+        "section_header": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9 &_]*$",
+            "description": "Section header in ALL CAPS (e.g., USER & AUTHENTICATION MODELS)"
+        },
+        "enum_definitions": {
+            "type": "object",
+            "description": "Enums to define for this domain. Key is enum name (PascalCase), value is definition.",
+            "additionalProperties": {
+                "$ref": "#/definitions/enum_definition"
+            }
+        },
+        "entities": {
+            "type": "object",
+            "additionalProperties": {
+                "$ref": "#/definitions/entity"
+            },
+            "minProperties": 1,
+            "description": "Map of entity names to their definitions"
+        },
+        "dependencies": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Extra pip dependencies required by this domain (e.g., bcrypt>=4.0.0)"
+        }
+    },
+    "definitions": {
+        "enum_definition": {
+            "type": "object",
+            "required": [
+                "values"
+            ],
+            "additionalProperties": false,
+            "description": "Enum type definition",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of the enum"
+                },
+                "values": {
+                    "type": "array",
+                    "items": {
+                        "oneOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "object",
+                                "required": [
+                                    "name",
+                                    "value"
+                                ],
+                                "additionalProperties": false,
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "Enum member name (UPPER_CASE)"
+                                    },
+                                    "value": {
+                                        "type": "string",
+                                        "description": "Enum string value (lowercase)"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "description": "Member description (for inline comments)"
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                    "minItems": 1,
+                    "description": "List of enum values. Can be strings (auto-lowercased) or objects with name/value/description."
+                }
+            }
+        },
+        "entity": {
+            "type": "object",
+            "required": [
+                "table",
+                "fields"
+            ],
+            "additionalProperties": false,
+            "description": "Single entity definition",
+            "properties": {
+                "table": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "description": "snake_case database table name (e.g., users, user_sessions)"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of the entity"
+                },
+                "mutability": {
+                    "type": "string",
+                    "enum": [
+                        "mutable",
+                        "immutable"
+                    ],
+                    "default": "mutable",
+                    "description": "mutable: has updated_at, supports PUT/DELETE. immutable: append-only"
+                },
+                "fields": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/field"
+                    },
+                    "minProperties": 1
+                },
+                "timestamps": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "created": {
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "updated": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                },
+                "relationships": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/relationship"
+                    }
+                },
+                "indexes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/index"
+                    }
+                },
+                "constraints": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/table_constraint"
+                    }
+                },
+                "cross_field_constraints": {
+                    "type": "array",
+                    "description": "Constraints that involve relationships between multiple fields",
+                    "items": {
+                        "$ref": "#/definitions/cross_field_constraint"
+                    }
+                },
+                "api": {
+                    "$ref": "#/definitions/api_config"
+                },
+                "tests": {
+                    "$ref": "#/definitions/tests_config"
+                }
+            }
+        },
+        "field": {
+            "type": "object",
+            "required": [
+                "type"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "uuid",
+                        "financial",
+                        "percentage",
+                        "counter",
+                        "integer",
+                        "text",
+                        "longtext",
+                        "boolean",
+                        "datetime",
+                        "enum",
+                        "json_object",
+                        "json_array",
+                        "reference"
+                    ]
+                },
+                "description": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "nullable": {
+                    "type": "boolean",
+                    "default": true
+                },
+                "primary_key": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "auto_generate": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "unique": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "index": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "default": {
+                    "oneOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                },
+                "server_default": {
+                    "oneOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "boolean"
+                        }
+                    ]
+                },
+                "min_length": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Minimum length for text fields (API validation)"
+                },
+                "max_length": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "precision": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 20
+                },
+                "scale": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 8
+                },
+                "enum_name": {
+                    "type": "string"
+                },
+                "enum_values": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "enum_existing": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "reference_table": {
+                    "type": "string"
+                },
+                "reference_column": {
+                    "type": "string",
+                    "default": "id"
+                },
+                "on_delete": {
+                    "type": "string",
+                    "enum": [
+                        "CASCADE",
+                        "SET NULL",
+                        "RESTRICT",
+                        "NO ACTION"
+                    ],
+                    "default": "CASCADE"
+                },
+                "constraints": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/field_constraint"
+                    }
+                },
+                "api_exclude_create": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "api_exclude_update": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "api_exclude_response": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "api_readonly": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "api_field_name": {
+                    "type": "string",
+                    "description": "Rename field in API (e.g., password_hash -> password)"
+                },
+                "list_type": {
+                    "type": "string",
+                    "description": "For json_array: element type (e.g., 'str', 'int')"
+                },
+                "timestamp_after": {
+                    "type": "string",
+                    "description": "For datetime fields: validate this timestamp >= referenced field (e.g., 'created_at')"
+                }
+            }
+        },
+        "field_constraint": {
+            "type": "object",
+            "required": [
+                "type"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "non_negative",
+                        "non_negative_or_null",
+                        "positive",
+                        "positive_or_null",
+                        "range",
+                        "range_or_null",
+                        "length",
+                        "pattern",
+                        "unique"
+                    ]
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Custom constraint name"
+                },
+                "min": {
+                    "description": "Minimum value"
+                },
+                "min_ref": {
+                    "type": "string",
+                    "description": "Reference to constraint constant (e.g., 'USERNAME_MIN_LENGTH')"
+                },
+                "max": {
+                    "description": "Maximum value"
+                },
+                "max_ref": {
+                    "type": "string",
+                    "description": "Reference to constraint constant for max value"
+                },
+                "regex": {
+                    "type": "string",
+                    "description": "Regex pattern"
+                },
+                "regex_ref": {
+                    "type": "string",
+                    "description": "Reference to pattern constant (e.g., 'EMAIL_PATTERN')"
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Custom error message"
+                }
+            }
+        },
+        "table_constraint": {
+            "type": "object",
+            "required": [
+                "type"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "check",
+                        "unique",
+                        "depends"
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "expression": {
+                    "type": "string"
+                },
+                "field": {
+                    "type": "string"
+                },
+                "operator": {
+                    "type": "string",
+                    "enum": [
+                        ">=",
+                        ">",
+                        "<=",
+                        "<",
+                        "==",
+                        "!="
+                    ]
+                },
+                "other_field": {
+                    "type": "string"
+                }
+            }
+        },
+        "cross_field_constraint": {
+            "type": "object",
+            "required": [
+                "type",
+                "fields"
+            ],
+            "additionalProperties": false,
+            "description": "Constraints involving multiple fields (arithmetic or comparison relationships)",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "sum_equals",
+                        "product_equals",
+                        "difference_equals",
+                        "quotient_equals",
+                        "modulo_equals",
+                        "field_equal",
+                        "field_not_equal",
+                        "field_less_than",
+                        "field_less_than_or_equal",
+                        "field_greater_than",
+                        "field_greater_than_or_equal"
+                    ],
+                    "description": "Type of cross-field constraint"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Custom constraint name"
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "minItems": 2,
+                    "description": "Fields involved in the constraint (order matters for non-commutative operations)"
+                },
+                "target_value": {
+                    "description": "Target value for arithmetic constraints (e.g., sum_equals target)"
+                },
+                "target_field": {
+                    "type": "string",
+                    "description": "Target field for arithmetic constraints (e.g., field_a + field_b = field_c)"
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Custom error message"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of the constraint"
+                }
+            }
+        },
+        "relationship": {
+            "type": "object",
+            "required": [
+                "type",
+                "target"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "one_to_many",
+                        "many_to_one",
+                        "one_to_one",
+                        "one_to_one_inverse",
+                        "many_to_many"
+                    ]
+                },
+                "target": {
+                    "type": "string"
+                },
+                "back_populates": {
+                    "type": "string"
+                },
+                "cascade": {
+                    "type": "string",
+                    "default": "all, delete-orphan"
+                },
+                "foreign_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "uselist": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "index": {
+            "type": "object",
+            "required": [
+                "fields"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "minItems": 1
+                },
+                "unique": {
+                    "type": "boolean",
+                    "default": false
+                }
+            }
+        },
+        "api_config": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": true
+                },
+                "prefix": {
+                    "type": "string"
+                },
+                "endpoints": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "list",
+                            "create",
+                            "get",
+                            "update",
+                            "delete"
+                        ]
+                    },
+                    "default": [
+                        "list",
+                        "create",
+                        "get",
+                        "update",
+                        "delete"
+                    ]
+                },
+                "validators": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "create": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "update": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "response": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "pagination": {
+                    "type": "boolean",
+                    "default": true
+                },
+                "filters": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "tests_config": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": true
+                },
+                "scenarios": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "list_success",
+                            "list_pagination",
+                            "list_filters",
+                            "create_success",
+                            "create_minimal",
+                            "create_missing_required",
+                            "create_duplicate_unique",
+                            "create_invalid_fk",
+                            "get_success",
+                            "get_not_found",
+                            "update_success",
+                            "update_partial",
+                            "update_not_found",
+                            "update_immutable_field",
+                            "delete_success",
+                            "delete_not_found",
+                            "field_validation"
+                        ]
+                    }
+                },
+                "field_validations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "field",
+                            "invalid_value"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "field": {
+                                "type": "string"
+                            },
+                            "invalid_value": {},
+                            "expected_error": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,13 @@
+{
+    "constraints": {
+        "USERNAME": {
+            "description": "Username length constraints",
+            "min": {
+                "name": "USERNAME_MIN_LENGTH",
+                "type": "length",
+                "value": 3,
+                "description": "Minimum username length"
+            }
+        }
+    }
+}

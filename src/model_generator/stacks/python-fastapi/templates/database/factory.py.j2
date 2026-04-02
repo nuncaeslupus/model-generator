@@ -1,0 +1,231 @@
+{#-
+  Factory Template (Multi-Entity)
+  Generates FactoryBoy factories for all entities in a domain
+-#}
+{% from "_shared/_base.j2" import generated_marker %}
+{{ generated_marker() }}
+
+"""
+{{ model.section_header | default(model.domain | upper + ' FACTORIES') }} - Test Data Factories.
+
+{{ model.description | default('FactoryBoy factories for ' + model.domain + '.') | wrap(88) }}
+
+This module contains factories for:
+{% for entity_name, entity in model.entities.items() %}
+- {{ entity_name }}Factory: Generate test {{ entity_name }} instances
+{% endfor %}
+
+Usage:
+    from {{ config.paths.database_models | path_to_import }}.factories.{{ model.domain }} import UserFactory
+
+    # Create single instance
+    user = UserFactory.create()
+
+    # Create batch
+    users = UserFactory.create_batch(10)
+
+    # Build without saving
+    user = UserFactory.build()
+"""
+
+{#- Calculate necessary imports -#}
+{% set ns = namespace(
+    enum_imports=[],
+    has_relationships=false,
+    has_uuid=false,
+    has_decimal=false,
+    has_datetime=false,
+    entity_refs=[]
+) %}
+
+{#- Scan all entities to determine imports -#}
+{% for entity_name, entity in model.entities.items() %}
+{% for field_name, field in entity.fields.items() %}
+{% if field.type == 'uuid' %}{% set ns.has_uuid = true %}{% endif %}
+{% if field.type in ['financial', 'percentage'] %}{% set ns.has_decimal = true %}{% endif %}
+{% if field.type == 'datetime' %}{% set ns.has_datetime = true %}{% endif %}
+{% if field.type == 'enum' and field.enum_name not in ns.enum_imports %}
+{% set _ = ns.enum_imports.append(field.enum_name) %}
+{% endif %}
+{% if field.type == 'reference' and field.reference_entity not in ns.entity_refs %}
+{% set _ = ns.entity_refs.append(field.reference_entity) %}
+{% endif %}
+{% endfor %}
+{% if entity.relationships is defined and entity.relationships | length > 0 %}
+{% set ns.has_relationships = true %}
+{% endif %}
+{% endfor %}
+
+{% if ns.has_uuid %}
+import uuid
+
+{% endif %}
+import factory
+from faker import Faker
+{% if ns.has_decimal %}
+from decimal import Decimal
+{% endif %}
+{% if ns.has_relationships %}
+from typing import Any
+{% endif %}
+
+{#- Import database models -#}
+{% set db_models_import = config.paths.database_models | path_to_import %}
+from {{ db_models_import }}.{{ model.domain}} import (
+{% for entity_name in model.entities.keys() %}
+    {{ entity_name }},
+{% endfor %}
+)
+{% if ns.enum_imports %}
+
+from {{ db_models_import }}.enums import (
+{% for enum_name in ns.enum_imports %}
+    {{ enum_name }},
+{% endfor %}
+)
+{% endif %}
+
+fake = Faker()
+
+
+{#- Helper macro to generate field factory based on type - outputs a single indented line -#}
+{%- macro generate_field_factory(field_name, field, entity_name) %}
+{% if field.type == 'uuid' and field.primary_key and field.auto_generate %}
+    {{ field_name }} = factory.LazyFunction(uuid.uuid4)
+{% elif field.type == 'text' %}
+{% if field.unique %}
+    {{ field_name }} = factory.Sequence(lambda n: f"{{ field_name }}{n}{% if 'email' in field_name.lower() %}@example.com{% endif %}")
+{% elif field.constraints is defined %}
+{%- set is_email = false -%}
+{%- for constraint in field.constraints -%}
+{%- if constraint.regex_ref is defined and 'EMAIL' in constraint.regex_ref -%}
+{%- set is_email = true -%}
+{%- endif -%}
+{%- endfor %}
+{% if is_email %}
+    {{ field_name }} = factory.LazyFunction(lambda: fake.email())
+{% else %}
+    {{ field_name }} = factory.LazyFunction(lambda: fake.text(max_nb_chars={{ field.max_length | default(config.factory.default_text_length | default(50)) }}))
+{% endif %}
+{% else %}
+{%- set matched = namespace(found=false) -%}
+{%- if config.factory is defined and config.factory.field_name_inference is defined -%}
+{%- for pattern, faker_method in config.factory.field_name_inference.items() -%}
+{%- if not matched.found and pattern in field_name.lower() -%}
+{%- set matched.found = true %}
+    {{ field_name }} = factory.LazyFunction(lambda: fake.{{ faker_method }})
+{% endif -%}
+{%- endfor -%}
+{%- endif %}
+{% if not matched.found %}
+    {{ field_name }} = factory.LazyFunction(lambda: fake.text(max_nb_chars={{ field.max_length | default(config.factory.default_text_length | default(50)) }}))
+{% endif %}
+{% endif %}
+{% elif field.type == 'longtext' %}
+    {{ field_name }} = factory.LazyFunction(lambda: fake.paragraph(nb_sentences=5))
+{% elif field.type == 'financial' %}
+{%- if field.constraints is defined -%}
+{%- set min_val = 0 -%}
+{%- set max_val = 999999 -%}
+{%- for constraint in field.constraints -%}
+{%- if constraint.min_ref is defined -%}
+{%- set min_val = constraint.min_ref -%}
+{%- endif -%}
+{%- if constraint.max_ref is defined -%}
+{%- set max_val = constraint.max_ref -%}
+{%- endif -%}
+{%- endfor %}
+    {{ field_name }} = factory.LazyFunction(
+        lambda: Decimal(str(fake.pydecimal(left_digits=12, right_digits=8, min_value={{ min_val }}, max_value={{ max_val }}, positive=True)))
+    )
+{% else %}
+    {{ field_name }} = factory.LazyFunction(
+        lambda: Decimal(str(fake.pydecimal(left_digits=12, right_digits=8, min_value=0, max_value=999999, positive=True)))
+    )
+{% endif %}
+{% elif field.type == 'percentage' %}
+    {{ field_name }} = factory.LazyFunction(
+        lambda: Decimal(str(fake.pyfloat(min_value=0, max_value=1, right_digits=4)))
+    )
+{% elif field.type == 'counter' %}
+{%- if field.constraints is defined -%}
+{%- set min_val = 0 -%}
+{%- set max_val = 999999 -%}
+{%- for constraint in field.constraints -%}
+{%- if constraint.min_ref is defined -%}
+{%- set min_val = constraint.min_ref -%}
+{%- endif -%}
+{%- if constraint.max_ref is defined -%}
+{%- set max_val = constraint.max_ref -%}
+{%- endif -%}
+{%- endfor %}
+    {{ field_name }} = factory.LazyFunction(lambda: fake.pyint(min_value={{ min_val }}, max_value={{ max_val }}))
+{% else %}
+    {{ field_name }} = factory.LazyFunction(lambda: fake.pyint(min_value=0, max_value=999999))
+{% endif %}
+{% elif field.type == 'boolean' %}
+{% if field.default is defined %}
+    {{ field_name }} = {{ field.default | capitalize }}
+{% else %}
+    {{ field_name }} = factory.LazyFunction(lambda: fake.boolean())
+{% endif %}
+{% elif field.type == 'datetime' and field_name not in ['created_at', 'updated_at'] %}
+    {{ field_name }} = factory.LazyFunction(lambda: fake.date_time_this_year(tzinfo=None))
+{% elif field.type == 'enum' %}
+{% if field.default is defined %}
+    {{ field_name }} = {{ field.enum_name }}.{{ field.default | upper }}
+{% else %}
+    {{ field_name }} = factory.Iterator(list({{ field.enum_name }}))
+{% endif %}
+{% elif field.type == 'json_object' %}
+    {{ field_name }} = factory.LazyFunction(lambda: {})
+{% elif field.type == 'json_array' %}
+    {{ field_name }} = factory.LazyFunction(lambda: [])
+{% elif field.type == 'reference' and field.reference_entity is defined %}
+    {{ field_name }} = factory.SubFactory({{ field.reference_entity }}Factory)
+{% elif field.default is defined %}
+{% if field.default is string %}
+    {{ field_name }} = "{{ field.default }}"
+{% else %}
+    {{ field_name }} = {{ field.default }}
+{% endif %}
+{% endif %}
+{%- endmacro %}
+
+{#- Generate factory for each entity -#}
+{% for entity_name, entity in model.entities.items() %}
+
+class {{ entity_name }}Factory(factory.alchemy.SQLAlchemyModelFactory):
+    """Auto-generated factory for {{ entity_name }} model.
+
+    {{ entity.description | default('Factory for generating ' + entity_name + ' test instances.') | wrap(88, 4, "    ") }}
+    """
+
+    class Meta:
+        model = {{ entity_name }}
+        sqlalchemy_session = None  # Set in conftest.py
+        sqlalchemy_session_persistence = "commit"
+{% for field_name, field in entity.fields.items() -%}
+{% if not (field.type == 'datetime' and field_name in ['created_at', 'updated_at']) -%}
+{{ generate_field_factory(field_name, field, entity_name) }}
+{%- endif -%}
+{%- endfor %}
+{% if entity.relationships is defined and entity.relationships | length > 0 %}
+
+    @factory.post_generation  # type: ignore[untyped-decorator]
+    def create_related(obj: "{{ entity_name }}", create: bool, extracted: Any, **kwargs: Any) -> None:
+        """Auto-create related entities based on relationships."""
+        if not create:
+            return
+
+{% for rel_name, rel in entity.relationships.items() %}
+{% if rel.type == 'one_to_many' and rel.target in model.entities %}
+        # Create {{ rel_name }} ({{ rel.type }})
+        if "{{ rel_name }}" not in kwargs or kwargs["{{ rel_name }}"]:
+            count = kwargs.get("{{ rel_name }}_count", fake.pyint(min_value=1, max_value=3))
+            {{ rel.target }}Factory.create_batch(count, {{ entity_name.lower() }}=obj)
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% endfor %}

@@ -1,0 +1,1675 @@
+{#-
+  API Contract Test Template (Multi-Entity)
+  Generates comprehensive contract tests for all entities in a domain
+-#}
+{% from "_shared/_tests.j2" import needs_unique_suffix, get_enum_value, format_test_financial, should_generate_test, build_test_data_fields %}
+{% from "_shared/_base.j2" import generated_marker, section_banner %}
+{% from "_shared/_entity.j2" import get_primary_key_field %}
+{{ generated_marker() }}
+"""
+Contract tests for {{ model.section_header | default(model.domain | capitalize) }} API endpoints.
+
+Tests validate the API models from the API models module.
+{% for entity_name, entity in model.entities.items() %}
+All tests written against {{ entity_name }}Response,
+Create{{ entity_name }}Request, Update{{ entity_name }}Request.
+{% endfor %}
+
+{{ model.description | default('API contract tests for ' + model.domain + '.') | wrap(88) }}
+
+Test Design Principles:
+- Each test is independent (uses unique UUID suffixes)
+- Tests document the API contract (not wishes, but reality)
+- Error responses use structured format with "error" and "message"
+"""
+
+import uuid
+from datetime import datetime
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+{% for entity_name, entity in model.entities.items() %}
+{#- Convert table name to kebab-case for URLs -#}
+{% set entity_table_kebab = entity.table.replace('_', '-') %}
+
+{#- STEP 1: Create mapping from field_name to fixture_name for all FK fields -#}
+{#- Detect dual-references (multiple fields → same table) and generate _alt fixtures -#}
+{% set field_to_fixture = {} %}
+{% set ref_table_counter = {} %}  {#- Track how many times each ref_table is used -#}
+{% for field_name, field in entity.fields.items() %}
+{% if field.type == 'reference' %}
+{%- set ref_table = field.reference_table -%}
+{%- set ref_column = field.reference_column | default('id') -%}
+{%- if ref_table.endswith('ies') -%}
+  {%- set ref_table_singular = ref_table[:-3] + 'y' -%}
+{%- elif ref_table.endswith('s') -%}
+  {%- set ref_table_singular = ref_table[:-1] -%}
+{%- else -%}
+  {%- set ref_table_singular = ref_table -%}
+{%- endif -%}
+{%- set ref_table_clean = ref_table_singular.replace('_', '') -%}
+{%- set base_fixture_name = ref_table_clean + '_' + ref_column -%}
+
+{#- Check if this ref_table+column combo was already seen -#}
+{%- set ref_key = ref_table + '::' + ref_column -%}
+{%- if ref_key in ref_table_counter -%}
+  {#- Duplicate reference - append _alt, _alt2, etc. -#}
+  {%- set count = ref_table_counter[ref_key] -%}
+  {%- if count == 1 -%}
+    {%- set fixture_name = base_fixture_name + '_alt' -%}
+  {%- else -%}
+    {%- set fixture_name = base_fixture_name + '_alt' + count|string -%}
+  {%- endif -%}
+  {%- set _ = ref_table_counter.update({ref_key: count + 1}) -%}
+{%- else -%}
+  {#- First reference - use base name -#}
+  {%- set fixture_name = base_fixture_name -%}
+  {%- set _ = ref_table_counter.update({ref_key: 1}) -%}
+{%- endif -%}
+{% set _ = field_to_fixture.update({field_name: fixture_name}) %}
+{% endif %}
+{% endfor %}
+
+{#- STEP 2: Build list of required foreign keys using the correct fixture names -#}
+{% set required_fk_fields = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if field.type == 'reference' and field.required %}
+  {% set fixture_name = field_to_fixture[field_name] %}
+  {% set _ = required_fk_fields.append({'field_name': field_name, 'fixture_name': fixture_name, 'api_name': field.api_field_name | default(field_name)}) %}
+{% endif %}
+{% endfor %}
+
+@pytest.mark.contract
+class Test{{ entity_name }}sAPI:
+    """Contract tests validating {{ entity_name }} API against generated models."""
+
+{{ section_banner('SECTION 1: READ OPERATIONS') }}
+
+    def test_get_{{ entity.table }}_list_success(self, client: TestClient) -> None:
+        """Test GET /api/v1/{{ entity_table_kebab }} returns paginated list."""
+        response = client.get("/api/v1/{{ entity_table_kebab }}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, dict)
+        assert "items" in data
+        assert "page_info" in data
+        assert isinstance(data["items"], list)
+
+        # Verify pagination metadata structure
+        page_info = data["page_info"]
+        assert "page" in page_info
+        assert "page_size" in page_info
+        assert "total_items" in page_info
+        assert "total_pages" in page_info
+        assert "has_next" in page_info
+        assert "has_prev" in page_info
+        assert page_info["page"] == 1
+        assert page_info["has_prev"] is False
+
+    def test_get_{{ entity.table }}_list_pagination(self, client: TestClient) -> None:
+        """Test pagination parameters for GET /api/v1/{{ entity_table_kebab }}."""
+        # Test with custom page size
+        response = client.get("/api/v1/{{ entity_table_kebab }}?page=1&page_size=10")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["page_info"]["page"] == 1
+        assert data["page_info"]["page_size"] == 10
+        assert len(data["items"]) <= 10
+
+    def test_get_{{ entity.table }}_list_invalid_pagination(self, client: TestClient) -> None:
+        """Test invalid pagination parameters are rejected."""
+        # Page must be >= 1
+        response = client.get("/api/v1/{{ entity_table_kebab }}?page=0")
+        assert response.status_code in (400, 422)  # FastAPI validation error
+
+        # Page size must be >= 1 and <= 1000
+        response = client.get("/api/v1/{{ entity_table_kebab }}?page_size=0")
+        assert response.status_code in (400, 422)  # FastAPI validation error
+
+        response = client.get("/api/v1/{{ entity_table_kebab }}?page_size=1001")
+        assert response.status_code in (400, 422)  # FastAPI validation error
+
+{% set has_filterable_fields = [] %}
+{% set ns_needs_created = namespace(found=false) %}
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_response | default(false) and not field.primary_key | default(false) %}
+{% if field.type in ['enum', 'boolean', 'datetime', 'financial', 'counter', 'percentage', 'reference'] or (field.type == 'text' and field.unique | default(false)) %}
+{% set _ = has_filterable_fields.append(field_name) %}
+{% if field.type in ['enum', 'boolean'] and (field.required or field.default is defined) %}
+{% set ns_needs_created.found = true %}
+{% endif %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% if has_filterable_fields %}
+    def test_get_{{ entity.table }}_list_filtering(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
+        """Test filtering capabilities for GET /api/v1/{{ entity_table_kebab }}."""
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+        # Create test {{ entity_name.lower() }} for filtering
+        {{ entity_name.lower() }}_data: dict[str, Any] = {
+{{ build_test_data_fields(entity, field_to_fixture, 'filter_test', '', true, constraints, enums) }}        }
+        response = client.post("/api/v1/{{ entity_table_kebab }}", json={{ entity_name.lower() }}_data)
+        assert response.status_code == 201
+{% if ns_needs_created.found %}
+        created_{{ entity_name.lower() }} = response.json()
+{% endif %}
+
+        # Test filtering
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_response | default(false) and not field.primary_key | default(false) %}
+{% if field.type == 'enum' and (field.required or field.default is defined) %}
+        # Filter by enum field: {{ field_name }}
+        enum_val = created_{{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"]
+        response = client.get(f"/api/v1/{{ entity_table_kebab }}?{{ field_name }}={enum_val}")
+        assert response.status_code == 200
+        data = response.json()
+        assert all(
+            item["{{ field.api_field_name | default(field_name) }}"] == enum_val
+            for item in data["items"]
+        )
+
+{% elif field.type == 'boolean' and (field.required or field.default is defined) %}
+        # Filter by boolean field: {{ field_name }}
+        bool_val = str(created_{{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"]).lower()
+        response = client.get(f"/api/v1/{{ entity_table_kebab }}?{{ field_name }}={bool_val}")
+        assert response.status_code == 200
+        data = response.json()
+        assert all(
+            item["{{ field.api_field_name | default(field_name) }}"]
+            == created_{{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"]
+            for item in data["items"]
+        )
+
+{% elif field.type == 'datetime' %}
+        # Filter by datetime range: {{ field_name }}
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_after=2025-01-01T00:00:00Z")
+        assert response.status_code == 200
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_before=2099-12-31T23:59:59Z")
+        assert response.status_code == 200
+
+{% elif field.type in ['financial', 'percentage'] %}
+        # Filter by {{ field.type }} range: {{ field_name }}
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_min=0")
+        assert response.status_code == 200
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_max=1000")
+        assert response.status_code == 200
+
+{% elif field.type == 'counter' %}
+        # Filter by counter range: {{ field_name }}
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_min=0")
+        assert response.status_code == 200
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_max=100")
+        assert response.status_code == 200
+
+{% endif %}
+{% endif %}
+{% endfor %}
+
+{% endif %}
+    def test_get_{{ entity.table }}_list_sorting(self, client: TestClient) -> None:
+        """Test sorting capabilities for GET /api/v1/{{ entity_table_kebab }}."""
+        # Test ascending sort
+        response = client.get("/api/v1/{{ entity_table_kebab }}?sort_by=created_at&order=asc")
+        assert response.status_code == 200
+        data = response.json()
+        assert "items" in data
+
+        # Test descending sort (default)
+        response = client.get("/api/v1/{{ entity_table_kebab }}?sort_by=created_at&order=desc")
+        assert response.status_code == 200
+
+        # Test invalid order value
+        response = client.get("/api/v1/{{ entity_table_kebab }}?sort_by=created_at&order=invalid")
+        assert response.status_code in (400, 422)  # FastAPI validation error
+
+{%if 'true' in should_generate_test(entity, ['post_', 'create']) %}
+{{ section_banner('SECTION 2: CREATE OPERATIONS') }}
+
+    def test_post_{{ entity_name.lower() }}_success(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
+        """
+        Test POST /api/v1/{{ entity_table_kebab }} creates new {{ entity_name.lower() }}.
+
+        Validates fields from Create{{ entity_name }}Request
+        and {{ entity_name }}Response.
+        """
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+        {{ entity_name.lower() }}_data: dict[str, Any] = {
+{{ build_test_data_fields(entity, field_to_fixture, 'test', '', true, constraints, enums) }}        }
+
+        response = client.post("/api/v1/{{ entity_table_kebab }}", json={{ entity_name.lower() }}_data)
+
+        assert response.status_code == 201
+        {{ entity_name.lower() }} = response.json()
+
+        # Validate input fields match output
+{% for field_name, field in entity.fields.items() %}
+{% if (field.required or (field.primary_key | default(false) and not field.auto_generate | default(false))) and not field.api_exclude_request | default(false) and not field.api_exclude_response | default(false) and not field.auto_generate | default(false) and not field.api_exclude_update | default(field.primary_key | default(false)) %}
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] == {{ entity_name.lower() }}_data["{{ field.api_field_name | default(field_name) }}"]
+{% endif %}
+{% endfor %}
+
+        # Validate database defaults (only for optional fields not sent in request)
+{% for field_name, field in entity.fields.items() %}
+{% if field.default and not field.api_exclude_response | default(false) and not field_name.endswith('_at') and not field.required | default(false) %}
+{% if field.type == 'enum' %}
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] == "{{ field.default | upper }}"  # Default from database
+{% elif field.type == 'boolean' %}
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is {{ field.default | capitalize }}  # Default from database
+{% elif field.type == 'text' or field.type == 'longtext' %}
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] == "{{ field.default }}"  # Default from database
+{% endif %}
+{% endif %}
+{% endfor %}
+
+        # Validate server-generated fields
+{% for field_name, field in entity.fields.items() %}
+{% if field.auto_generate | default(false) or field.primary_key | default(false) %}
+        assert "{{ field.api_field_name | default(field_name) }}" in {{ entity_name.lower() }}
+{% endif %}
+{% endfor %}
+{% if entity.timestamps is defined %}
+{% if entity.timestamps.created %}
+        assert "created_at" in {{ entity_name.lower() }}
+{% endif %}
+{% if entity.timestamps.updated %}
+        assert "updated_at" in {{ entity_name.lower() }}
+{% endif %}
+{% endif %}
+
+{% set excluded_fields = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if field.api_exclude_response | default(false) %}
+{% set _ = excluded_fields.append(field_name) %}
+{% endif %}
+{% endfor %}
+{% if excluded_fields %}
+        # Security: sensitive fields excluded
+{% for field_name in excluded_fields %}
+        assert "{{ field_name }}" not in {{ entity_name.lower() }}
+{% endfor %}
+{% endif %}
+
+    def test_post_{{ entity_name.lower() }}_with_minimal_data(
+        self,
+        client: TestClient,
+{% for fk in required_fk_fields %}
+        {{ fk.fixture_name }}: str,
+{% endfor %}
+    ) -> None:
+        """Test POST /api/v1/{{ entity_table_kebab }} with minimal data uses defaults."""
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+        {{ entity_name.lower() }}_data: dict[str, Any] = {
+{{ build_test_data_fields(entity, field_to_fixture, 'minimal', '', true, constraints, enums) }}        }
+
+        response = client.post("/api/v1/{{ entity_table_kebab }}", json={{ entity_name.lower() }}_data)
+
+        assert response.status_code == 201
+        {{ entity_name.lower() }} = response.json()
+
+        # Required fields present
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_response | default(false) and (field.required or (field.primary_key | default(false) and not field.auto_generate | default(false))) and not field.auto_generate | default(false) %}
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] == {{ entity_name.lower() }}_data["{{ field.api_field_name | default(field_name) }}"]
+{% endif %}
+{% endfor %}
+
+{% set optional_fields = [] %}
+{% set optional_json_fields = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if not field.required and not (field.primary_key | default(false) and not field.auto_generate | default(false)) and not field.auto_generate | default(false) and not field.server_default | default(false) and not field.api_exclude_response | default(false) and (field.default is undefined or field.default is none) and not (entity.timestamps is defined and (field_name == 'created_at' or field_name == 'updated_at')) %}
+{% if field.type == 'json_object' or field.type == 'json_array' %}
+{% set _ = optional_json_fields.append({'name': field_name, 'type': field.type, 'api_name': field.api_field_name | default(field_name)}) %}
+{% else %}
+{% set _ = optional_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name)}) %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% set default_fields = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if not field.required and not (field.primary_key | default(false) and not field.auto_generate | default(false)) and not field.auto_generate | default(false) and not field.server_default | default(false) and not field.api_exclude_response | default(false) and field.default is defined and field.default is not none %}
+{% set _ = default_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'default': field.default, 'type': field.type}) %}
+{% endif %}
+{% endfor %}
+{% if default_fields %}
+        # Fields with defaults
+{% for field_info in default_fields %}
+{% if field_info.type == 'boolean' %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] is {% if field_info.default %}True{% else %}False{% endif %}
+
+{% elif field_info.type == 'enum' %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] == "{{ field_info.default | upper }}"
+{% elif field_info.type == 'text' or field_info.type == 'longtext' %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] == "{{ field_info.default }}"
+{% elif field_info.type == 'counter' %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] == {{ field_info.default }}
+{% elif field_info.type == 'financial' %}
+{% elif field_info.type == 'financial' %}
+{# Check if field is part of cross-field constraint #}
+{% if field_info.api_name in cross_field_map %}
+{% set constraint_info = cross_field_map[field_info.api_name] %}
+{# ARITHMETIC CONSTRAINTS #}
+{% if constraint_info.constraint_type == 'sum_equals' %}
+{% if constraint_info.role == 'result' %}
+{# This is the result field (e.g., total_balance) - compute sum #}
+{% set sum_values = [] %}
+{% for sum_field in constraint_info.constraint.fields %}
+{% if sum_field == constraint_info.constraint.fields[0] %}
+{% set _ = sum_values.append(300.0) %}
+{% else %}
+{% set _ = sum_values.append(200.0) %}
+{% endif %}
+{% endfor %}
+{% set total = sum_values | sum %}
+            "{{ field_info.api_name }}": "{{ total | normalize_decimal }}",
+{% else %}
+{# This is a sum operand field (e.g., available_balance) #}
+{% if constraint_info.index == 0 %}
+            "{{ field_info.api_name }}": "{{ 300.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 200.0 | normalize_decimal }}",
+{% endif %}
+{% endif %}
+{% elif constraint_info.constraint_type == 'product_equals' %}
+{% if constraint_info.role == 'result' %}
+{# result = field_a * field_b = 25.50 * 10 = 255.00 #}
+            "{{ field_info.api_name }}": "{{ 255.0 | normalize_decimal }}",
+{% elif constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 25.5 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 10.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'difference_equals' %}
+{% if constraint_info.role == 'result' %}
+{# result = field_a - field_b = 1000 - 100 = 900 #}
+            "{{ field_info.api_name }}": "{{ 900.0 | normalize_decimal }}",
+{% elif constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 1000.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 100.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'quotient_equals' %}
+{% if constraint_info.role == 'result' %}
+{# result = field_a / field_b = 1000 / 10 = 100 #}
+            "{{ field_info.api_name }}": "{{ 100.0 | normalize_decimal }}",
+{% elif constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 1000.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 10.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'modulo_equals' %}
+{% if constraint_info.role == 'result' %}
+{# result = field_a % field_b = 23 % 10 = 3 #}
+            "{{ field_info.api_name }}": "{{ 3.0 | normalize_decimal }}",
+{% elif constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 23.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 10.0 | normalize_decimal }}",
+{% endif %}
+{# COMPARISON CONSTRAINTS #}
+{% elif constraint_info.constraint_type == 'field_equal' %}
+{# Both fields get same value #}
+            "{{ field_info.api_name }}": "{{ 500.0 | normalize_decimal }}",
+{% elif constraint_info.constraint_type == 'field_not_equal' %}
+{# Generate different values #}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 500.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 600.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_less_than' %}
+{# field_a < field_b #}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 400.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 600.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_less_than_or_equal' %}
+{# field_a <= field_b #}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 500.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 500.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_greater_than' %}
+{# field_a > field_b #}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 600.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 400.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_greater_than_or_equal' %}
+{# field_a >= field_b #}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 500.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 500.0 | normalize_decimal }}",
+{% endif %}
+{% endif %}
+{% else %}
+{# No cross-field constraint, use normal generation #}
+{# Check if field has percentage range constraint #}
+{% set is_percentage = namespace(value=false) %}
+{% if field_info.constraints %}{% for constraint in field_info.constraints %}{% if constraint.type == 'range' and constraint.max_ref in constraints %}{% set max_val = constraints[constraint.max_ref]['value'] | float %}{% if max_val <= 1.0 %}{% set is_percentage.value = true %}{% endif %}{% endif %}{% endfor %}{% endif %}
+{% if is_percentage.value %}            "{{ field_info.api_name }}": "{{ 0.25 | normalize_decimal }}",
+{% else %}            "{{ field_info.api_name }}": "{{ 250.5 | normalize_decimal }}",
+{% endif %}
+{% endif %}
+{% elif field_info.type == 'percentage' %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] == "{{ format_test_percentage(field_info.default | float, field_info.scale | default(4)) }}"
+{% else %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] == "{{ field_info.default }}"
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if optional_fields %}
+        # Optional fields are None
+{% for field_info in optional_fields %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] is None
+{% endfor %}
+{% endif %}
+{% if optional_json_fields %}
+        # Optional JSON fields default to empty dict/list
+{% for field_info in optional_json_fields %}
+{% if field_info.type == 'json_array' %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] == []
+{% else %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] == {}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% set default_fields = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if field.default and not field.api_exclude_response | default(false) and not field.auto_generate | default(false) and not field.required | default(false) %}
+{% set _ = default_fields.append({'name': field_name, 'default': field.default, 'type': field.type, 'api_name': field.api_field_name | default(field_name)}) %}
+{% endif %}
+{% endfor %}
+{% if default_fields %}
+        # Defaults from Create{{ entity_name }}Request or database (only for optional fields)
+{% for field_info in default_fields %}
+{% if field_info.type == 'text' %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] == "{{ field_info.default }}"
+{% elif field_info.type == 'boolean' %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] is {{ field_info.default | capitalize }}
+{% elif field_info.type == 'enum' %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] == "{{ field_info.default | upper }}"
+{% endif %}
+{% endfor %}
+{% endif %}
+
+    def test_post_{{ entity_name.lower() }}_missing_required_fields(
+        self,
+        client: TestClient,
+{% for fk in required_fk_fields %}
+        {{ fk.fixture_name }}: str,
+{% endfor %}
+    ) -> None:
+        """Test POST /api/v1/{{ entity_table_kebab }} missing required fields returns 400."""
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+
+{% set required_fields = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if (field.required or (field.primary_key | default(false) and not field.auto_generate | default(false))) and not field.api_exclude_request | default(false) %}
+{% set _ = required_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'type': field.type, 'unique': field.unique | default(false)}) %}
+{% endif %}
+{% endfor %}
+{% for req_field in required_fields %}
+        # Missing {{ req_field.name }}
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'miss', req_field.name, true, constraints, enums) }}            },
+        )
+        assert response.status_code == 422  # Validation error
+
+{% endfor %}
+
+{% set unique_fields = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if field.unique | default(false) and not field.primary_key | default(false) %}
+{% set _ = unique_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'type': field.type}) %}
+{% endif %}
+{% endfor %}
+{% if unique_fields %}
+    def test_post_{{ entity_name.lower() }}_duplicate_unique_constraint(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
+        """Test POST /api/v1/{{ entity_table_kebab }} with duplicate unique fields returns 409."""
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+        # Create first {{ entity_name.lower() }}
+        client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'existing', '', true, constraints, enums) }}            },
+        )
+
+        # Try duplicate {{ unique_fields[0].name }}
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'differ', unique_fields[0].name, true, constraints, enums) }}{% if unique_fields[0].type == 'reference' %}
+                "{{ unique_fields[0].api_name }}": {{ field_to_fixture[unique_fields[0].name] }},  # Duplicate!
+{% else %}
+                "{{ unique_fields[0].api_name }}": f"existing_{unique_suffix}",  # Duplicate!
+{% endif %}
+            },
+        )
+
+        assert response.status_code == 409
+        error = response.json()["detail"]
+        assert "error" in error
+        assert "message" in error
+{% endif %}
+
+{%endif %}
+{{ section_banner('SECTION 3: INDIVIDUAL READ OPERATIONS') }}
+
+    def test_get_{{ entity_name.lower() }}_by_id_success(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
+        """Test GET /api/v1/{{ entity_table_kebab }}/{id} success."""
+        # Create a {{ entity_name.lower() }} first
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+        create_response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'gettest', '', true, constraints, enums) }}            },
+        )
+        assert create_response.status_code == 201
+        {{ entity_name.lower() }}_id = create_response.json()["{{ get_primary_key_field(entity) }}"]
+
+        # Fetch the {{ entity_name.lower() }}
+        response = client.get(f"/api/v1/{{ entity_table_kebab }}/{{'{'}}{{ entity_name.lower() }}_id}")
+
+        assert response.status_code == 200
+        {{ entity_name.lower() }} = response.json()
+        assert {{ entity_name.lower() }}["{{ get_primary_key_field(entity) }}"] == {{ entity_name.lower() }}_id
+
+    def test_get_{{ entity_name.lower() }}_by_id_not_found(self, client: TestClient) -> None:
+        """Test GET /api/v1/{{ entity_table_kebab }}/{id} not found."""
+        nonexistent_id = "123e4567-e89b-12d3-a456-999999999999"
+
+        response = client.get(f"/api/v1/{{ entity_table_kebab }}/{nonexistent_id}")
+
+        assert response.status_code == 404
+        error = response.json()["detail"]
+        assert "error" in error  # Structured error format
+        assert "message" in error
+
+{%if 'true' in should_generate_test(entity, ['put_', 'update']) %}
+{{ section_banner('SECTION 4: UPDATE OPERATIONS') }}
+
+{% set updatable_fields = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_update | default(false) and not field.api_readonly | default(false) and not field.auto_generate | default(false) and not field.primary_key | default(false) and not field.api_exclude_request | default(false) and not field.api_exclude_response | default(false) and field.type != 'reference' %}
+{# Use scale 4 for percentage type, 8 for financial/others #}
+{% set default_scale = 4 if field.type == 'percentage' else 8 %}
+{% set _ = updatable_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'type': field.type, 'default': field.default, 'enum_name': field.enum_name | default(''), 'max_length': field.max_length | default(none), 'constraints': field.constraints | default([]), 'scale': field.scale | default(default_scale), 'list_type': field.list_type | default('str') }) %}
+{% endif %}
+{% endfor %}
+{% if updatable_fields and entity.mutability | default('mutable') != 'immutable' %}
+    def test_put_{{ entity_name.lower() }}_success(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
+        """
+        Test PUT /api/v1/{{ entity_table_kebab }}/{id} updates {{ entity_name.lower() }}.
+
+        Only tests fields allowed by Update{{ entity_name }}Request.
+        """
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+        # Create {{ entity_name.lower() }}
+        create_response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'updatetest', '', true, constraints, enums) }}            },
+        )
+        {{ entity_name.lower() }}_id = create_response.json()["{{ get_primary_key_field(entity) }}"]
+
+{# Detect cross-field constraints and collect required fields #}
+{% set cross_field_map = {} %}
+{% set required_constraint_fields = [] %}
+{% if entity.cross_field_constraints %}
+{% for constraint in entity.cross_field_constraints %}
+{% if constraint.type == 'sum_equals' %}
+{# Arithmetic: fields[] summed = target_field #}
+{% for field in constraint.fields %}
+{% set _ = cross_field_map.update({field: {'constraint_type': 'sum_equals', 'constraint': constraint, 'role': 'operand', 'index': loop.index0}}) %}
+{% set _ = required_constraint_fields.append(field) %}
+{% endfor %}
+{% set _ = cross_field_map.update({constraint.target_field: {'constraint_type': 'sum_equals', 'constraint': constraint, 'role': 'result'}}) %}
+{% set _ = required_constraint_fields.append(constraint.target_field) %}
+{% elif constraint.type in ['product_equals', 'difference_equals', 'quotient_equals', 'modulo_equals'] %}
+{# Arithmetic: fields[0] op fields[1] = target_field #}
+{% set _ = cross_field_map.update({constraint.fields[0]: {'constraint_type': constraint.type, 'constraint': constraint, 'role': 'field_a'}}) %}
+{% set _ = cross_field_map.update({constraint.fields[1]: {'constraint_type': constraint.type, 'constraint': constraint, 'role': 'field_b'}}) %}
+{% set _ = cross_field_map.update({constraint.target_field: {'constraint_type': constraint.type, 'constraint': constraint, 'role': 'result'}}) %}
+{% set _ = required_constraint_fields.extend([constraint.fields[0], constraint.fields[1], constraint.target_field]) %}
+{% elif constraint.type in ['field_equal', 'field_not_equal', 'field_less_than', 'field_less_than_or_equal', 'field_greater_than', 'field_greater_than_or_equal'] %}
+{# Comparison: fields[0] op fields[1] #}
+{% set _ = cross_field_map.update({constraint.fields[0]: {'constraint_type': constraint.type, 'constraint': constraint, 'role': 'field_a'}}) %}
+{% set _ = cross_field_map.update({constraint.fields[1]: {'constraint_type': constraint.type, 'constraint': constraint, 'role': 'field_b'}}) %}
+{% set _ = required_constraint_fields.extend([constraint.fields[0], constraint.fields[1]]) %}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{# Build list of fields to include: first 4 + any required by constraints #}
+{% set fields_to_use = [] %}
+{% for field in updatable_fields %}
+{% if loop.index0 < 4 or field.api_name in required_constraint_fields %}
+{% set _ = fields_to_use.append(field) %}
+{% endif %}
+{% endfor %}
+
+        # Update allowed fields from Update{{ entity_name }}Request
+        update_data: dict[str, Any] = {
+{% for field_info in fields_to_use %}
+{% if field_info.type == 'text' or field_info.type == 'longtext' %}
+{% if field_info.max_length and field_info.max_length < 10 %}
+{# Check if field is part of cross-field constraint #}
+{% if field_info.api_name in cross_field_map %}
+{% set constraint_info = cross_field_map[field_info.api_name] %}
+{% if constraint_info.constraint_type == 'field_equal' %}
+            "{{ field_info.api_name }}": "ABC",
+{% elif constraint_info.constraint_type == 'field_not_equal' %}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "ABC",
+{% else %}
+            "{{ field_info.api_name }}": "XYZ",
+{% endif %}
+{% else %}
+            "{{ field_info.api_name }}": "Upd",
+{% endif %}
+{% else %}
+            "{{ field_info.api_name }}": "Upd",
+{% endif %}
+{% else %}
+{# Check if field is part of cross-field constraint #}
+{% if field_info.api_name in cross_field_map %}
+{% set constraint_info = cross_field_map[field_info.api_name] %}
+{% if constraint_info.constraint_type == 'field_equal' %}
+            "{{ field_info.api_name }}": "SameValue",
+{% elif constraint_info.constraint_type == 'field_not_equal' %}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "FirstValue",
+{% else %}
+            "{{ field_info.api_name }}": "SecondValue",
+{% endif %}
+{% else %}
+            "{{ field_info.api_name }}": "Updated",
+{% endif %}
+{% else %}
+            "{{ field_info.api_name }}": "Updated",
+{% endif %}
+{% endif %}
+{% elif field_info.type == 'financial' %}
+{# Check if field is part of cross-field constraint #}
+{% if field_info.api_name in cross_field_map %}
+{% set constraint_info = cross_field_map[field_info.api_name] %}
+{# ARITHMETIC CONSTRAINTS #}
+{% if constraint_info.constraint_type == 'sum_equals' %}
+{% if constraint_info.role == 'result' %}
+{# This is the result field (e.g., total_balance) - compute sum #}
+{% set sum_values = [] %}
+{% for sum_field in constraint_info.constraint.fields %}
+{% if sum_field == constraint_info.constraint.fields[0] %}
+{% set _ = sum_values.append(300.0) %}
+{% else %}
+{% set _ = sum_values.append(200.0) %}
+{% endif %}
+{% endfor %}
+{% set total = sum_values | sum %}
+            "{{ field_info.api_name }}": "{{ total | normalize_decimal }}",
+{% else %}
+{# This is a sum operand field (e.g., available_balance) #}
+{% if constraint_info.index == 0 %}
+            "{{ field_info.api_name }}": "{{ 300.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 200.0 | normalize_decimal }}",
+{% endif %}
+{% endif %}
+{% elif constraint_info.constraint_type == 'product_equals' %}
+{% if constraint_info.role == 'result' %}
+{# result = field_a * field_b = 25.50 * 10 = 255.00 #}
+            "{{ field_info.api_name }}": "{{ 255.0 | normalize_decimal }}",
+{% elif constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 25.5 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 10.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'difference_equals' %}
+{% if constraint_info.role == 'result' %}
+{# result = field_a - field_b = 1000 - 100 = 900 #}
+            "{{ field_info.api_name }}": "{{ 900.0 | normalize_decimal }}",
+{% elif constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 1000.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 100.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'quotient_equals' %}
+{% if constraint_info.role == 'result' %}
+{# result = field_a / field_b = 1000 / 10 = 100 #}
+            "{{ field_info.api_name }}": "{{ 100.0 | normalize_decimal }}",
+{% elif constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 1000.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 10.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'modulo_equals' %}
+{% if constraint_info.role == 'result' %}
+{# result = field_a % field_b = 23 % 10 = 3 #}
+            "{{ field_info.api_name }}": "{{ 3.0 | normalize_decimal }}",
+{% elif constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 23.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 10.0 | normalize_decimal }}",
+{% endif %}
+{# COMPARISON CONSTRAINTS #}
+{% elif constraint_info.constraint_type == 'field_equal' %}
+{# Both fields get same value #}
+            "{{ field_info.api_name }}": "{{ 500.0 | normalize_decimal }}",
+{% elif constraint_info.constraint_type == 'field_not_equal' %}
+{# Generate different values #}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 500.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 600.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_less_than' %}
+{# field_a < field_b #}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 400.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 600.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_less_than_or_equal' %}
+{# field_a <= field_b #}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 500.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 500.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_greater_than' %}
+{# field_a > field_b #}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 600.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 400.0 | normalize_decimal }}",
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_greater_than_or_equal' %}
+{# field_a >= field_b #}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "{{ 500.0 | normalize_decimal }}",
+{% else %}
+            "{{ field_info.api_name }}": "{{ 500.0 | normalize_decimal }}",
+{% endif %}
+{% endif %}
+{% else %}
+{# No cross-field constraint, use normal generation #}
+{# Check if field has percentage range constraint #}
+{% set is_percentage = namespace(value=false) %}
+{% if field_info.constraints %}{% for constraint in field_info.constraints %}{% if constraint.type == 'range' and constraint.max_ref in constraints %}{% set max_val = constraints[constraint.max_ref]['value'] | float %}{% if max_val <= 1.0 %}{% set is_percentage.value = true %}{% endif %}{% endif %}{% endfor %}{% endif %}
+{% if is_percentage.value %}            "{{ field_info.api_name }}": "{{ 0.25 | normalize_decimal }}",
+{% else %}            "{{ field_info.api_name }}": "{{ 250.5 | normalize_decimal }}",
+{% endif %}
+{% endif %}
+{% elif field_info.type == 'percentage' %}
+            "{{ field_info.api_name }}": "{{ 0.25 | normalize_decimal }}",
+{% elif field_info.type == 'counter' %}
+{# Check if field is part of cross-field constraint #}
+{% if field_info.api_name in cross_field_map %}
+{% set constraint_info = cross_field_map[field_info.api_name] %}
+{# ARITHMETIC CONSTRAINTS #}
+{% if constraint_info.constraint_type == 'sum_equals' %}
+{% if constraint_info.role == 'result' %}
+{# Sum of operands #}
+            "{{ field_info.api_name }}": {{ 50 }},  # 30 + 20
+{% elif constraint_info.index == 0 %}
+            "{{ field_info.api_name }}": {{ 30 }},
+{% else %}
+            "{{ field_info.api_name }}": {{ 20 }},
+{% endif %}
+{% elif constraint_info.constraint_type == 'product_equals' %}
+{% if constraint_info.role == 'result' %}
+            "{{ field_info.api_name }}": {{ 250 }},  # 25 * 10
+{% elif constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": {{ 25 }},
+{% else %}
+            "{{ field_info.api_name }}": {{ 10 }},
+{% endif %}
+{% elif constraint_info.constraint_type == 'difference_equals' %}
+{% if constraint_info.role == 'result' %}
+            "{{ field_info.api_name }}": {{ 90 }},  # 100 - 10
+{% elif constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": {{ 100 }},
+{% else %}
+            "{{ field_info.api_name }}": {{ 10 }},
+{% endif %}
+{% elif constraint_info.constraint_type == 'quotient_equals' %}
+{% if constraint_info.role == 'result' %}
+            "{{ field_info.api_name }}": {{ 10 }},  # 100 / 10
+{% elif constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": {{ 100 }},
+{% else %}
+            "{{ field_info.api_name }}": {{ 10 }},
+{% endif %}
+{% elif constraint_info.constraint_type == 'modulo_equals' %}
+{% if constraint_info.role == 'result' %}
+            "{{ field_info.api_name }}": {{ 3 }},  # 23 % 10
+{% elif constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": {{ 23 }},
+{% else %}
+            "{{ field_info.api_name }}": {{ 10 }},
+{% endif %}
+{# COMPARISON CONSTRAINTS #}
+{% elif constraint_info.constraint_type == 'field_equal' %}
+            "{{ field_info.api_name }}": {{ 50 }},
+{% elif constraint_info.constraint_type == 'field_not_equal' %}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": {{ 50 }},
+{% else %}
+            "{{ field_info.api_name }}": {{ 60 }},
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_less_than' %}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": {{ 40 }},
+{% else %}
+            "{{ field_info.api_name }}": {{ 60 }},
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_less_than_or_equal' %}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": {{ 50 }},
+{% else %}
+            "{{ field_info.api_name }}": {{ 50 }},
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_greater_than' %}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": {{ 60 }},
+{% else %}
+            "{{ field_info.api_name }}": {{ 40 }},
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_greater_than_or_equal' %}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": {{ 50 }},
+{% else %}
+            "{{ field_info.api_name }}": {{ 50 }},
+{% endif %}
+{% endif %}
+{% else %}
+{# No constraint, use default generation #}
+            "{{ field_info.api_name }}": 15,
+{% endif %}
+{% elif field_info.type == 'boolean' %}
+            "{{ field_info.api_name }}": False,
+{% elif field_info.type == 'enum' %}
+            "{{ field_info.api_name }}": "{{ get_enum_value(field_info.enum_name, field_info.default, true, enums) }}",
+{% elif field_info.type == 'datetime' %}
+{# Check if field is part of cross-field constraint #}
+{% if field_info.api_name in cross_field_map %}
+{% set constraint_info = cross_field_map[field_info.api_name] %}
+{# COMPARISON CONSTRAINTS ONLY (no arithmetic for dates) #}
+{% if constraint_info.constraint_type == 'field_equal' %}
+            "{{ field_info.api_name }}": "2099-01-01T12:00:00Z",
+{% elif constraint_info.constraint_type == 'field_not_equal' %}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "2099-01-01T12:00:00Z",
+{% else %}
+            "{{ field_info.api_name }}": "2099-01-02T12:00:00Z",
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_less_than' %}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "2099-01-01T10:00:00Z",
+{% else %}
+            "{{ field_info.api_name }}": "2099-01-01T18:00:00Z",
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_less_than_or_equal' %}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "2099-01-01T12:00:00Z",
+{% else %}
+            "{{ field_info.api_name }}": "2099-01-01T12:00:00Z",
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_greater_than' %}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "2099-01-01T18:00:00Z",
+{% else %}
+            "{{ field_info.api_name }}": "2099-01-01T10:00:00Z",
+{% endif %}
+{% elif constraint_info.constraint_type == 'field_greater_than_or_equal' %}
+{% if constraint_info.role == 'field_a' %}
+            "{{ field_info.api_name }}": "2099-01-01T12:00:00Z",
+{% else %}
+            "{{ field_info.api_name }}": "2099-01-01T12:00:00Z",
+{% endif %}
+{% endif %}
+{% else %}
+{# No constraint, use default generation #}
+            "{{ field_info.api_name }}": "2099-01-01T00:00:00Z",
+{% endif %}
+{% elif field_info.type == 'json_object' %}
+            "{{ field_info.api_name }}": {"updated": True},
+{% elif field_info.type == 'json_array' %}
+{% if field_info.list_type == 'dict' %}
+            "{{ field_info.api_name }}": [{"updated": True}],
+{% else %}
+            "{{ field_info.api_name }}": ["updated"],
+{% endif %}
+{% endif %}
+{% endfor %}
+        }
+
+        response = client.put(f"/api/v1/{{ entity_table_kebab }}/{{'{'}}{{ entity_name.lower() }}_id}", json=update_data)
+
+        assert response.status_code == 200
+        {{ entity_name.lower() }} = response.json()
+
+        # Validate updates applied
+        assert {{ entity_name.lower() }}["{{ get_primary_key_field(entity) }}"] == {{ entity_name.lower() }}_id
+{% for field_info in fields_to_use %}
+        assert {{ entity_name.lower() }}["{{ field_info.api_name }}"] == update_data["{{ field_info.api_name }}"]
+{% endfor %}
+
+{% if entity.timestamps is defined and entity.timestamps.updated %}
+        # Validate updated_at changed
+        assert "updated_at" in {{ entity_name.lower() }}
+{% endif %}
+
+    def test_put_{{ entity_name.lower() }}_partial_update(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
+        """Test PUT /api/v1/{{ entity_table_kebab }} partial update."""
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+        # Create {{ entity_name.lower() }}
+        create_response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'partial', '', true, constraints, enums) }}            },
+        )
+        {{ entity_name.lower() }}_id = create_response.json()["{{ get_primary_key_field(entity) }}"]
+
+        # Update only one field
+{# Find first updatable field NOT involved in cross-field constraints #}
+{% set partial_field = namespace(value=none) %}
+{% for field in updatable_fields %}
+{% if partial_field.value is none and field.name not in required_constraint_fields %}
+{% set partial_field.value = field %}
+{% endif %}
+{% endfor %}
+{# Fallback to first field if all are constrained (test will fail but at least generates) #}
+{% if partial_field.value is none and updatable_fields %}{% set partial_field.value = updatable_fields[0] %}{% endif %}
+{% if partial_field.value %}
+        response = client.put(
+            f"/api/v1/{{ entity_table_kebab }}/{{'{'}}{{ entity_name.lower() }}_id}",
+{% if partial_field.value.type == 'text' or partial_field.value.type == 'longtext' %}
+            json={"{{ partial_field.value.api_name }}": "Changed"}
+{% elif partial_field.value.type == 'financial' %}
+{# Check if field has percentage range constraint - use namespace for scoping #}
+{% set ns = namespace(is_percentage=false) %}
+{% if partial_field.value.constraints %}{% for constraint in partial_field.value.constraints %}{% if constraint.type == 'range' and constraint.max_ref in constraints %}{% set max_val = constraints[constraint.max_ref]['value'] | float %}{% if max_val <= 1.0 %}{% set ns.is_percentage = true %}{% endif %}{% endif %}{% endfor %}{% endif %}
+{% if ns.is_percentage %}            json={"{{ partial_field.value.api_name }}": "{{ 0.5 | normalize_decimal }}"}
+{% else %}            json={"{{ partial_field.value.api_name }}": "{{ 500.0 | normalize_decimal }}"}
+{% endif %}
+{% elif partial_field.value.type == 'percentage' %}
+            json={"{{ partial_field.value.api_name }}": "{{ 0.5 | normalize_decimal }}"}
+{% elif partial_field.value.type == 'counter' %}
+            json={"{{ partial_field.value.api_name }}": 100}
+{% elif partial_field.value.type == 'boolean' %}
+            json={"{{ partial_field.value.api_name }}": False}
+{% elif partial_field.value.type == 'enum' %}
+            json={"{{ partial_field.value.api_name }}": "{{ get_enum_value(partial_field.value.enum_name, partial_field.value.default, true, enums) }}"}
+{% elif partial_field.value.type == 'datetime' %}
+            json={"{{ partial_field.value.api_name }}": "2099-01-01T00:00:00Z"}
+{% elif partial_field.value.type == 'json_object' %}
+            json={"{{ partial_field.value.api_name }}": {"changed": True}}
+{% elif partial_field.value.type == 'json_array' %}
+            json={"{{ partial_field.value.api_name }}": ["changed"]}
+{% endif %}
+        )
+
+        assert response.status_code == 200
+        {{ entity_name.lower() }} = response.json()
+{% if partial_field.value.type == 'text' or partial_field.value.type == 'longtext' %}
+        assert {{ entity_name.lower() }}["{{ partial_field.value.api_name }}"] == "Changed"
+{% elif partial_field.value.type == 'financial' %}
+{# Check if field has percentage range constraint - use namespace for scoping #}
+{% set ns = namespace(is_percentage=false) %}
+{% if partial_field.value.constraints %}{% for constraint in partial_field.value.constraints %}{% if constraint.type == 'range' and constraint.max_ref in constraints %}{% set max_val = constraints[constraint.max_ref]['value'] | float %}{% if max_val <= 1.0 %}{% set ns.is_percentage = true %}{% endif %}{% endif %}{% endfor %}{% endif %}
+{% if ns.is_percentage %}        assert {{ entity_name.lower() }}["{{ partial_field.value.api_name }}"] == "{{ 0.5 | normalize_decimal }}"
+{% else %}        assert {{ entity_name.lower() }}["{{ partial_field.value.api_name }}"] == "{{ 500.0 | normalize_decimal }}"
+{% endif %}
+{% elif partial_field.value.type == 'percentage' %}
+        assert {{ entity_name.lower() }}["{{ partial_field.value.api_name }}"] == "{{ 0.5 | normalize_decimal }}"
+{% elif partial_field.value.type == 'counter' %}
+        assert {{ entity_name.lower() }}["{{ partial_field.value.api_name }}"] == 100
+{% elif partial_field.value.type == 'boolean' %}
+        assert {{ entity_name.lower() }}["{{ partial_field.value.api_name }}"] is False
+{% elif partial_field.value.type == 'enum' %}
+        assert {{ entity_name.lower() }}["{{ partial_field.value.api_name }}"] == "{{ get_enum_value(partial_field.value.enum_name, partial_field.value.default, true, enums) }}"
+{% elif partial_field.value.type == 'datetime' %}
+        assert {{ entity_name.lower() }}["{{ partial_field.value.api_name }}"] == "2099-01-01T00:00:00Z"
+{% elif partial_field.value.type == 'json_object' %}
+        assert {{ entity_name.lower() }}["{{ partial_field.value.api_name }}"] == {"changed": True}
+{% elif partial_field.value.type == 'json_array' %}
+        assert {{ entity_name.lower() }}["{{ partial_field.value.api_name }}"] == ["changed"]
+{% endif %}
+{% endif %}
+
+    def test_put_{{ entity_name.lower() }}_not_found(self, client: TestClient) -> None:
+        """Test PUT /api/v1/{{ entity_table_kebab }}/{id} not found."""
+        nonexistent_id = "123e4567-e89b-12d3-a456-999999999999"
+
+        response = client.put(
+{% if updatable_fields %}
+            f"/api/v1/{{ entity_table_kebab }}/{nonexistent_id}",
+{% if updatable_fields[0].type == 'text' or updatable_fields[0].type == 'longtext' %}
+            json={"{{ updatable_fields[0].api_name }}": "Test"}
+{% elif updatable_fields[0].type == 'financial' %}
+            json={"{{ updatable_fields[0].api_name }}": "100.00"}
+{% elif updatable_fields[0].type == 'percentage' %}
+            json={"{{ updatable_fields[0].api_name }}": "{{ 0.1 | normalize_decimal }}"}
+{% elif updatable_fields[0].type == 'counter' %}
+            json={"{{ updatable_fields[0].api_name }}": 10}
+{% elif updatable_fields[0].type == 'boolean' %}
+            json={"{{ updatable_fields[0].api_name }}": True}
+{% elif updatable_fields[0].type == 'enum' %}
+            json={"{{ updatable_fields[0].api_name }}": "{{ get_enum_value(updatable_fields[0].enum_name, updatable_fields[0].default, false, enums) }}"}
+{% elif updatable_fields[0].type == 'datetime' %}
+            json={"{{ updatable_fields[0].api_name }}": "2099-01-01T00:00:00Z"}
+{% elif updatable_fields[0].type == 'json_array' %}
+            json={"{{ updatable_fields[0].api_name }}": ["test"]}
+{% elif updatable_fields[0].type == 'json_object' %}
+            json={"{{ updatable_fields[0].api_name }}": {"test": true}}
+{% else %}
+            json={}
+{% endif %}
+{% else %}
+            f"/api/v1/{{ entity_table_kebab }}/{nonexistent_id}", json={}
+{% endif %}
+        )
+
+        assert response.status_code == 404
+        error = response.json()["detail"]
+        assert "error" in error
+        assert "message" in error
+
+{% else %}
+    # No updatable fields - Update endpoint may not be implemented
+{% endif %}
+
+{%endif %}
+{%if 'true' in should_generate_test(entity, ['delete']) %}
+{{ section_banner('SECTION 5: DELETE OPERATIONS') }}
+
+    def test_delete_{{ entity_name.lower() }}_success(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
+        """Test DELETE /api/v1/{{ entity_table_kebab }}/{id} success."""
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+        # Create {{ entity_name.lower() }}
+        create_response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'delete', '', true, constraints, enums) }}            },
+        )
+        {{ entity_name.lower() }}_id = create_response.json()["{{ get_primary_key_field(entity) }}"]
+
+        # Delete {{ entity_name.lower() }}
+        response = client.delete(f"/api/v1/{{ entity_table_kebab }}/{{'{'}}{{ entity_name.lower() }}_id}")
+
+        assert response.status_code == 204
+
+    def test_delete_{{ entity_name.lower() }}_not_found(self, client: TestClient) -> None:
+        """Test DELETE /api/v1/{{ entity_table_kebab }}/{id} not found."""
+        nonexistent_id = "123e4567-e89b-12d3-a456-999999999999"
+
+        response = client.delete(f"/api/v1/{{ entity_table_kebab }}/{nonexistent_id}")
+
+        assert response.status_code == 404
+        error = response.json()["detail"]
+        assert "error" in error
+        assert "message" in error
+
+{%endif %}
+{{ section_banner('SECTION 6: FIELD VALIDATION') }}
+
+    def test_{{ entity_name.lower() }}_response_format_validation(
+        self,
+        client: TestClient,
+{% for fk in required_fk_fields %}
+        {{ fk.fixture_name }}: str,
+{% endfor %}
+    ) -> None:
+        """
+        Test comprehensive validation of {{ entity_name }}Response format.
+
+        Validates ALL fields from {{ entity_name }}Response model:
+        1. Field presence
+        2. Type validation (str, bool, int, etc.)
+        3. Format validation (UUID, ISO 8601, patterns)
+        4. Enum validation
+        5. Security validation (excluded fields)
+        """
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+        {{ entity_name.lower() }}_data: dict[str, Any] = {
+{{ build_test_data_fields(entity, field_to_fixture, 'format', '', true, constraints, enums) }}        }
+
+        response = client.post("/api/v1/{{ entity_table_kebab }}", json={{ entity_name.lower() }}_data)
+        assert response.status_code == 201
+        {{ entity_name.lower() }} = response.json()
+
+        # 1. Field Presence - All fields from {{ entity_name }}Response
+        required_fields = [
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_response | default(false) %}
+            "{{ field.api_field_name | default(field_name) }}",
+{% endif %}
+{% endfor %}
+{% if entity.timestamps is defined %}
+{% if entity.timestamps.created %}
+            "created_at",
+{% endif %}
+{% if entity.timestamps.updated %}
+            "updated_at",
+{% endif %}
+{% endif %}
+        ]
+        for field in required_fields:
+            assert field in {{ entity_name.lower() }}, f"Missing required field: {field}"
+
+        # 2. Type Validation
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_response | default(false) %}
+{% if field.type == 'uuid' %}
+        assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be string"
+{% elif field.type == 'text' or field.type == 'longtext' %}
+{% if field.required %}
+        assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be string"
+{% else %}
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is None or isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be string or null"
+{% endif %}
+{% elif field.type == 'financial' or field.type == 'percentage' %}
+{% if field.required %}
+        assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be string (decimal)"
+{% else %}
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is None or isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be string or null"
+{% endif %}
+{% elif field.type == 'counter' %}
+{% if field.required %}
+        assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], int), "{{ field_name }} must be integer"
+{% else %}
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is None or isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], int), "{{ field_name }} must be integer or null"
+{% endif %}
+{% elif field.type == 'boolean' %}
+{% if field.required %}
+        assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], bool), "{{ field_name }} must be boolean"
+{% else %}
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is None or isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], bool), "{{ field_name }} must be boolean or null"
+{% endif %}
+{% elif field.type == 'datetime' %}
+{% if field.required %}
+        assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be string (ISO 8601)"
+{% else %}
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is None or isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be string or null"
+{% endif %}
+{% elif field.type == 'enum' %}
+{% if field.required %}
+        assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be string (enum)"
+{% else %}
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is None or isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be string or null"
+{% endif %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% if entity.timestamps is defined %}
+{% if entity.timestamps.created %}
+        assert isinstance({{ entity_name.lower() }}["created_at"], str), "created_at must be string (ISO 8601)"
+{% endif %}
+{% if entity.timestamps.updated %}
+        assert isinstance({{ entity_name.lower() }}["updated_at"], str), "updated_at must be string (ISO 8601)"
+{% endif %}
+{% endif %}
+
+        # 3. Format Validation
+
+        # UUID format
+{% for field_name, field in entity.fields.items() %}
+{% if field.type == 'uuid' and not field.api_exclude_response | default(false) %}
+        try:
+            uuid.UUID({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"])
+        except ValueError:
+            pytest.fail(f"Invalid UUID format: {{'{'}}{{ entity_name.lower() }}['{{ field.api_field_name | default(field_name) }}']}")
+{% endif %}
+{% endfor %}
+
+{% if entity.timestamps is defined %}
+{% if entity.timestamps.created %}
+        # ISO 8601 DateTime format for created_at
+        try:
+            dt = datetime.fromisoformat({{ entity_name.lower() }}["created_at"].replace("Z", "+00:00"))
+            assert dt.tzinfo is not None, "created_at must be timezone-aware"
+        except (ValueError, AttributeError) as e:
+            pytest.fail(
+                f"Invalid ISO 8601 for created_at: "
+                f"{{'{'}}{{ entity_name.lower() }}['created_at']} - {e}"
+            )
+{% endif %}
+{% if entity.timestamps.updated %}
+
+        # ISO 8601 DateTime format for updated_at
+        try:
+            dt = datetime.fromisoformat({{ entity_name.lower() }}["updated_at"].replace("Z", "+00:00"))
+            assert dt.tzinfo is not None, "updated_at must be timezone-aware"
+        except (ValueError, AttributeError) as e:
+            pytest.fail(
+                f"Invalid ISO 8601 for updated_at: "
+                f"{{'{'}}{{ entity_name.lower() }}['updated_at']} - {e}"
+            )
+{% endif %}
+{% endif %}
+
+{% for field_name, field in entity.fields.items() %}
+{% if field.type == 'datetime' and not field.api_exclude_response | default(false) %}
+        # Optional DateTime: {{ field_name }}
+        if {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is not None:
+            try:
+                dt = datetime.fromisoformat({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"].replace("Z", "+00:00"))
+                assert dt.tzinfo is not None, "{{ field_name }} must be timezone-aware"
+            except (ValueError, AttributeError) as e:
+                pytest.fail(
+                    f"Invalid ISO 8601 for {{ field_name }}: "
+                    f"{{'{'}}{{ entity_name.lower() }}['{{ field.api_field_name | default(field_name) }}']} - {e}"
+                )
+
+{% endif %}
+{% endfor %}
+
+{% for field_name, field in entity.fields.items() %}
+{% if field.constraints is defined and not field.api_exclude_response | default(false) %}
+{% for constraint in field.constraints %}
+{% if constraint.type == 'pattern' and constraint.regex_ref %}
+        # {{ field_name }} pattern validation ({{ constraint.regex_ref }})
+        # TODO: Add pattern from constraints
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% for field_name, field in entity.fields.items() %}
+{% if field.type in ['financial', 'percentage'] and not field.api_exclude_response | default(false) %}
+        # Decimal type check: {{ field_name }} must be string (not float)
+{% if field.required %}
+        assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be a string"
+{% else %}
+        if {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is not None:
+            assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be a string"
+{% endif %}
+{% endif %}
+{% endfor %}
+
+{% set enum_fields = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if field.type == 'enum' and not field.api_exclude_response | default(false) %}
+{% set _ = enum_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'enum_name': field.enum_name}) %}
+{% endif %}
+{% endfor %}
+{% if enum_fields %}
+        # 4. Enum Validation
+{% for enum_field in enum_fields %}
+        # {{ enum_field.name }} field ({{ enum_field.enum_name }} enum)
+        # TODO: Add valid values from enums.json
+{% endfor %}
+{% endif %}
+
+{% if excluded_fields %}
+        # 5. Security Validation - Sensitive fields excluded
+{% for field_name in excluded_fields %}
+        assert "{{ field_name }}" not in {{ entity_name.lower() }}, "{{ field_name }} must not be in response"
+{% endfor %}
+{% endif %}
+
+{% set constraint_fields = [] %}
+{#- Check if entity has unique FK constraints that prevent multiple creates -#}
+{% set ns_unique_fk = namespace(found=false) %}
+{% set ref_field_names = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if field.type == 'reference' %}
+{% set _ = ref_field_names.append(field_name) %}
+{% if field.unique | default(false) %}
+{% set ns_unique_fk.found = true %}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% if not ns_unique_fk.found and entity.indexes is defined %}
+{% for idx in entity.indexes %}
+{% if idx.unique | default(false) %}
+{% for idx_field in idx.fields %}
+{% if idx_field in ref_field_names %}
+{% set ns_unique_fk.found = true %}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% for field_name, field in entity.fields.items() %}
+{% if field.constraints is defined and not field.api_exclude_request | default(false) and not field.api_readonly | default(false) %}
+{% set _ = constraint_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'type': field.type, 'constraints': field.constraints, 'unique': field.unique | default(false), 'scale': field.scale | default(4 if field.type == 'percentage' else 8)}) %}
+{% endif %}
+{% endfor %}
+{% if constraint_fields %}
+    def test_{{ entity_name.lower() }}_field_constraints(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
+        """
+        Test {{ entity_name }} field constraints
+        from Create{{ entity_name }}Request validators.
+
+        Constraints from Pydantic validators and database:
+{% for field_info in constraint_fields %}
+        - {{ field_info.name }}: {% for constraint in field_info.constraints %}{{ constraint.type }}{% if constraint.min_ref %} (min {{ constraint.min_ref }}){% endif %}{% if constraint.max_ref %} (max {{ constraint.max_ref }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+{% endfor %}
+        """
+{% set ns_has_constraint_tests = namespace(found=false) %}
+{% for field_info in constraint_fields[:3] %}
+{% for constraint in field_info.constraints %}
+{% if constraint.type in ['non_negative', 'non_negative_or_null', 'positive', 'positive_or_null'] %}
+{% set ns_has_constraint_tests.found = true %}
+{% elif constraint.type == 'length' and constraint.min_ref %}
+{% set ns_has_constraint_tests.found = true %}
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% if ns_has_constraint_tests.found and 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+{% if not ns_has_constraint_tests.found %}
+        pass  # Constraint types not yet tested via boundary assertions
+{% endif %}
+
+{# Test first 3 constrained fields #}
+{% for field_info in constraint_fields[:3] %}
+{% set fld_idx = loop.index %}
+{% for constraint in field_info.constraints %}
+{% if constraint.type == 'length' and constraint.min_ref %}
+        # {{ field_info.name }} too short (min from {{ constraint.min_ref }})
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'test1', field_info.name, true, constraints, enums) }}                "{{ field_info.api_name }}": "ab",  # Too short
+            },
+        )
+        assert response.status_code == 422  # Validation error
+
+{% elif constraint.type in ['non_negative', 'non_negative_or_null'] %}
+{% if field_info.type == 'financial' %}
+        # {{ field_info.name }}: negative is invalid (non_negative)
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'bn' ~ fld_idx ~ 'b', field_info.name, true, constraints, enums) }}                "{{ field_info.api_name }}": "-{{ 1 | normalize_decimal }}",
+            },
+        )
+        assert response.status_code == 422  # Validation error
+
+{% elif field_info.type == 'counter' %}
+{% if not ns_unique_fk.found %}
+        # {{ field_info.name }}: zero is valid (non_negative)
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'bn' ~ fld_idx ~ 'a', field_info.name, true, constraints, enums) }}                "{{ field_info.api_name }}": 0,
+            },
+        )
+        assert response.status_code == 201
+
+{% endif %}
+        # {{ field_info.name }}: negative is invalid (non_negative)
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'bn' ~ fld_idx ~ 'b', field_info.name, true, constraints, enums) }}                "{{ field_info.api_name }}": -1,
+            },
+        )
+        assert response.status_code == 422  # Validation error
+
+{% endif %}
+{% elif constraint.type in ['positive', 'positive_or_null'] %}
+{% if field_info.type == 'financial' %}
+        # {{ field_info.name }}: zero is invalid (positive)
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'bp' ~ fld_idx ~ 'b', field_info.name, true, constraints, enums) }}                "{{ field_info.api_name }}": "{{ 0 | normalize_decimal }}",
+            },
+        )
+        assert response.status_code == 422  # Validation error
+
+{% elif field_info.type == 'counter' %}
+{% if not ns_unique_fk.found %}
+        # {{ field_info.name }}: one is valid (positive)
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'bp' ~ fld_idx ~ 'a', field_info.name, true, constraints, enums) }}                "{{ field_info.api_name }}": 1,
+            },
+        )
+        assert response.status_code == 201
+
+{% endif %}
+        # {{ field_info.name }}: zero is invalid (positive)
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'bp' ~ fld_idx ~ 'b', field_info.name, true, constraints, enums) }}                "{{ field_info.api_name }}": 0,
+            },
+        )
+        assert response.status_code == 422  # Validation error
+
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% endif %}
+
+{#- Percentage fields get validators from type, not constraints - test boundaries separately -#}
+{% set percentage_fields = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if field.type == 'percentage' and not field.api_exclude_request | default(false) and not field.api_readonly | default(false) %}
+{% set _ = percentage_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name)}) %}
+{% endif %}
+{% endfor %}
+{% if percentage_fields %}
+    def test_{{ entity_name.lower() }}_percentage_boundaries(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
+        """
+        Test {{ entity_name }} percentage field boundaries.
+
+        Percentage fields must be between 0 and 1 (inclusive).
+        Fields: {{ percentage_fields | map(attribute='name') | join(', ') }}
+        """
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+
+{% for pf in percentage_fields[:3] %}
+{% set pct_idx = loop.index %}
+        # {{ pf.name }}: valid at lower boundary (0)
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'pct' ~ pct_idx ~ 'a', '', true, constraints, enums) }}                "{{ pf.api_name }}": "{{ 0 | normalize_decimal }}",
+            },
+        )
+        assert response.status_code == 201
+
+        # {{ pf.name }}: valid at upper boundary (1)
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'pct' ~ pct_idx ~ 'b', '', true, constraints, enums) }}                "{{ pf.api_name }}": "{{ 1 | normalize_decimal }}",
+            },
+        )
+        assert response.status_code == 201
+
+        # {{ pf.name }}: invalid below zero (-0.0001)
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'pct' ~ pct_idx ~ 'c', '', true, constraints, enums) }}                "{{ pf.api_name }}": "-0.0001",
+            },
+        )
+        assert response.status_code == 422  # Validation error
+
+        # {{ pf.name }}: invalid above one (1.0001)
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'pct' ~ pct_idx ~ 'd', '', true, constraints, enums) }}                "{{ pf.api_name }}": "1.0001",
+            },
+        )
+        assert response.status_code == 422  # Validation error
+
+{% endfor %}
+{% endif %}
+
+{% if entity.timestamps is defined and entity.timestamps.created and entity.timestamps.updated %}
+    def test_timestamps_valid(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
+        """Test created_at <= updated_at for all {{ entity_name.lower() }} records."""
+
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'ts', '', true, constraints, enums) }}            },
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+
+        # Parse timestamps
+        created = datetime.fromisoformat(data["created_at"].replace("Z", "+00:00"))
+        updated = datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00"))
+
+        assert created <= updated, f"created_at ({created}) must be <= updated_at ({updated})"
+{% endif %}
+
+{{ section_banner('SECTION 7: RELATIONSHIP VALIDATION') }}
+{% if entity.relationships is defined and entity.relationships | length > 0 %}
+    # {{ entity_name }} has relationships: {{ entity.relationships.keys() | list | join(', ') }}
+    # Relationship tests implemented in respective entity test files
+{% else %}
+    # No relationships defined for {{ entity_name }}
+{% endif %}
+
+{{ section_banner('SECTION 8: BUSINESS LOGIC VALIDATION') }}
+
+{% set immutable_fields = [] %}
+{% for field_name, field in entity.fields.items() %}
+{% if field.api_exclude_update | default(false) and not field.auto_generate | default(false) and not field.api_exclude_request | default(false) and not field.api_exclude_response | default(false) %}
+{% set _ = immutable_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'type': field.type}) %}
+{% endif %}
+{% endfor %}
+{% if immutable_fields %}
+    def test_{{ entity_name.lower() }}_immutable_fields(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
+        """Test immutable fields cannot be changed via update endpoint."""
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+
+        # Create {{ entity_name.lower() }}
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'immutable', '', true, constraints, enums) }}            },
+        )
+        assert response.status_code == 201
+        {{ entity_name.lower() }}_id = response.json()["id"]
+{% for immutable_field in immutable_fields[:1] -%}{# Test first immutable field #}
+
+        original_{{ immutable_field.name }} = response.json()["{{ immutable_field.api_name }}"]
+
+        # Attempt to update {{ immutable_field.name }} (should be ignored)
+        response = client.put(
+            f"/api/v1/{{ entity_table_kebab }}/{{'{'}}{{ entity_name.lower() }}_id}",
+            json={
+                "{{ immutable_field.api_name }}": "Changed"{% if updatable_fields %},
+{% if updatable_fields[0].type == 'text' or updatable_fields[0].type == 'longtext' %}
+                "{{ updatable_fields[0].api_name }}": "UpdatedField"
+{% elif updatable_fields[0].type == 'financial' %}
+{% set is_percentage = false %}
+{% if updatable_fields[0].constraints %}{% for constraint in updatable_fields[0].constraints %}{% if constraint.type == 'range' and constraint.max_ref in constraints %}{% set max_val = constraints[constraint.max_ref]['value'] | float %}{% if max_val <= 1.0 %}{% set is_percentage = true %}{% endif %}{% endif %}{% endfor %}{% endif %}
+{% if is_percentage %}
+                "{{ updatable_fields[0].api_name }}": "0.75"
+{% else %}
+                "{{ updatable_fields[0].api_name }}": "750"
+{% endif %}
+{% elif updatable_fields[0].type == 'percentage' %}
+                "{{ updatable_fields[0].api_name }}": "0.75"
+{% elif updatable_fields[0].type == 'counter' %}
+                "{{ updatable_fields[0].api_name }}": 150
+{% elif updatable_fields[0].type == 'boolean' %}
+                "{{ updatable_fields[0].api_name }}": False
+{% elif updatable_fields[0].type == 'enum' %}
+                "{{ updatable_fields[0].api_name }}": "{{ get_enum_value(updatable_fields[0].enum_name, updatable_fields[0].default, true, enums) }}"
+{% elif updatable_fields[0].type == 'datetime' %}
+                "{{ updatable_fields[0].api_name }}": "2099-06-15T12:00:00Z"
+{% elif updatable_fields[0].type == 'json_object' %}
+                "{{ updatable_fields[0].api_name }}": {"updated": True}
+{% elif updatable_fields[0].type == 'json_array' %}
+                "{{ updatable_fields[0].api_name }}": ["updated"]
+{% else %}
+                "{{ updatable_fields[0].api_name }}": "UpdatedField"
+{% endif %}
+{% endif %}
+            },
+        )
+        assert response.status_code == 200
+        # {{ immutable_field.name }} should remain unchanged (field ignored)
+        assert response.json()["{{ immutable_field.api_name }}"] == original_{{ immutable_field.name }}
+{% if updatable_fields %}
+        # Other fields should update normally
+{% if updatable_fields[0].type == 'text' or updatable_fields[0].type == 'longtext' %}
+        assert response.json()["{{ updatable_fields[0].api_name }}"] == "UpdatedField"
+{% elif updatable_fields[0].type == 'financial' %}
+{% set is_percentage = false %}
+{% if updatable_fields[0].constraints %}{% for constraint in updatable_fields[0].constraints %}{% if constraint.type == 'range' and constraint.max_ref in constraints %}{% set max_val = constraints[constraint.max_ref]['value'] | float %}{% if max_val <= 1.0 %}{% set is_percentage = true %}{% endif %}{% endif %}{% endfor %}{% endif %}
+{% if is_percentage %}
+        assert response.json()["{{ updatable_fields[0].api_name }}"] == "0.75"
+{% else %}
+        assert response.json()["{{ updatable_fields[0].api_name }}"] == "750"
+{% endif %}
+{% elif updatable_fields[0].type == 'percentage' %}
+        assert response.json()["{{ updatable_fields[0].api_name }}"] == "0.75"
+{% elif updatable_fields[0].type == 'counter' %}
+        assert response.json()["{{ updatable_fields[0].api_name }}"] == 150
+{% elif updatable_fields[0].type == 'boolean' %}
+        assert response.json()["{{ updatable_fields[0].api_name }}"] is False
+{% elif updatable_fields[0].type == 'enum' %}
+        assert response.json()["{{ updatable_fields[0].api_name }}"] == "{{ get_enum_value(updatable_fields[0].enum_name, updatable_fields[0].default, true, enums) }}"
+{% elif updatable_fields[0].type == 'datetime' %}
+        assert response.json()["{{ updatable_fields[0].api_name }}"] == "2099-06-15T12:00:00Z"
+{% elif updatable_fields[0].type == 'json_object' %}
+        assert response.json()["{{ updatable_fields[0].api_name }}"] == {"updated": True}
+{% elif updatable_fields[0].type == 'json_array' %}
+        assert response.json()["{{ updatable_fields[0].api_name }}"] == ["updated"]
+{% else %}
+        assert response.json()["{{ updatable_fields[0].api_name }}"] == "UpdatedField"
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+    # Add additional business logic tests here as needed for {{ entity_name }}
+{% endfor %}
