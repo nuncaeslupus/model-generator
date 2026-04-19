@@ -104,10 +104,10 @@ uv run pytest                    # 149 tests
 - `main.py` needs `ruff check --fix` after regeneration (I001 workaround)
 - **NEVER use sed on Jinja2 templates** — shell brace expansion destroys `{{ }}` syntax
 - mutmut: pin to `<3.5.0` (3.5.0 is broken), use `also_copy = ["examples/"]`
-- `.claude/skills/` is imported from a shared repo via `git subtree` (remote
-  name `shared-skills`). `make update-skills` pulls the latest and
-  auto-registers the remote on fresh clones. Project-specific skills can be
-  dropped alongside the shared ones — subtree won't touch them.
+- `.claude/skills/` is imported from a shared repo via `git subtree` from
+  `https://github.com/nuncaeslupus/my-skills.git`. `make update-skills` pulls
+  the latest. Project-specific skills can be dropped alongside the shared
+  ones — subtree won't touch them.
 
 ---
 
