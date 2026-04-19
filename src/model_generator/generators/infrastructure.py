@@ -166,6 +166,14 @@ def generate_pyproject(
     main_path = paths.get("main", "backend/src/main.py")
     package_root = str(Path(main_path).parent)
 
+    raw_style = config.get("style", {})
+    style = {
+        "python_version": raw_style.get("python_version", "3.11"),
+        "line_length": raw_style.get("line_length"),
+        "quote_style": raw_style.get("quote_style"),
+        "indent_style": raw_style.get("indent_style"),
+    }
+
     template = env.get_template("infrastructure/pyproject.toml.j2")
     content = template.render(
         project=project,
@@ -177,6 +185,7 @@ def generate_pyproject(
         constraints_path=constraints_path,
         also_copy_dir=also_copy_dir,
         package_root=package_root,
+        style=style,
     )
 
     return {"path": output_path, "content": content}
