@@ -234,13 +234,13 @@ class {{ entity_name }}(Base):
     )
 {% elif field.type == 'json_object' %}
 {% if field.default is defined %}
-    {{ field_name }}: Mapped[dict[str, Any]{{ optional }}] = mapped_column(JSON, default=dict)
+    {{ field_name }}: Mapped[dict[str, Any]{{ optional }}] = mapped_column(JSON, default=lambda: {{ field.default }})
 {% else %}
     {{ field_name }}: Mapped[dict[str, Any]{{ optional }}] = mapped_column(JSON)
 {% endif %}
 {% elif field.type == 'json_array' %}
 {% if field.default is defined %}
-    {{ field_name }}: Mapped[list[Any]{{ optional }}] = mapped_column(JSON, default=list)
+    {{ field_name }}: Mapped[list[Any]{{ optional }}] = mapped_column(JSON, default=lambda: {{ field.default }})
 {% else %}
     {{ field_name }}: Mapped[list[Any]{{ optional }}] = mapped_column(JSON)
 {% endif %}
@@ -279,11 +279,11 @@ class {{ entity_name }}(Base):
     {{ rel_name }} = relationship("{{ rel.target }}"{% if rel.foreign_keys is defined %}, foreign_keys="[{% for fk in rel.foreign_keys %}{{ rel.target }}.{{ fk }}{% if not loop.last %}, {% endif %}{% endfor %}]"{% endif %}, back_populates="{{ rel.back_populates }}")
 {% endif %}
 {% elif rel.type == 'many_to_one' %}
-{% set self_ref_pk = pk_fields[0].key if (rel.target == entity_name and pk_fields) else None %}
+{% set self_ref_pks = (pk_fields | map(attribute='key') | list) if (rel.target == entity_name and pk_fields) else [] %}
 {% if rel.foreign_keys is defined %}
-    {{ rel_name }} = relationship("{{ rel.target }}", foreign_keys=[{{ rel.foreign_keys | join(', ') }}], back_populates="{{ rel.back_populates }}"{% if self_ref_pk %}, remote_side=[{{ self_ref_pk }}]{% endif %})
+    {{ rel_name }} = relationship("{{ rel.target }}", foreign_keys=[{{ rel.foreign_keys | join(', ') }}], back_populates="{{ rel.back_populates }}"{% if self_ref_pks %}, remote_side=[{{ self_ref_pks | join(', ') }}]{% endif %})
 {% else %}
-    {{ rel_name }} = relationship("{{ rel.target }}", back_populates="{{ rel.back_populates }}"{% if self_ref_pk %}, remote_side=[{{ self_ref_pk }}]{% endif %})
+    {{ rel_name }} = relationship("{{ rel.target }}", back_populates="{{ rel.back_populates }}"{% if self_ref_pks %}, remote_side=[{{ self_ref_pks | join(', ') }}]{% endif %})
 {% endif %}
 {% elif rel.type == 'one_to_one' %}
     {{ rel_name }} = relationship(
