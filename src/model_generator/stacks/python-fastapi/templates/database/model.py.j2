@@ -77,6 +77,10 @@ from datetime import datetime
 from decimal import Decimal
 
 {% endif %}
+{% if ns.has_json %}
+from typing import Any
+
+{% endif %}
 {% if ns.has_numeric or ns.has_uuid %}
 from {{ config.paths.database_models.rsplit('/', 1)[0] | path_to_import }}.types import {% if ns.has_numeric %}SqliteNumeric{% endif %}{% if ns.has_numeric and ns.has_uuid %}, {% endif %}{% if ns.has_uuid %}PortableUuid{% endif %}
 
@@ -229,16 +233,16 @@ class {{ entity_name }}(Base):
 {% endif %}
     )
 {% elif field.type == 'json_object' %}
-{% if not (field.required | default(false)) and field.default is not defined %}
-    {{ field_name }}: Mapped[dict{{ optional }}] = mapped_column(JSON)
+{% if field.default is defined %}
+    {{ field_name }}: Mapped[dict[str, Any]{{ optional }}] = mapped_column(JSON, default=dict)
 {% else %}
-    {{ field_name }}: Mapped[dict{{ optional }}] = mapped_column(JSON, default=dict)
+    {{ field_name }}: Mapped[dict[str, Any]{{ optional }}] = mapped_column(JSON)
 {% endif %}
 {% elif field.type == 'json_array' %}
-{% if not (field.required | default(false)) and field.default is not defined %}
-    {{ field_name }}: Mapped[list{{ optional }}] = mapped_column(JSON)
+{% if field.default is defined %}
+    {{ field_name }}: Mapped[list[Any]{{ optional }}] = mapped_column(JSON, default=list)
 {% else %}
-    {{ field_name }}: Mapped[list{{ optional }}] = mapped_column(JSON, default=list)
+    {{ field_name }}: Mapped[list[Any]{{ optional }}] = mapped_column(JSON)
 {% endif %}
 {% endif %}
 {% endfor %}
@@ -275,10 +279,11 @@ class {{ entity_name }}(Base):
     {{ rel_name }} = relationship("{{ rel.target }}"{% if rel.foreign_keys is defined %}, foreign_keys="[{% for fk in rel.foreign_keys %}{{ rel.target }}.{{ fk }}{% if not loop.last %}, {% endif %}{% endfor %}]"{% endif %}, back_populates="{{ rel.back_populates }}")
 {% endif %}
 {% elif rel.type == 'many_to_one' %}
+{% set self_ref_pk = pk_fields[0].key if (rel.target == entity_name and pk_fields) else None %}
 {% if rel.foreign_keys is defined %}
-    {{ rel_name }} = relationship("{{ rel.target }}", foreign_keys=[{{ rel.foreign_keys | join(', ') }}], back_populates="{{ rel.back_populates }}")
+    {{ rel_name }} = relationship("{{ rel.target }}", foreign_keys=[{{ rel.foreign_keys | join(', ') }}], back_populates="{{ rel.back_populates }}"{% if self_ref_pk %}, remote_side=[{{ self_ref_pk }}]{% endif %})
 {% else %}
-    {{ rel_name }} = relationship("{{ rel.target }}", back_populates="{{ rel.back_populates }}")
+    {{ rel_name }} = relationship("{{ rel.target }}", back_populates="{{ rel.back_populates }}"{% if self_ref_pk %}, remote_side=[{{ self_ref_pk }}]{% endif %})
 {% endif %}
 {% elif rel.type == 'one_to_one' %}
     {{ rel_name }} = relationship(
