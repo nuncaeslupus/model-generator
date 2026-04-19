@@ -1216,6 +1216,29 @@ def test_generate_pyproject_handles_null_style(self, project_env):
         assert "line-length = 88" not in result["content"]
 
     def test_generate_base(self, project_env):
+        """`style: null` in YAML parses as None — must not crash the generator."""
+        project_root, config, env = project_env
+        config["style"] = None
+        result = generate_pyproject(config, env, project_root, config)
+
+        assert result is not None
+        # Default python_version still applied, no ruff-level overrides emitted.
+        assert 'requires-python = ">=3.11"' in result["content"]
+        assert 'python_version = "3.11"' in result["content"]
+        assert "line-length = " not in result["content"]
+
+    def test_generate_pyproject_project_config_style_wins(self, project_env):
+        """project_config.style takes precedence over config.style when both are set."""
+        project_root, config, env = project_env
+        config["style"] = {"line_length": 88}
+        project_config = {**config, "style": {"line_length": 100}}
+        result = generate_pyproject(config, env, project_root, project_config)
+
+        assert result is not None
+        assert "line-length = 100" in result["content"]
+        assert "line-length = 88" not in result["content"]
+
+    def test_generate_base(self, project_env):
         project_root, config, env = project_env
         result = generate_base(config, env, project_root)
 

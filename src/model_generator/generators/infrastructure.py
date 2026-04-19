@@ -170,6 +170,9 @@ raw_style = {
         **(config.get("style") or {}),
         **(project_config.get("style") or {}),
     }
+        **(config.get("style") or {}),
+        **(project_config.get("style") or {}),
+    }
     style = {
         "python_version": raw_style.get("python_version", "3.11"),
         "line_length": raw_style.get("line_length"),
