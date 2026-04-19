@@ -35,12 +35,18 @@ def _filter_test_entities(model: dict) -> dict | None:
 
 
 def generate_api_models(
-    model: dict, config: dict, env: Environment, project_root: Path
+    model: dict,
+    config: dict,
+    env: Environment,
+    project_root: Path,
+    model_path: Path | None = None,
 ) -> list[dict] | None:
     """Generate Pydantic response and request models."""
     filtered = _filter_api_entities(model)
     if filtered is None:
         return None
+
+    enums = load_shared_enums(model_path or project_root)
 
     outputs = []
     domain = filtered.get("domain", "models")
@@ -48,12 +54,12 @@ def generate_api_models(
 
     # Response models
     template = env.get_template("api/response.py.j2")
-    content = template.render(model=filtered, config=config)
+    content = template.render(model=filtered, config=config, enums=enums)
     outputs.append({"path": output_dir / f"{domain}_response.py", "content": content})
 
     # Request models
     template = env.get_template("api/request.py.j2")
-    content = template.render(model=filtered, config=config)
+    content = template.render(model=filtered, config=config, enums=enums)
     outputs.append({"path": output_dir / f"{domain}_requests.py", "content": content})
 
     return outputs

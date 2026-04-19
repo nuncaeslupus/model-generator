@@ -360,12 +360,17 @@
                         "range_or_null",
                         "length",
                         "pattern",
-                        "unique"
+                        "unique",
+                        "timestamp_after"
                     ]
                 },
                 "name": {
                     "type": "string",
                     "description": "Custom constraint name"
+                },
+                "after": {
+                    "type": "string",
+                    "description": "For timestamp_after: field name to compare against"
                 },
                 "min": {
                     "description": "Minimum value"
