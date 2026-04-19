@@ -1,8 +1,8 @@
 # Next Session Plan
 
-## Current State (2026-04-05)
+## Current State (2026-04-19)
 
-Stable release. All 289 tests passing (including new cleanup tests), ruff+mypy clean, GitHub Actions CI in place.
+Stable release with external-review blockers cleared. 290 tests passing, ruff+mypy clean on `src/`, GitHub Actions CI in place.
 
 ### Possible Next Steps
 
@@ -15,6 +15,7 @@ Stable release. All 289 tests passing (including new cleanup tests), ruff+mypy c
 4.  **Template improvements** — More constraint types, pagination options, bulk endpoints.
 5.  **Wizard enhancements** — Improve interactive mode UX, add model editing workflow.
 6.  **Documentation** — Add architecture diagrams, more examples, video walkthrough.
+7.  **Deferred review items** — §8 (binary field type), §9 (owner-scoped endpoints), §12–§15 nice-to-haves. Each warrants its own plan; see the completed review batch below for context.
 
 ## Recently Completed Fixes
 
@@ -33,44 +34,24 @@ entry, where it failed validation.
 
 MG now supports both in the schema and automatically normalizes the constraint form into the direct field property during loading, ensuring consistent template behavior.
 
----
+### 3. External Review Follow-Up — Template + Loader Blockers (SHIPPED 2026-04-19)
 
-## External Review Follow-Up — In Progress (2026-04-19)
+Second external review landed 15 items (7 blockers, 4 sharp edges, 4 nice-to-haves). The user-approved scope (7 blockers + §10 + §11, keep warn-only validation) shipped across six commits on `chore/skills-subtree`:
 
-A second, template-level external review landed identifying 15 items (7 blockers, 4 sharp edges, 4 nice-to-haves). This session:
+| Commit | Summary | Review items |
+|---|---|---|
+| `c1d3380` | model.py.j2: `remote_side=[pk]` on self-ref many_to_one; stop auto-emitting `default=dict`/`default=list` for required JSON fields; `Mapped[dict[str, Any]]` / `Mapped[list[Any]]` with `from typing import Any` gated on `ns.has_json`. | §1, §10, §11 |
+| `98a96be` | factory.py.j2: `create_batch(count, {{ rel.back_populates }}=obj)` replaces the broken `entity_name.lower()=obj`. | §5 |
+| `cabe42b` | route.py.j2: gate all five CRUD blocks on `entity.api.endpoints`; fold mutability into the update gate. `_shared/_tests.j2` `get_enum_value` applies `\| upper` to `field_default` so enum defaults match the uppercase-everywhere convention. | §6, §7 |
+| `37281a9` | `python_root` config threaded into `path_to_import` via a closure in `get_template_env`; infrastructure direct call sites refactored to use `path_to_import(dir, "module", python_root=...)` instead of `+ "."` string concat (fixes empty-base relative-import edge case); tests cover direct and filter paths. | §3 |
+| `b70e6c4` | migrations.py: skip alembic.ini write when it already exists, mirroring pyproject/gitignore protection. | §4 (residual) |
+| `bb42083` | loaders.py: `_normalize_indexes` converts all four legacy index shapes to canonical before validation. `json-specification-reference.md` rewritten to show the canonical shape with a proper parameter table and a back-compat note. | §2 |
 
-- **Read** the review + current generator/template state end to end.
-- **Drafted** a 6-commit implementation plan at `~/.claude/plans/polished-puzzling-emerson.md` (may be ephemeral; key content inlined below so it survives here).
-- **User-approved scope:** 7 blockers + §10 + §11. §8 (binary) and §9 (owner-scoping) deferred. §2 strategy = loader normalizer + docs fix, **keep warning-only** validation.
-- **No code changes this session** — ended for context budget before starting Commit 1.
+**Verified via:** `uv run pytest -q` (290 passing, up from 283), `uv run ruff check src tests` clean, live `configure_mappers()` on a generated self-ref Category model, and a `python_root: "src"` probe that produced `from main import app` / `from database.engine import get_session`.
 
-### Commit order + critical files (recovery notes)
-
-| # | Fix | File(s) | Lines |
-|---|---|---|---|
-| 1 | §1 self-ref `remote_side` + §10 JSON required-default flip + §11 `Mapped[dict[str, Any]]` / `Mapped[list[Any]]` + `from typing import Any` import gated by `ns.has_json` | `stacks/python-fastapi/templates/database/model.py.j2` | 277-282 (self-ref), 232-242 (JSON defaults), add import near 68-83 block |
-| 2 | §5 factory inverse name | `stacks/python-fastapi/templates/database/factory.py.j2` | 226 (`{{ entity_name.lower() }}=obj` → `{{ rel.back_populates }}=obj`) |
-| 3 | §7 endpoint gating (wrap 5 CRUD blocks in `{% if "X" in endpoints %}`) + §6 enum casing (centralize in `_shared/_tests.j2` `get_enum_value` macro if that's where the bug lives) | `stacks/python-fastapi/templates/api/route.py.j2` + `stacks/python-fastapi/templates/tests/contract.py.j2` | route.py.j2:133, 258, 291, 302, 334 |
-| 4 | §3 `python_root` config → closure over `path_to_import` in `get_template_env`, thread `config` into both call sites | `utils/templates.py`, `generate.py:309, 574`, `generators/infrastructure.py` direct `path_to_import(...)` calls | `templates.py:12-23`; `infrastructure.py:197, 202, 205, 232, 236, 240, 245` |
-| 5 | §4 residual: `alembic.ini` existence check mirroring pyproject/gitignore | `generators/migrations.py` | 22-25 |
-| 6 | §2 index normalizer (mirror `timestamp_after` pattern at `loaders.py:47-85`): accept `{type: "unique"|"single"|"composite", field: "x"}` → canonical `{unique: bool, fields: [...]}`. Update docs at `docs/agent/json-specification-reference.md:464-472, 650-652`. Keep warn-only validation. | `utils/loaders.py` + `docs/agent/json-specification-reference.md` | loaders.py:47-85 (pattern), lines noted |
-
-### Already-partial fixes (don't redo)
-
-- **§4 pyproject.toml and .gitignore are already protected** at `infrastructure.py:118, 137`. Only alembic.ini needs the same treatment (Commit 5).
-- **§2 template + schema are fine** — `model.schema.json:559-564` accepts `indexes[].unique: true` and `model.py.j2:310` emits `UniqueConstraint`. The bug is docs drift + warn-only validation letting legacy `{type: "unique"}` silently fall through. Commit 6 addresses both.
-
-### Verification checklist (after all 6 commits)
-
-1. `make test` green (currently 289 passing).
-2. `make lint` green.
-3. Smoke test with adopter-style spec: copy into `examples/hub-smoke/` with `python_root: "src"` in `.model-generator.yaml`. Run `uv run model-gen` then `configure_mappers()`, mypy, pytest --collect-only.
-4. Update this file again on completion with what shipped.
-
-### Explicitly deferred (to be tackled after Phase 2 unblock)
-
-- **§8 binary field type** — new type mapping across config.yaml + model.py.j2 + Pydantic + factory. Needs own plan.
-- **§9 owner-scoped endpoints** — `api.scope` block, heavy `route.py.j2` changes. Needs own plan.
+**Explicitly deferred** (need their own plans before tackling):
+- **§8 binary field type** — new type mapping across config.yaml + model.py.j2 + Pydantic + factory.
+- **§9 owner-scoped endpoints** — `api.scope` block, heavy `route.py.j2` changes.
 - **§12–§15 nice-to-haves** (auth scaffolding, encrypted-at-rest modifier, quality-tool drift, one-file-per-entity) — low priority.
 
 ---
