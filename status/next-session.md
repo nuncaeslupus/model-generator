@@ -2,12 +2,12 @@
 
 ## Current State (2026-04-19)
 
-Stable release with 9 of 15 items from the 2026-04-19 template-level review shipped across 7 commits on `chore/skills-subtree` (**not yet merged** — see Branch State). 290 tests passing, ruff+mypy clean on `src/`, GitHub Actions CI in place.
+Stable release. 9 of 15 items from the 2026-04-19 template-level external review landed on `main`. Plus the `.claude/skills/` subtree was formally re-imported from `shared-skills` (`https://github.com/nuncaeslupus/my-skills`) so future upstream skill updates can be pulled via `git subtree pull`.
 
-### Branch State
+- `2bf39c6` — PR #2 `fix: external review follow-up — 9 of 15 items shipped` (squashed; included gemini-bot follow-up for JSON default lambda emission + composite-PK `remote_side`).
+- `8a34eb3` — PR #3 `chore(skills): re-import .claude/skills as a git subtree` (squashed).
 
-- `chore/skills-subtree` is 10 commits ahead of `origin/main`; no PR open yet.
-- Branch mixes the `.claude/skills` subtree import (3 pre-existing commits) with the 7 review-fix commits on top. A PR from this branch would bundle both. Split into a dedicated branch off `main` if the skills subtree work should land independently.
+290 tests passing, `ruff check src tests` clean, `mypy src` clean on `main`.
 
 ---
 
@@ -78,6 +78,11 @@ Six items from the 2026-04-19 review were explicitly deferred with user approval
 5. **§15** (one-file-per-entity) — standalone refactor, don't bundle with other feature work.
 6. **§12** (auth scaffolding) — last, most ambitious, benefits from §9 already landing.
 
+### Incidental follow-ups discovered during the 2026-04-19 batch
+
+- **Composite-FK `__table_args__` emission.** Verifying my composite-PK self-ref fix (PR2-c) exposed that `model.py.j2` emits N separate `ForeignKey(...)` columns for a multi-column FK instead of a single `ForeignKeyConstraint` in `__table_args__`. SQLAlchemy's `configure_mappers()` raises `AmbiguousForeignKeysError` when two entities (or one entity, as in self-ref) share multiple FK paths — even when both sides specify `foreign_keys`. Affects any composite-FK relationship, not just self-ref. Scope: new spec shape (`relationships[].composite_fk: true`?) + `__table_args__` emission change. Not blocking any current adopter.
+- **Upstream fix in `nuncaeslupus/my-skills`.** Gemini-bot correctly flagged on PR #3 that `.claude/skills/mutmut-report/analyze_mutmut.py`'s `run_cmd` should raise rather than `sys.exit(1)` (otherwise a single failing `mutmut show` terminates the entire analysis). Fix belongs upstream — file a PR against `nuncaeslupus/my-skills`, then pull via `git subtree pull --prefix=.claude/skills shared-skills main --squash`.
+
 ---
 
 ## Other Possible Next Steps
@@ -95,18 +100,33 @@ Six items from the 2026-04-19 review were explicitly deferred with user approval
 
 ### External Review Follow-Up — 9 items shipped (2026-04-19)
 
-User-approved scope (7 blockers + §10 + §11, keep warn-only validation) delivered in 6 commits on `chore/skills-subtree`:
+Merged to `main` as **`2bf39c6`** (squash of 9 commits on `fix/review-followup-2026-04-19`). User-approved scope: 7 blockers + §10 + §11, keep warn-only validation.
 
-| Commit  | Summary                                                                                                                                                           | Review items |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| c1d3380 | model.py.j2: self-ref `remote_side=[pk]`; stop auto-emitting `default=dict`/`default=list`; `Mapped[dict[str, Any]]` / `Mapped[list[Any]]` + `typing.Any` import. | §1, §10, §11 |
-| 98a96be | factory.py.j2: `create_batch(count, {{ rel.back_populates }}=obj)` replaces `entity_name.lower()=obj`.                                                            | §5           |
-| cabe42b | route.py.j2 gates 5 CRUD blocks on `entity.api.endpoints`; `_shared/_tests.j2` uppercases enum defaults.                                                          | §6, §7       |
-| 37281a9 | `python_root` threaded into `path_to_import` via closure in `get_template_env`; fixes empty-base relative-import edge case.                                       | §3           |
-| b70e6c4 | migrations.py: skip alembic.ini write when it already exists, mirroring pyproject/gitignore protection.                                                           | §4 residual  |
-| bb42083 | loaders.py: `_normalize_indexes` converts 4 legacy index shapes; `json-specification-reference.md` rewritten to canonical form.                                   | §2           |
+| Touched file                                | Summary                                                                                                                             | Review items |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| `templates/database/model.py.j2`            | self-ref `remote_side=[pk1, pk2, ...]` (all PK fields, not just first); `default=lambda: <spec-value>` for `json_object` / `json_array` when spec declares a default; `Mapped[dict[str, Any]]` / `Mapped[list[Any]]` + `typing.Any` import gated on `ns.has_json`. | §1, §10, §11 |
+| `templates/database/factory.py.j2`          | `create_batch(count, {{ rel.back_populates }}=obj)` replaces the broken `entity_name.lower()=obj`.                                   | §5           |
+| `templates/api/route.py.j2` + `_shared/_tests.j2` | 5 CRUD blocks gated on `entity.api.endpoints`; `_shared/_tests.j2` `get_enum_value` macro uppercases `field_default`.          | §6, §7       |
+| `utils/templates.py` + `generators/infrastructure.py` + `generate.py` + `wizard/actions/generate.py` | `python_root` threaded into `path_to_import` via a closure in `get_template_env`; call sites use `path_to_import(dir, "module", python_root=...)` to avoid empty-base relative imports. | §3           |
+| `generators/migrations.py`                  | Skip `alembic.ini` write when it already exists (mirrors pyproject / gitignore protection).                                          | §4 residual  |
+| `utils/loaders.py` + `docs/agent/json-specification-reference.md` | `_normalize_indexes` converts 4 legacy index shapes before validation; reference docs rewritten to canonical form + back-compat note. | §2           |
 
-**Verified:** `uv run pytest -q` (290 passing, up from 283), `ruff check src tests` clean, `mypy src` clean, live `configure_mappers()` on a self-ref Category probe, and a `python_root: "src"` adopter-shaped probe producing `from main import app` / `from database.engine import get_session`.
+**Verified:** `uv run pytest -q` (290 passing, up from 283), `ruff check src tests` clean, `mypy src` clean, live `configure_mappers()` on single-PK + composite-PK self-ref probes, and a `python_root: "src"` adopter-shaped probe producing `from main import app` / `from database.engine import get_session`.
+
+**Gemini-code-assist review addressed inline (a463a52 → folded into merge):**
+- JSON field `default` values now honored via `default=lambda: <value>` lambda wrappers (was emitting `default=dict` / `default=list` ignoring spec value).
+- Composite-PK self-ref now emits all PK columns in `remote_side` (was emitting only `pk_fields[0]`).
+
+### Skills subtree re-imported (2026-04-19)
+
+Merged to `main` as **`8a34eb3`** (squash of 3 commits on `chore/skills-subtree`). `.claude/skills/` is now a `git subtree` of `https://github.com/nuncaeslupus/my-skills` branch `main`. To pull future upstream skill updates:
+
+```bash
+git remote add shared-skills https://github.com/nuncaeslupus/my-skills.git  # one-time
+git subtree pull --prefix=.claude/skills shared-skills main --squash
+```
+
+Net content diff vs prior: `.claude/skills/mutmut-report/analyze_mutmut.py` now `sys.exit(1)` on `run_cmd` / `find_mutmut` failure. (Gemini-bot correctly flagged that terminating the whole script on one failed mutmut-show is too aggressive — **fix belongs upstream** in `nuncaeslupus/my-skills`, not in this repo.)
 
 ### Earlier fixes (historical)
 
