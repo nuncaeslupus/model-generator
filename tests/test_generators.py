@@ -1066,7 +1066,8 @@ class TestInfrastructureGenerators:
         assert "[project]" in result["content"]
         assert "test-project" in result["content"]
         assert "[tool.mutmut]" in result["content"]
-        assert "[tool.ruff]" in result["content"]
+        assert "[tool.ruff.lint]" in result["content"]
+        assert "[tool.ruff.format]" in result["content"]
         assert "[tool.mypy]" in result["content"]
 
     def test_generate_pyproject_skips_existing(self, project_env):
@@ -1131,6 +1132,88 @@ class TestInfrastructureGenerators:
 
         assert result is not None
         assert result["content"].count(base_dep) == 1
+
+    def test_generate_pyproject_style_defaults_omit_ruff_hardcodes(self, project_env):
+        """With no overrides, ruff-default keys are absent; ruff uses its own."""
+        project_root, config, env = project_env
+        config.pop("style", None)
+        result = generate_pyproject(config, env, project_root, config)
+
+        assert result is not None
+        content = result["content"]
+        # Keys that match ruff defaults must NOT be emitted (ruff uses its own).
+        assert "line-length = " not in content
+        assert "target-version = " not in content
+        assert "quote-style = " not in content
+        assert "indent-style = " not in content
+        # The [tool.ruff] section itself is absent when no ruff-level overrides exist.
+        for line in content.splitlines():
+            assert line.strip() != "[tool.ruff]"
+        # Python-version pins are always emitted (not tool defaults — mypy defaults
+        # to the runtime Python, and requires-python must be declared).
+        assert 'requires-python = ">=3.11"' in content
+        assert 'python_version = "3.11"' in content
+
+    def test_generate_pyproject_style_overrides_emitted(self, project_env):
+        """All four style overrides appear verbatim in the generated pyproject.toml."""
+        project_root, config, env = project_env
+        config["style"] = {
+            "line_length": 100,
+            "python_version": "3.12",
+            "quote_style": "single",
+            "indent_style": "tab",
+        }
+        result = generate_pyproject(config, env, project_root, config)
+
+        assert result is not None
+        content = result["content"]
+        assert "[tool.ruff]" in content
+        assert "line-length = 100" in content
+        assert 'quote-style = "single"' in content
+        assert 'indent-style = "tab"' in content
+        assert 'requires-python = ">=3.12"' in content
+        assert 'python_version = "3.12"' in content
+        # target-version is auto-inferred by ruff from requires-python; not emitted.
+        assert "target-version = " not in content
+
+    def test_generate_pyproject_python_version_drives_both_pins(self, project_env):
+        """Setting only python_version updates requires-python AND mypy python_version,
+        without emitting any ruff-level keys."""
+        project_root, config, env = project_env
+        config["style"] = {"python_version": "3.12"}
+        result = generate_pyproject(config, env, project_root, config)
+
+        assert result is not None
+        content = result["content"]
+        assert 'requires-python = ">=3.12"' in content
+        assert 'python_version = "3.12"' in content
+        assert "line-length = " not in content
+        assert "target-version = " not in content
+        assert "quote-style = " not in content
+        assert "indent-style = " not in content
+
+    def test_generate_pyproject_handles_null_style(self, project_env):
+        """`style: null` in YAML parses as None — must not crash the generator."""
+        project_root, config, env = project_env
+        config["style"] = None
+        result = generate_pyproject(config, env, project_root, config)
+
+        assert result is not None
+        # Default python_version still applied, no ruff-level overrides emitted.
+        assert 'requires-python = ">=3.11"' in result["content"]
+        assert 'python_version = "3.11"' in result["content"]
+        assert "line-length = " not in result["content"]
+
+    def test_generate_pyproject_project_config_style_wins(self, project_env):
+        """project_config.style takes precedence over config.style when both are set."""
+        project_root, config, env = project_env
+        config["style"] = {"line_length": 88}
+        project_config = {**config, "style": {"line_length": 100}}
+        result = generate_pyproject(config, env, project_root, project_config)
+
+        assert result is not None
+        assert "line-length = 100" in result["content"]
+        assert "line-length = 88" not in result["content"]
 
     def test_generate_base(self, project_env):
         project_root, config, env = project_env

@@ -324,9 +324,14 @@ naming:
   unique: "uq_{table}_{fields}"
   fk: "fk_{table}_{field}"
 
-# Code style
+# Code style (opt-in overrides — absent keys yield tool-native defaults)
+# Surfaced via .model-generator.yaml:
+#   style:
+#     python_version: "3.12"   # drives requires-python + mypy python_version
+#     line_length: 100         # emitted as [tool.ruff] line-length
+#     quote_style: "single"    # emitted as [tool.ruff.format] quote-style
+#     indent_style: "tab"      # emitted as [tool.ruff.format] indent-style
 style:
-  line_length: 88
   quotes: double
   indent: 4
   type_hints: true

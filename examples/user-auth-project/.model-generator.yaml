@@ -22,3 +22,11 @@ paths:
   enums: backend/src/database/models/enums.py
   constraints: backend/src/database/models/constraints.py
   migrations: alembic
+
+# Optional: override quality-tool defaults in the generated pyproject.toml.
+# Any key not listed falls through to the tool's own default (ruff/mypy).
+# style:
+#   python_version: "3.12"   # drives requires-python + mypy python_version
+#   line_length: 100
+#   quote_style: "single"
+#   indent_style: "tab"
