@@ -74,7 +74,7 @@ make test-all   # pytest (all tests)
 make lint       # ruff check + mypy
 make format     # ruff auto-fix + format
 make clean      # remove caches
-make update-skills  # pull latest shared Claude skills from the 'shared-skills' remote
+make update-skills  # pull latest shared Claude skills from the my-skills repo
 ```
 
 ### CLI Entry Points
