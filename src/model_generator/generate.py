@@ -82,7 +82,7 @@ GENERATORS = {
     "init": lambda m, c, e, p, mp: generate_init(m, c, e, p),
     "database": lambda m, c, e, p, mp: generate_database_model(m, c, e, p),
     "factories": lambda m, c, e, p, mp: generate_factories(m, c, e, p),
-    "api-models": lambda m, c, e, p, mp: generate_api_models(m, c, e, p),
+    "api-models": lambda m, c, e, p, mp: generate_api_models(m, c, e, p, mp),
     "api-init": lambda m, c, e, p, mp: generate_api_init(m, c, e, p),
     "api-pagination": lambda m, c, e, p, mp: generate_api_pagination(m, c, e, p),
 }
