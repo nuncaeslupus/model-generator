@@ -313,7 +313,7 @@ def generate(
 
     model = load_model(model_path)
     config = load_config(stack)
-    env = get_template_env(stack)
+    env = get_template_env(stack, config)
 
     domain = model.get("domain", "unknown")
     entity_count = len(model.get("entities", {}))
@@ -578,7 +578,7 @@ def main() -> None:
             print()
 
     config = load_config(args.stack)
-    env = get_template_env(args.stack)
+    env = get_template_env(args.stack, config)
 
     # Extract domains from all model files (only those with api-enabled entities)
     domains = []

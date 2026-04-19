@@ -39,9 +39,37 @@ def load_model(model_path: Path) -> dict:
             print(f"Line {e.lineno}: {lines[e.lineno - 1]}")
         sys.exit(1)
 
-    _validate_model_schema(data, model_path)
     _normalize_field_types(data)
+    _normalize_indexes(data)
+    _validate_model_schema(data, model_path)
     return cast(dict[str, Any], data)
+
+
+def _normalize_indexes(data: dict) -> None:
+    """Normalize legacy index shapes to canonical form.
+
+    Early docs showed ``{"type": "single"|"composite"|"unique", ...}`` but the
+    schema (and downstream templates) only accept ``{"fields": [...],
+    "unique": bool}``. Convert legacy entries in place so validation and
+    generation both see the canonical shape:
+
+        {"type": "single", "field": "x"}          → {"fields": ["x"]}
+        {"type": "composite", "fields": [...]}    → {"fields": [...]}
+        {"type": "unique", "field": "x"}          → {"fields": ["x"], "unique": True}
+        {"type": "unique", "fields": [...]}       → {"fields": [...], "unique": True}
+    """
+    for entity in data.get("entities", {}).values():
+        indexes = entity.get("indexes")
+        if not isinstance(indexes, list):
+            continue
+        for idx in indexes:
+            if not isinstance(idx, dict):
+                continue
+            legacy_type = idx.pop("type", None)
+            if "field" in idx and "fields" not in idx:
+                idx["fields"] = [idx.pop("field")]
+            if legacy_type == "unique":
+                idx.setdefault("unique", True)
 
 
 def _normalize_field_types(data: dict) -> None:

@@ -193,16 +193,20 @@ def generate_main(
     main_path = config["paths"].get("main", "backend/src/main.py")
     output_path = project_root / main_path
 
+    python_root = config.get("python_root", "")
+
     api_routes_path = config["paths"].get("api_routes", "backend/src/api/routes")
-    api_routes_import = path_to_import(api_routes_path)
+    api_routes_import = path_to_import(api_routes_path, python_root=python_root)
 
     db_models_path = config["paths"].get(
         "database_models", "backend/src/database/models"
     )
-    db_import = path_to_import(str(Path(db_models_path).parent))
+    db_import = path_to_import(
+        str(Path(db_models_path).parent), python_root=python_root
+    )
 
     main_dir = str(Path(main_path).parent)
-    main_module = path_to_import(main_dir) + ".main"
+    main_module = path_to_import(main_dir, "main", python_root=python_root)
 
     template = env.get_template("infrastructure/main.py.j2")
     content = template.render(
@@ -226,23 +230,27 @@ def generate_test_conftest_root(
     conftest_path = config["paths"].get("test_conftest_root", "tests/conftest.py")
     output_path = project_root / conftest_path
 
+    python_root = config.get("python_root", "")
+
     database_models_path = config["paths"].get(
         "database_models", "backend/src/database/models"
     )
-    database_models_import = path_to_import(database_models_path)
+    database_models_import = path_to_import(
+        database_models_path, python_root=python_root
+    )
 
     main_path = config["paths"].get("main", "backend/src/main.py")
     main_dir = str(Path(main_path).parent)
-    main_import = path_to_import(main_dir) + ".main"
+    main_import = path_to_import(main_dir, "main", python_root=python_root)
 
     engine_path = config["paths"].get("engine", "backend/src/database/engine.py")
     engine_dir = str(Path(engine_path).parent)
-    engine_import = path_to_import(engine_dir) + ".engine"
+    engine_import = path_to_import(engine_dir, "engine", python_root=python_root)
 
     factories_path = config["paths"].get(
         "factories", "backend/src/database/models/factories"
     )
-    factories_import = path_to_import(factories_path)
+    factories_import = path_to_import(factories_path, python_root=python_root)
 
     template = env.get_template("tests/conftest_root.py.j2")
     content = template.render(

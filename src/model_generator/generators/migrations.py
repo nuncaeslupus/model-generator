@@ -19,10 +19,12 @@ def generate_migration_init(
     migrations_dir.mkdir(parents=True, exist_ok=True)
     versions_dir.mkdir(parents=True, exist_ok=True)
 
-    # alembic.ini
-    template = env.get_template("migrations/ini.j2")
-    content = template.render(config=config)
-    outputs.append({"path": project_root / "alembic.ini", "content": content})
+    # alembic.ini (bootstrap-only; don't overwrite adopter customizations)
+    alembic_ini_path = project_root / "alembic.ini"
+    if not alembic_ini_path.exists():
+        template = env.get_template("migrations/ini.j2")
+        content = template.render(config=config)
+        outputs.append({"path": alembic_ini_path, "content": content})
 
     # env.py
     template = env.get_template("migrations/env.py.j2")
