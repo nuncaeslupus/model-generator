@@ -223,7 +223,7 @@ class {{ entity_name }}Factory(factory.alchemy.SQLAlchemyModelFactory):
         # Create {{ rel_name }} ({{ rel.type }})
         if "{{ rel_name }}" not in kwargs or kwargs["{{ rel_name }}"]:
             count = kwargs.get("{{ rel_name }}_count", fake.pyint(min_value=1, max_value=3))
-            {{ rel.target }}Factory.create_batch(count, {{ entity_name.lower() }}=obj)
+            {{ rel.target }}Factory.create_batch(count, {{ rel.back_populates }}=obj)
 {% endif %}
 {% endfor %}
 {% endif %}
