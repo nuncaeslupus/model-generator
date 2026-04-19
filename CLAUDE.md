@@ -74,6 +74,7 @@ make test-all   # pytest (all tests)
 make lint       # ruff check + mypy
 make format     # ruff auto-fix + format
 make clean      # remove caches
+make update-skills  # pull latest shared Claude skills from the 'shared-skills' remote
 ```
 
 ### CLI Entry Points
@@ -103,6 +104,10 @@ uv run pytest                    # 149 tests
 - `main.py` needs `ruff check --fix` after regeneration (I001 workaround)
 - **NEVER use sed on Jinja2 templates** — shell brace expansion destroys `{{ }}` syntax
 - mutmut: pin to `<3.5.0` (3.5.0 is broken), use `also_copy = ["examples/"]`
+- `.claude/skills/` is imported from a shared repo via `git subtree` (remote
+  name `shared-skills`). `make update-skills` pulls the latest and
+  auto-registers the remote on fresh clones. Project-specific skills can be
+  dropped alongside the shared ones — subtree won't touch them.
 
 ---
 

@@ -1,4 +1,4 @@
-.PHONY: lint format test test-all clean sync
+.PHONY: lint format test test-all clean sync update-skills
 
 sync:
 	uv sync --extra dev
@@ -18,3 +18,7 @@ test-all:
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	rm -rf .mypy_cache .ruff_cache .pytest_cache
+
+update-skills:
+	@git remote get-url shared-skills >/dev/null 2>&1 || git remote add shared-skills https://github.com/nuncaeslupus/my-skills.git
+	git subtree pull --prefix .claude/skills shared-skills main --squash
