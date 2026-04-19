@@ -465,17 +465,21 @@ For immutable entities, use `["list", "create", "get"]`.
 
 ```json
 "indexes": [
-  {"type": "single", "field": "email"},
-  {"type": "composite", "fields": ["user_id", "created_at"]},
-  {"type": "unique", "fields": ["user_id", "exchange_id"]}
+  {"fields": ["email"]},
+  {"fields": ["user_id", "created_at"]},
+  {"fields": ["user_id", "exchange_id"], "unique": true}
 ]
 ```
 
-| Type | Description |
-|------|-------------|
-| `single` | Index on one field |
-| `composite` | Index on multiple fields |
-| `unique` | Unique constraint on field combination |
+Each entry declares a database index over one or more fields. Set `unique: true` to also enforce a unique constraint on the tuple.
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `fields` | `string[]` | yes | Columns the index covers (one entry = single-column, multiple = composite) |
+| `unique` | `bool` | no | Emit a `UniqueConstraint` instead of a plain `Index` (default `false`) |
+| `name` | `string` | no | Override the default auto-generated index name |
+
+Legacy shapes `{"type": "single"\|"composite"\|"unique", "field"\|"fields": ...}` are accepted for backward compatibility and normalized to the canonical form at load time, but new specs should use the form above.
 
 ---
 
@@ -648,7 +652,7 @@ models/
         }
       },
       "indexes": [
-        {"type": "single", "field": "email"}
+        {"fields": ["email"]}
       ],
       "api": {
         "enabled": true,
