@@ -234,8 +234,11 @@ def _cleanup_selective(project_root: Path, paths: dict, dry_run: bool) -> None:
     for pattern in patterns:
         files_to_delete.extend(project_root.glob(pattern))
 
-    # Find __pycache__ in generated directories
-    search_dirs = set()
+    # Find __pycache__ in generated directories (recursive) and their parents
+    # (non-recursive — parents may contain user-written code whose __pycache__
+    # must not be touched).
+    generated_dirs: set[Path] = set()
+    parent_dirs: set[Path] = set()
     for key in [
         "database_models",
         "factories",
@@ -247,19 +250,24 @@ def _cleanup_selective(project_root: Path, paths: dict, dry_run: bool) -> None:
         if key in paths:
             path = project_root / paths[key]
             if path.exists():
-                search_dirs.add(path)
-                if key != "migrations": # search parent for src/api, src/database
-                    search_dirs.add(path.parent)
+                generated_dirs.add(path)
+                if key != "migrations":
+                    parent_dirs.add(path.parent)
 
-    for d in search_dirs:
+    for d in generated_dirs:
         if d.is_dir():
             for pycache in d.rglob("__pycache__"):
+                dirs_to_delete.append(pycache)
+
+    for d in parent_dirs:
+        if d.is_dir():
+            for pycache in d.glob("__pycache__"):
                 dirs_to_delete.append(pycache)
 
     print("🗑️  Selective cleanup mode:")
     deleted_count = 0
     # Use set to avoid duplicates, but filter for existence
-    for file_path in sorted(set(f for f in files_to_delete if f.exists())):
+    for file_path in sorted({f for f in files_to_delete if f.exists()}):
         print(f"  {'Would delete' if dry_run else 'Deleting'}: {file_path}")
         if not dry_run:
             if file_path.is_file():
@@ -270,7 +278,6 @@ def _cleanup_selective(project_root: Path, paths: dict, dry_run: bool) -> None:
         if dir_path.exists() and dir_path.is_dir():
             print(f"  {'Would delete' if dry_run else 'Deleting'}: {dir_path}")
             if not dry_run:
-                import shutil
                 shutil.rmtree(dir_path)
 
     if not dry_run:
