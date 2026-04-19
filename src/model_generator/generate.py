@@ -142,6 +142,16 @@ def _cleanup_full(project_root: Path, paths: dict, dry_run: bool) -> None:
         if cache_path.exists():
             dirs_to_delete.add(cache_path)
 
+    # Find all __pycache__ recursively in project source/tests
+    for src_dir in [
+        project_root / "backend",
+        project_root / "tests",
+        project_root / "src",
+    ]:
+        if src_dir.exists():
+            for pycache in src_dir.rglob("__pycache__"):
+                dirs_to_delete.add(pycache)
+
     # Generated files
     alembic_ini = project_root / "alembic.ini"
     if alembic_ini.exists():
@@ -169,23 +179,52 @@ def _cleanup_full(project_root: Path, paths: dict, dry_run: bool) -> None:
 def _cleanup_selective(project_root: Path, paths: dict, dry_run: bool) -> None:
     """Delete only generated files, not entire directories."""
     files_to_delete: list[Path] = []
+    dirs_to_delete: list[Path] = []
 
     patterns = []
     for key in ["database_models", "factories", "api_models", "api_routes"]:
         if key in paths:
             patterns.append(f"{paths[key]}/*.py")
+            # Also include __init__.py in these directories
+            patterns.append(f"{paths[key]}/__init__.py")
 
     api_tests = paths.get("api_tests", "tests/contract/api")
     patterns.append(f"{api_tests}/*.py")
+    patterns.append(f"{api_tests}/__init__.py")
+
+    # Add parent __init__.py for tests
+    test_dir = api_tests
+    while "/" in test_dir:
+        test_dir = str(Path(test_dir).parent)
+        patterns.append(f"{test_dir}/__init__.py")
 
     migrations = paths.get("migrations", "alembic")
     patterns.append(f"{migrations}/versions/*.py")
+    # Alembic infra files
+    patterns.append(f"{migrations}/env.py")
+    patterns.append(f"{migrations}/script.py.mako")
+    patterns.append(f"{migrations}/README.md")
+    patterns.append(f"{migrations}/versions/.gitkeep")
 
-    for key in ["base", "engine", "main", "test_conftest_root"]:
-        if key in paths:
-            infra_path = project_root / paths[key]
-            if infra_path.exists():
-                files_to_delete.append(infra_path)
+    # All explicit file paths in config
+    for key, path in paths.items():
+        if isinstance(path, str) and (path.endswith(".py") or path.endswith(".ini")):
+            files_to_delete.append(project_root / path)
+
+    # Derived infrastructure files
+    if "api_models" in paths:
+        api_dir = Path(paths["api_models"]).parent
+        files_to_delete.append(project_root / api_dir / "utils.py")
+        files_to_delete.append(project_root / api_dir / "__init__.py")
+
+    if "database_models" in paths:
+        db_dir = Path(paths["database_models"]).parent
+        files_to_delete.append(project_root / db_dir / "types.py")
+        files_to_delete.append(project_root / db_dir / "__init__.py")
+
+    if "main" in paths:
+        src_dir = Path(paths["main"]).parent
+        files_to_delete.append(project_root / src_dir / "__init__.py")
 
     # Also include alembic.ini
     alembic_ini = project_root / "alembic.ini"
@@ -195,15 +234,44 @@ def _cleanup_selective(project_root: Path, paths: dict, dry_run: bool) -> None:
     for pattern in patterns:
         files_to_delete.extend(project_root.glob(pattern))
 
+    # Find __pycache__ in generated directories
+    search_dirs = set()
+    for key in [
+        "database_models",
+        "factories",
+        "api_models",
+        "api_routes",
+        "api_tests",
+        "migrations",
+    ]:
+        if key in paths:
+            path = project_root / paths[key]
+            if path.exists():
+                search_dirs.add(path)
+                if key != "migrations": # search parent for src/api, src/database
+                    search_dirs.add(path.parent)
+
+    for d in search_dirs:
+        if d.is_dir():
+            for pycache in d.rglob("__pycache__"):
+                dirs_to_delete.append(pycache)
+
     print("🗑️  Selective cleanup mode:")
     deleted_count = 0
-    for file_path in sorted(set(files_to_delete)):
-        if "__pycache__" in str(file_path):
-            continue
+    # Use set to avoid duplicates, but filter for existence
+    for file_path in sorted(set(f for f in files_to_delete if f.exists())):
         print(f"  {'Would delete' if dry_run else 'Deleting'}: {file_path}")
         if not dry_run:
-            file_path.unlink()
-            deleted_count += 1
+            if file_path.is_file():
+                file_path.unlink()
+                deleted_count += 1
+
+    for dir_path in sorted(set(dirs_to_delete)):
+        if dir_path.exists() and dir_path.is_dir():
+            print(f"  {'Would delete' if dry_run else 'Deleting'}: {dir_path}")
+            if not dry_run:
+                import shutil
+                shutil.rmtree(dir_path)
 
     if not dry_run:
         print(f"✅ Cleanup complete ({deleted_count} files)")

@@ -142,9 +142,14 @@ class TestCleanupSelective:
 
     def test_deletes_migration_files(self, tmp_path):
         _scaffold(tmp_path)
+        # Add script.py.mako to scaffold manually for this test if needed
+        (tmp_path / "alembic/script.py.mako").write_text("# mako")
+
         _cleanup_selective(tmp_path, PATHS, dry_run=False)
 
         assert not (tmp_path / "alembic/versions/001_init.py").exists()
+        assert not (tmp_path / "alembic/env.py").exists()
+        assert not (tmp_path / "alembic/script.py.mako").exists()
 
     def test_preserves_directories(self, tmp_path):
         """Selective mode deletes files, not directories."""
@@ -171,7 +176,7 @@ class TestCleanupSelective:
         assert (tmp_path / "tests/api/test_users_api.py").exists()
         assert (tmp_path / "alembic.ini").exists()
 
-    def test_skips_pycache_files(self, tmp_path):
+    def test_deletes_pycache_files(self, tmp_path):
         _scaffold(tmp_path)
         cache_file = tmp_path / "src/database/models/__pycache__/models.cpython-312.pyc"
         cache_file.parent.mkdir(parents=True, exist_ok=True)
@@ -179,7 +184,8 @@ class TestCleanupSelective:
 
         _cleanup_selective(tmp_path, PATHS, dry_run=False)
 
-        assert cache_file.exists()
+        assert not cache_file.exists()
+        assert not cache_file.parent.exists()
 
     def test_handles_empty_project(self, tmp_path):
         """Should not error when nothing exists to delete."""

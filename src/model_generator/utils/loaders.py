@@ -45,10 +45,11 @@ def load_model(model_path: Path) -> dict:
 
 
 def _normalize_field_types(data: dict) -> None:
-    """Normalize field type aliases so templates need only handle canonical types.
+    """Normalize field type aliases and constraints.
 
-    Currently normalizes:
-    - "integer" → "counter" (same Column(Integer) mapping, different spec semantics)
+    Currently:
+    - Normalizes "integer" → "counter".
+    - Moves "timestamp_after" from constraints array to direct field property.
     """
     aliases: dict[str, str] = {"integer": "counter"}
     for entity in data.get("entities", {}).values():
@@ -56,9 +57,32 @@ def _normalize_field_types(data: dict) -> None:
         if not isinstance(fields, dict):
             continue
         for field in fields.values():
+            # Type aliases
             original = field.get("type", "")
             if original in aliases:
                 field["type"] = aliases[original]
+
+            # Standardize timestamp_after constraint
+            if "constraints" in field and isinstance(field["constraints"], list):
+                # Find timestamp_after in constraints
+                ts_after_idx = -1
+                ts_after_val = None
+                for i, c in enumerate(field["constraints"]):
+                    if (
+                        isinstance(c, dict)
+                        and c.get("type") == "timestamp_after"
+                        and "after" in c
+                    ):
+                        ts_after_idx = i
+                        ts_after_val = c["after"]
+                        break
+
+                if ts_after_idx != -1:
+                    # Move to direct property if not already set
+                    if "timestamp_after" not in field:
+                        field["timestamp_after"] = ts_after_val
+                    # Remove from constraints array to avoid redundant handling
+                    field["constraints"].pop(ts_after_idx)
 
 
 def _validate_model_schema(data: dict, model_path: Path) -> None:
