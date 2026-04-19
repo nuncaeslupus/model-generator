@@ -105,7 +105,7 @@ def run_generate() -> None:
 
         stack = "python-fastapi"
         config = load_config(stack)
-        env = get_template_env(stack)
+        env = get_template_env(stack, config)
 
         domains = []
         for model_file in selected_files:

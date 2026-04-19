@@ -19,6 +19,39 @@ class TestPathToImport:
     def test_backslash_path(self):
         assert path_to_import("backend\\src\\models") == "backend.src.models"
 
+    def test_python_root_stripped(self):
+        assert path_to_import("src/api/routes", python_root="src") == "api.routes"
+
+    def test_python_root_with_trailing_slash(self):
+        assert path_to_import("src/api/routes", python_root="src/") == "api.routes"
+
+    def test_python_root_exact_match(self):
+        assert path_to_import("src", python_root="src") == ""
+
+    def test_python_root_no_match_is_noop(self):
+        assert (
+            path_to_import("backend/src/models", python_root="other")
+            == "backend.src.models"
+        )
+
+    def test_python_root_with_module(self):
+        result = path_to_import("src/api", "routes", python_root="src")
+        assert result == "api.routes"
+
+
+class TestPathToImportFilter:
+    """Filter registration binds python_root from the config closure."""
+
+    def test_filter_strips_python_root(self):
+        env = get_template_env("python-fastapi", config={"python_root": "src"})
+        filter_fn = env.filters["path_to_import"]
+        assert filter_fn("src/api/models") == "api.models"
+
+    def test_filter_without_config_behaves_as_before(self):
+        env = get_template_env("python-fastapi")
+        filter_fn = env.filters["path_to_import"]
+        assert filter_fn("backend/src/api/models") == "backend.src.api.models"
+
 
 class TestWrapText:
     """Test text wrapping utility."""

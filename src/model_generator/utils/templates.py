@@ -9,17 +9,29 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 
-def path_to_import(file_path: str, module_name: str = "") -> str:
+def path_to_import(file_path: str, module_name: str = "", python_root: str = "") -> str:
     """
     Convert a file path to a Python import path.
 
     Examples:
         backend/src/database/models → backend.src.database.models
         src/api/validators → src.api.validators
+
+    When ``python_root`` is set, strip it as a prefix before conversion so
+    adopters using a ``src``-layout get ``models.database`` instead of
+    ``src.models.database``:
+
+        path_to_import("src/api/validators", python_root="src")
+        → "api.validators"
     """
-    import_base = file_path.replace("/", ".").replace("\\", ".")
+    stripped = file_path
+    if python_root:
+        pr = python_root.rstrip("/")
+        if stripped == pr or stripped.startswith(pr + "/"):
+            stripped = stripped[len(pr) :].lstrip("/")
+    import_base = stripped.replace("/", ".").replace("\\", ".")
     if module_name:
-        return f"{import_base}.{module_name}"
+        return f"{import_base}.{module_name}" if import_base else module_name
     return import_base
 
 
@@ -60,8 +72,15 @@ def _normalize_decimal(value: float | int | str) -> str:
     return str(d)
 
 
-def get_template_env(stack: str = "python-fastapi") -> Environment:
-    """Create Jinja2 environment for templates."""
+def get_template_env(
+    stack: str = "python-fastapi", config: dict | None = None
+) -> Environment:
+    """Create Jinja2 environment for templates.
+
+    If ``config`` contains a ``python_root`` key, the ``path_to_import``
+    filter closes over it so templates can emit import paths stripped of
+    the project's Python source root.
+    """
     script_dir = Path(__file__).parent.parent
     template_dir = script_dir / "stacks" / stack / "templates"
 
@@ -72,9 +91,14 @@ def get_template_env(stack: str = "python-fastapi") -> Environment:
         keep_trailing_newline=True,
     )
 
+    python_root = (config or {}).get("python_root", "")
+
+    def _path_to_import_filter(file_path: str, module_name: str = "") -> str:
+        return path_to_import(file_path, module_name, python_root)
+
     # Add custom filters
     env.filters["dict2items"] = lambda d: [{"key": k, "value": v} for k, v in d.items()]
-    env.filters["path_to_import"] = path_to_import
+    env.filters["path_to_import"] = _path_to_import_filter
     env.filters["wrap"] = wrap_text
     env.filters["normalize_decimal"] = _normalize_decimal
 
