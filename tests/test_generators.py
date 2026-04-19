@@ -1192,7 +1192,7 @@ class TestInfrastructureGenerators:
         assert "quote-style = " not in content
         assert "indent-style = " not in content
 
-    def test_generate_pyproject_handles_null_style(self, project_env):
+def test_generate_pyproject_handles_null_style(self, project_env):
         """`style: null` in YAML parses as None — must not crash the generator."""
         project_root, config, env = project_env
         config["style"] = None

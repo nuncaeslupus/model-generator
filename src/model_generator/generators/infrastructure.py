@@ -166,7 +166,7 @@ def generate_pyproject(
     main_path = paths.get("main", "backend/src/main.py")
     package_root = str(Path(main_path).parent)
 
-    raw_style = {
+raw_style = {
         **(config.get("style") or {}),
         **(project_config.get("style") or {}),
     }
