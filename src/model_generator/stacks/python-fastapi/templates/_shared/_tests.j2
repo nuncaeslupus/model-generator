@@ -21,7 +21,7 @@ true
 {#- Macro to get proper enum value -#}
 {% macro get_enum_value(enum_name, field_default='', alternative=false, enums=none) -%}
 {%- if field_default and not alternative -%}
-{{ field_default }}
+{{ field_default | upper }}
 {%- elif enums and enum_name in enums -%}
 {%- set enum_def = enums[enum_name] -%}
 {%- set enum_values = enum_def.get('values', []) -%}

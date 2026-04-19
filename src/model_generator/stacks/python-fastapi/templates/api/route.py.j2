@@ -124,10 +124,12 @@ router = APIRouter(tags=["{{ model.domain }}"])
 {% elif pk_type in ['text', 'reference'] %}
 {% set pk_python_type = 'str' %}
 {% endif %}
+{% set endpoints = entity.api.endpoints if (entity.api is defined and entity.api.endpoints is defined) else ["list", "create", "get", "update", "delete"] %}
 
 {{ section_banner(entity_name + ' CRUD OPERATIONS') }}
 
 
+{% if "list" in endpoints %}
 # ----- SECTION 1: {{ entity_name }} List Operations -----
 
 @router.get("/{{ entity_plural_kebab }}", response_model=PaginatedResponse[{{ entity_name }}Response])
@@ -251,8 +253,10 @@ async def list_{{ entity_plural }}(
     page_info = calculate_page_info(page, page_size, total_items)
 
     return PaginatedResponse(items=response_items, page_info=page_info)
+{% endif %}
 
 
+{% if "create" in endpoints %}
 # ----- SECTION 2: {{ entity_name }} Create Operations -----
 
 @router.post("/{{ entity_plural_kebab }}", response_model={{ entity_name }}Response, status_code=http_status.HTTP_201_CREATED)
@@ -284,8 +288,10 @@ async def create_{{ entity_lower }}(
     except IntegrityError as e:
         await session.rollback()
         raise format_integrity_error(e, "{{ entity_name }}") from None
+{% endif %}
 
 
+{% if "get" in endpoints %}
 # ----- SECTION 3: {{ entity_name }} Individual Read Operations -----
 
 @router.get("/{{ entity_plural_kebab }}/{{ '{' }}{{ pk_field }}{{ '}' }}", response_model={{ entity_name }}Response)
@@ -298,8 +304,9 @@ async def get_{{ entity_lower }}(
     if not {{ entity_lower }}:
         raise format_not_found_error("{{ entity_name }}", {{ pk_field }})
     return _convert_{{ entity_lower }}_to_response({{ entity_lower }})
+{% endif %}
 
-{% if entity.mutability | default('mutable') != 'immutable' %}
+{% if "update" in endpoints and entity.mutability | default('mutable') != 'immutable' %}
 
 # ----- SECTION 4: {{ entity_name }} Update Operations -----
 
@@ -329,6 +336,7 @@ async def update_{{ entity_lower }}(
 {% endif %}
 
 
+{% if "delete" in endpoints %}
 # ----- SECTION 5: {{ entity_name }} Delete Operations -----
 
 @router.delete("/{{ entity_plural_kebab }}/{{ '{' }}{{ pk_field }}{{ '}' }}", status_code=http_status.HTTP_204_NO_CONTENT, response_model=None)
@@ -344,6 +352,7 @@ async def delete_{{ entity_lower }}(
     await session.delete({{ entity_lower }})
     await session.commit()
     return Response(status_code=http_status.HTTP_204_NO_CONTENT)
+{% endif %}
 
 
 {% endfor %}
