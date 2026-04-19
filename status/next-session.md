@@ -1,19 +1,27 @@
 # Next Session Plan
 
-## Current State (2026-04-19)
+## Current State (2026-04-19, end of day)
 
 Stable release. 9 of 15 items from the 2026-04-19 template-level external review landed on `main`. Plus the `.claude/skills/` subtree was formally re-imported from `shared-skills` (`https://github.com/nuncaeslupus/my-skills`) so future upstream skill updates can be pulled via `git subtree pull`.
 
 - `2bf39c6` — PR #2 `fix: external review follow-up — 9 of 15 items shipped` (squashed; included gemini-bot follow-up for JSON default lambda emission + composite-PK `remote_side`).
 - `8a34eb3` — PR #3 `chore(skills): re-import .claude/skills as a git subtree` (squashed).
 
-290 tests passing, `ruff check src tests` clean, `mypy src` clean on `main`.
+290 tests passing on `main`, `ruff check src tests` clean, `mypy src` clean.
+
+### §14 — PR #6 open (awaiting merge)
+
+Branch `feat/14-quality-tool-defaults`, two commits:
+- `f8f1a9e` — feat(infrastructure): surface opt-in style overrides; let ruff defaults win
+- `4025ace` — fix(infrastructure): merge style from both config sources; handle null (Gemini-bot review addressed inline)
+
+295 tests passing on the branch. Reply posted on the bot's review thread clarifying which concern was a real bug (null handling) vs latent refactor risk (parameter divergence). After merge: move §14 to "Recently Completed Fixes" and advance sequencing to §8.
 
 ---
 
-## Priority Next Session — Remaining Review Items (§8, §9, §12–§15)
+## Priority Next Session — Remaining Review Items (§8, §9, §12, §13, §15)
 
-Six items from the 2026-04-19 review were explicitly deferred with user approval. Each needs its own plan before implementation; sketches below.
+Five items from the 2026-04-19 review remain (§14 is in-flight on PR #6). Each needs its own plan before implementation; sketches below.
 
 ### §8 — `binary` field type (blocker)
 
@@ -55,13 +63,6 @@ Six items from the 2026-04-19 review were explicitly deferred with user approval
 **Surface:** `templates/infrastructure/encrypted_bytes.py.j2` emits the `TypeDecorator` class; `model.py.j2` emits the decorated column when the field declares `encrypt`.
 **Estimated scope:** ~half day on top of §8.
 
-### §14 — Quality-tool defaults per-project (nice-to-have)
-
-**What:** `quality:` section in `.model-generator.yaml` overrides the hardcoded `line-length = 88` (ruff) and `python_version = "3.11"` (mypy) in the generated `pyproject.toml.j2`.
-**Why valuable:** adopters on `line-length = 100` / Python 3.12 currently get unnecessary reformat churn on first save.
-**Surface:** thread `quality` from config through `generate_pyproject` in `generators/infrastructure.py`; replace the hardcodes in `templates/infrastructure/pyproject.toml.j2` with `{{ quality.line_length | default(88) }}` etc.
-**Estimated scope:** ~half day; small surface, high user-value.
-
 ### §15 — One-file-per-entity (nice-to-have)
 
 **What:** Optional emit mode where each entity writes to `models/<entity>.py` instead of one file per domain.
@@ -71,7 +72,7 @@ Six items from the 2026-04-19 review were explicitly deferred with user approval
 
 ### Sequencing recommendation
 
-1. **§14 first** (quality-tool defaults) — quickest, unblocks adopter adoption, no dependencies.
+1. **Merge PR #6** first (§14 complete pending review).
 2. **§8** (binary type) — prerequisite for §13.
 3. **§13** (encrypted-at-rest) — tacks onto §8.
 4. **§9** (owner-scoping) — standalone, largest risk to `route.py.j2`.
@@ -82,6 +83,7 @@ Six items from the 2026-04-19 review were explicitly deferred with user approval
 
 - **Composite-FK `__table_args__` emission.** Verifying my composite-PK self-ref fix (PR2-c) exposed that `model.py.j2` emits N separate `ForeignKey(...)` columns for a multi-column FK instead of a single `ForeignKeyConstraint` in `__table_args__`. SQLAlchemy's `configure_mappers()` raises `AmbiguousForeignKeysError` when two entities (or one entity, as in self-ref) share multiple FK paths — even when both sides specify `foreign_keys`. Affects any composite-FK relationship, not just self-ref. Scope: new spec shape (`relationships[].composite_fk: true`?) + `__table_args__` emission change. Not blocking any current adopter.
 - **Upstream fix in `nuncaeslupus/my-skills`.** Gemini-bot correctly flagged on PR #3 that `.claude/skills/mutmut-report/analyze_mutmut.py`'s `run_cmd` should raise rather than `sys.exit(1)` (otherwise a single failing `mutmut show` terminates the entire analysis). Fix belongs upstream — file a PR against `nuncaeslupus/my-skills`, then pull via `git subtree pull --prefix=.claude/skills shared-skills main --squash`.
+- **`make lint` broken on `main` (pre-existing).** Discovered during §14 work. `examples/user-auth-project/backend/src/api/models/pagination.py:31` uses Python 3.12 generic syntax (`[T]`) while the root mypy config pins `python_version = "3.11"`. The file is gitignored generated output, but `make lint` runs `mypy .` over the whole tree and trips on it. Options: (a) add `examples/*/backend` to mypy `exclude` in root `pyproject.toml`; (b) tighten `make lint` to `mypy src`. Not blocking §14 or any feature; flagged in PR #6 body.
 
 ---
 
