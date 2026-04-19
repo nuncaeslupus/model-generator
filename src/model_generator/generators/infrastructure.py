@@ -166,7 +166,10 @@ def generate_pyproject(
     main_path = paths.get("main", "backend/src/main.py")
     package_root = str(Path(main_path).parent)
 
-    raw_style = config.get("style", {})
+    raw_style = {
+        **(config.get("style") or {}),
+        **(project_config.get("style") or {}),
+    }
     style = {
         "python_version": raw_style.get("python_version", "3.11"),
         "line_length": raw_style.get("line_length"),
