@@ -332,8 +332,8 @@ naming:
 #     quote_style: "single"    # emitted as [tool.ruff.format] quote-style
 #     indent_style: "tab"      # emitted as [tool.ruff.format] indent-style
 style:
-  quotes: double
-  indent: 4
+  quote_style: double
+  indent_style: space
   type_hints: true
   docstrings: true
   section_headers: true
