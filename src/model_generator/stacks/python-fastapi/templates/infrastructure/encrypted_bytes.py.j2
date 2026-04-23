@@ -1,4 +1,4 @@
-{#-
+{-#
   Encrypted Bytes TypeDecorator
   Encrypts data at rest using Fernet symmetric encryption
 -#}
@@ -20,12 +20,24 @@ Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.g
 """
 
 import os
-from base64 import b64decode, b64encode
 
-from sqlalchemy import Column, LargeBinary, TypeDecorator, TypeEngine
+from sqlalchemy import LargeBinary, TypeDecorator, TypeEngine
 from sqlalchemy.dialects.postgresql import BYTEA
 
 FERNET_KEY = os.environ.get("FERNET_KEY")
+_fernet = None
+
+
+def _get_fernet():
+    """Get cached Fernet instance."""
+    global _fernet
+    if _fernet is None:
+        if FERNET_KEY is None:
+            raise RuntimeError("FERNET_KEY environment variable not set")
+        from cryptography.fernet import Fernet
+
+        _fernet = Fernet(FERNET_KEY.encode() if isinstance(FERNET_KEY, str) else FERNET_KEY)
+    return _fernet
 
 
 class EncryptedBytes(TypeDecorator):
@@ -37,22 +49,12 @@ class EncryptedBytes(TypeDecorator):
     def process_bind_param(self, value: bytes | None, dialect) -> bytes | None:
         if value is None:
             return None
-        if FERNET_KEY is None:
-            raise RuntimeError("FERNET_KEY environment variable not set")
-        from cryptography.fernet import Fernet
-
-        f = Fernet(FERNET_KEY.encode() if isinstance(FERNET_KEY, str) else FERNET_KEY)
-        return f.encrypt(value)
+        return _get_fernet().encrypt(value)
 
     def process_result_value(self, value: bytes | None, dialect) -> bytes | None:
         if value is None:
             return None
-        if FERNET_KEY is None:
-            raise RuntimeError("FERNET_KEY environment variable not set")
-        from cryptography.fernet import Fernet
-
-        f = Fernet(FERNET_KEY.encode() if isinstance(FERNET_KEY, str) else FERNET_KEY)
-        return f.decrypt(value)
+        return _get_fernet().decrypt(value)
 
     def load_dialect_impl(self, dialect: TypeEngine) -> TypeEngine:
         if dialect.name == "postgresql":
