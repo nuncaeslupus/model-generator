@@ -135,6 +135,14 @@ types:
     api_response: "bool | None"
     api_request: "bool"
 
+  binary:
+    database:
+      column: "Column(LargeBinary, nullable={nullable})"
+      imports:
+        - "from sqlalchemy import Column, LargeBinary"
+    api_response: "bytes | None"
+    api_request: "bytes"
+
   datetime:
     database:
       column: "Column(DateTime(timezone=True), nullable={nullable})"

@@ -93,6 +93,8 @@ class {{ entity_name }}Response(BaseModel):
     {{ field_name }}: int | None
 {% elif field.type == 'boolean' %}
     {{ field_name }}: bool | None
+{% elif field.type == 'binary' %}
+    {{ field_name }}: bytes | None
 {% elif field.type == 'datetime' %}
     {{ field_name }}: str | None
 {% elif field.type == 'enum' %}

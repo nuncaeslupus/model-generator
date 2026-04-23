@@ -130,6 +130,8 @@ class Create{{ entity_name }}Request(BaseModel):
 {% set _ = field_args.append(field.enum_name + '.' + (field.default | upper)) %}
 {% elif field.type == 'boolean' %}
 {% set _ = field_args.append(field.default | title) %}
+{% elif field.type == 'binary' %}
+    {{ field_name }}: bytes
 {% elif field.type in ['text', 'longtext', 'financial', 'percentage', 'reference'] %}
 {% set _ = field_args.append('"' + (field.default | string) + '"') %}
 {% else %}
@@ -169,6 +171,8 @@ class Create{{ entity_name }}Request(BaseModel):
 {% set type_hint = 'int' if is_required else 'int | None' %}
 {% elif field.type == 'boolean' %}
 {% set type_hint = 'bool' %}
+{% elif field.type == 'binary' %}
+{% set type_hint = 'bytes' %}
 {% elif field.type == 'datetime' %}
 {% set type_hint = 'datetime' if is_required else 'datetime | None' %}
 {% elif field.type == 'enum' %}

@@ -24,6 +24,7 @@ This module contains:
     has_numeric=false,
     has_text=false,
     has_boolean=false,
+    has_binary=false,
     has_datetime=false,
     has_enum=false,
     has_json=false,
@@ -45,6 +46,7 @@ This module contains:
 {% if field.type in ['financial', 'percentage'] %}{% set ns.has_numeric = true %}{% set ns.has_decimal = true %}{% endif %}
 {% if field.type == 'longtext' %}{% set ns.has_text = true %}{% endif %}
 {% if field.type == 'boolean' %}{% set ns.has_boolean = true %}{% endif %}
+{% if field.type == 'binary' %}{% set ns.has_binary = true %}{% endif %}
 {% if field.type == 'datetime' %}{% set ns.has_datetime = true %}{% endif %}
 {% if field.type == 'enum' %}{% set ns.has_enum = true %}{% if field.enum_name not in ns.enum_imports %}{% set _ = ns.enum_imports.append(field.enum_name) %}{% endif %}{% endif %}
 {% if field.type in ['json_object', 'json_array'] %}{% set ns.has_json = true %}{% endif %}
@@ -97,6 +99,9 @@ from sqlalchemy import (
 {% endif %}
 {% if ns.has_boolean %}
     Boolean,
+{% endif %}
+{% if ns.has_binary %}
+    LargeBinary,
 {% endif %}
 {% if ns.has_datetime %}
     DateTime,
@@ -219,6 +224,8 @@ class {{ entity_name }}(Base):
     {{ field_name }}: Mapped[Decimal{{ optional }}] = mapped_column(SqliteNumeric(5, 4){% if field.default is defined %}, default=Decimal("{{ field.default }}"){% endif %})
 {% elif field.type == 'boolean' %}
     {{ field_name }}: Mapped[bool{{ optional }}] = mapped_column(Boolean, default={{ field.default | default(false) | title }})
+{% elif field.type == 'binary' %}
+    {{ field_name }}: Mapped[bytes{{ optional }}] = mapped_column(LargeBinary)
 {% elif field.type == 'datetime' %}
 {% if field.server_default is defined %}
     {{ field_name }}: Mapped[datetime{{ optional }}] = mapped_column(DateTime(timezone=True), server_default=func.now())

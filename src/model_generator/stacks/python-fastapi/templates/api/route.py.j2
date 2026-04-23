@@ -142,6 +142,8 @@ async def list_{{ entity_plural }}(
     {{ field_name }}: {{ field.enum_name }} | None = Query(None, description="Filter by {{ field_name }}"),
 {% elif field.type == 'boolean' %}
     {{ field_name }}: bool | None = Query(None, description="Filter by {{ field_name }}"),
+{% elif field.type == 'binary' %}
+    pass  # No filter support for binary fields
 {% elif field.type == 'datetime' %}
     {{ field_name }}_after: str | None = Query(None, description="Filter {{ field_name }} after this datetime (ISO 8601)"),
     {{ field_name }}_before: str | None = Query(None, description="Filter {{ field_name }} before this datetime (ISO 8601)"),
@@ -178,6 +180,8 @@ async def list_{{ entity_plural }}(
     if {{ field_name }} is not None:
         stmt = stmt.where({{ entity_name }}.{{ field_name }} == {{ field_name }})
         count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} == {{ field_name }})
+{% elif field.type == 'binary' %}
+    pass  # No filter support for binary fields
 {% elif field.type == 'datetime' %}
     if {{ field_name }}_after is not None:
         dt_after = datetime.fromisoformat({{ field_name }}_after.replace('Z', '+00:00'))
