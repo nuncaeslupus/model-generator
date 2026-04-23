@@ -1218,6 +1218,12 @@ class Test{{ entity_name }}sAPI:
 {% else %}
         assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is None or isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], bool), "{{ field_name }} must be boolean or null"
 {% endif %}
+{% elif field.type == 'binary' %}
+{% if field.required %}
+        assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be base64 string"
+{% else %}
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is None or isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be base64 string or null"
+{% endif %}
 {% elif field.type == 'datetime' %}
 {% if field.required %}
         assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be string (ISO 8601)"

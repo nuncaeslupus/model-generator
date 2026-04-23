@@ -169,6 +169,8 @@ class Create{{ entity_name }}Request(BaseModel):
 {% set type_hint = 'int' if is_required else 'int | None' %}
 {% elif field.type == 'boolean' %}
 {% set type_hint = 'bool' %}
+{% elif field.type == 'binary' %}
+{% set type_hint = 'bytes' %}
 {% elif field.type == 'datetime' %}
 {% set type_hint = 'datetime' if is_required else 'datetime | None' %}
 {% elif field.type == 'enum' %}

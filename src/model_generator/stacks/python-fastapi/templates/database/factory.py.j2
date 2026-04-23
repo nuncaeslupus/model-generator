@@ -35,6 +35,7 @@ Usage:
     has_uuid=false,
     has_decimal=false,
     has_datetime=false,
+    has_binary=false,
     entity_refs=[]
 ) %}
 
@@ -44,6 +45,7 @@ Usage:
 {% if field.type == 'uuid' %}{% set ns.has_uuid = true %}{% endif %}
 {% if field.type in ['financial', 'percentage'] %}{% set ns.has_decimal = true %}{% endif %}
 {% if field.type == 'datetime' %}{% set ns.has_datetime = true %}{% endif %}
+{% if field.type == 'binary' %}{% set ns.has_binary = true %}{% endif %}
 {% if field.type == 'enum' and field.enum_name not in ns.enum_imports %}
 {% set _ = ns.enum_imports.append(field.enum_name) %}
 {% endif %}
@@ -58,6 +60,10 @@ Usage:
 
 {% if ns.has_uuid %}
 import uuid
+
+{% endif %}
+{% if ns.has_binary %}
+import secrets
 
 {% endif %}
 import factory
@@ -169,6 +175,8 @@ fake = Faker()
 {% else %}
     {{ field_name }} = factory.LazyFunction(lambda: fake.boolean())
 {% endif %}
+{% elif field.type == 'binary' %}
+    {{ field_name }} = factory.LazyFunction(lambda: secrets.token_bytes(32))
 {% elif field.type == 'datetime' and field_name not in ['created_at', 'updated_at'] %}
     {{ field_name }} = factory.LazyFunction(lambda: fake.date_time_this_year(tzinfo=None))
 {% elif field.type == 'enum' %}
