@@ -137,7 +137,7 @@ class Test{{ entity_name }}sAPI:
 {% set ns_needs_created = namespace(found=false) %}
 {% for field_name, field in entity.fields.items() %}
 {% if not field.api_exclude_response | default(false) and not field.primary_key | default(false) %}
-{% if field.type in ['enum', 'boolean', 'binary', 'datetime', 'financial', 'counter', 'percentage', 'reference'] or (field.type == 'text' and field.unique | default(false)) %}
+{% if field.type in ['enum', 'boolean', 'datetime', 'financial', 'counter', 'percentage', 'reference'] or (field.type == 'text' and field.unique | default(false)) %}
 {% set _ = has_filterable_fields.append(field_name) %}
 {% if field.type in ['enum', 'boolean'] and (field.required or field.default is defined) %}
 {% set ns_needs_created.found = true %}
@@ -1220,9 +1220,9 @@ class Test{{ entity_name }}sAPI:
 {% endif %}
 {% elif field.type == 'binary' %}
 {% if field.required %}
-        assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], bytes), "{{ field_name }} must be bytes"
+        assert isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be base64 string"
 {% else %}
-        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is None or isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], bytes), "{{ field_name }} must be bytes or null"
+        assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] is None or isinstance({{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"], str), "{{ field_name }} must be base64 string or null"
 {% endif %}
 {% elif field.type == 'datetime' %}
 {% if field.required %}
