@@ -1,0 +1,60 @@
+{#-
+  Encrypted Bytes TypeDecorator
+  Encrypts data at rest using Fernet symmetric encryption
+-#}
+{% from "_shared/_base.j2" import generated_marker %}
+{{ generated_marker() }}
+
+"""
+Encrypted Bytes — Field-level encryption for binary data.
+
+Usage:
+    from {{ config.paths.utils | path_to_import }}.encrypted_bytes import EncryptedBytes
+
+    class MyModel(Base):
+        encrypted_field: Mapped[bytes] = mapped_column(EncryptedBytes())
+
+
+Requires environment variable FERNET_KEY to be set (32-byte key, base64-encoded).
+Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key())"
+"""
+
+import os
+from base64 import b64decode, b64encode
+
+from sqlalchemy import Column, LargeBinary, TypeDecorator, TypeEngine
+from sqlalchemy.dialects.postgresql import BYTEA
+
+FERNET_KEY = os.environ.get("FERNET_KEY")
+
+
+class EncryptedBytes(TypeDecorator):
+    """Encrypts binary data at rest using Fernet."""
+
+    impl = LargeBinary
+    cache_ok = True
+
+    def process_bind_param(self, value: bytes | None, dialect) -> bytes | None:
+        if value is None:
+            return None
+        if FERNET_KEY is None:
+            raise RuntimeError("FERNET_KEY environment variable not set")
+        from cryptography.fernet import Fernet
+
+        f = Fernet(FERNET_KEY.encode() if isinstance(FERNET_KEY, str) else FERNET_KEY)
+        return f.encrypt(value)
+
+    def process_result_value(self, value: bytes | None, dialect) -> bytes | None:
+        if value is None:
+            return None
+        if FERNET_KEY is None:
+            raise RuntimeError("FERNET_KEY environment variable not set")
+        from cryptography.fernet import Fernet
+
+        f = Fernet(FERNET_KEY.encode() if isinstance(FERNET_KEY, str) else FERNET_KEY)
+        return f.decrypt(value)
+
+    def load_dialect_impl(self, dialect: TypeEngine) -> TypeEngine:
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(BYTEA)
+        return dialect.type_descriptor(LargeBinary())

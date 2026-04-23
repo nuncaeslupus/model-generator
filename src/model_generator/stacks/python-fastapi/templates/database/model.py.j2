@@ -25,6 +25,7 @@ This module contains:
     has_text=false,
     has_boolean=false,
     has_binary=false,
+    has_encrypted_binary=false,
     has_datetime=false,
     has_enum=false,
     has_json=false,
@@ -47,6 +48,7 @@ This module contains:
 {% if field.type == 'longtext' %}{% set ns.has_text = true %}{% endif %}
 {% if field.type == 'boolean' %}{% set ns.has_boolean = true %}{% endif %}
 {% if field.type == 'binary' %}{% set ns.has_binary = true %}{% endif %}
+{% if field.type == 'binary' and field.encrypt is defined %}{% set ns.has_encrypted_binary = true %}{% endif %}
 {% if field.type == 'datetime' %}{% set ns.has_datetime = true %}{% endif %}
 {% if field.type == 'enum' %}{% set ns.has_enum = true %}{% if field.enum_name not in ns.enum_imports %}{% set _ = ns.enum_imports.append(field.enum_name) %}{% endif %}{% endif %}
 {% if field.type in ['json_object', 'json_array'] %}{% set ns.has_json = true %}{% endif %}
@@ -142,6 +144,9 @@ from sqlalchemy.orm import Mapped, mapped_column{% if ns.has_relationships %}, r
 ] %}
 
 from .base import Base
+{% if ns.has_encrypted_binary %}
+from .encrypted_bytes import EncryptedBytes
+{% endif %}
 {% if ns.enum_imports %}
 from .enums import {{ ns.enum_imports | join(', ') }}
 {% endif %}
@@ -225,7 +230,11 @@ class {{ entity_name }}(Base):
 {% elif field.type == 'boolean' %}
     {{ field_name }}: Mapped[bool{{ optional }}] = mapped_column(Boolean, default={{ field.default | default(false) | title }})
 {% elif field.type == 'binary' %}
+{% if field.encrypt is defined %}
+    {{ field_name }}: Mapped[bytes{{ optional }}] = mapped_column(EncryptedBytes)
+{% else %}
     {{ field_name }}: Mapped[bytes{{ optional }}] = mapped_column(LargeBinary)
+{% endif %}
 {% elif field.type == 'datetime' %}
 {% if field.server_default is defined %}
     {{ field_name }}: Mapped[datetime{{ optional }}] = mapped_column(DateTime(timezone=True), server_default=func.now())
