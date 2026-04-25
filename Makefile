@@ -4,7 +4,7 @@ sync:
 	uv sync --extra dev
 
 lint:
-	uv run ruff check . && uv run mypy . --explicit-package-bases
+	uv run ruff check . && uv run ruff format --check . && uv run mypy . --explicit-package-bases
 
 format:
 	uv run ruff check --fix --unsafe-fixes . && uv run ruff format .
