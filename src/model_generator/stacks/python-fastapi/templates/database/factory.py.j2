@@ -55,6 +55,11 @@ Usage:
 {% endfor %}
 {% if entity.relationships is defined and entity.relationships | length > 0 %}
 {% set ns.has_relationships = true %}
+{% for rel_name, rel in entity.relationships.items() %}
+{% if rel.type == 'one_to_many' and rel.target in sibling_entities and rel.target not in ns.entity_refs %}
+{% set _ = ns.entity_refs.append(rel.target) %}
+{% endif %}
+{% endfor %}
 {% endif %}
 {% endfor %}
 
@@ -77,11 +82,22 @@ from typing import Any
 
 {#- Import database models -#}
 {% set db_models_import = config.paths.database_models | path_to_import %}
+{% if config.generation.layout == 'per-entity' %}
+{% for entity_name in model.entities.keys() %}
+from {{ db_models_import }}.{{ entity_name | snake_case }} import {{ entity_name }}
+{% endfor %}
+{% else %}
 from {{ db_models_import }}.{{ model.domain}} import (
 {% for entity_name in model.entities.keys() %}
     {{ entity_name }},
 {% endfor %}
 )
+{% endif %}
+{% if config.generation.layout == 'per-entity' and ns.entity_refs %}
+{% for ref in ns.entity_refs %}
+from .{{ ref | snake_case }} import {{ ref }}Factory
+{% endfor %}
+{% endif %}
 {% if ns.enum_imports %}
 
 from {{ db_models_import }}.enums import (
@@ -227,7 +243,7 @@ class {{ entity_name }}Factory(factory.alchemy.SQLAlchemyModelFactory):
             return
 
 {% for rel_name, rel in entity.relationships.items() %}
-{% if rel.type == 'one_to_many' and rel.target in model.entities %}
+{% if rel.type == 'one_to_many' and rel.target in sibling_entities %}
         # Create {{ rel_name }} ({{ rel.type }})
         if "{{ rel_name }}" not in kwargs or kwargs["{{ rel_name }}"]:
             count = kwargs.get("{{ rel_name }}_count", fake.pyint(min_value=1, max_value=3))

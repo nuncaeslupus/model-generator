@@ -65,14 +65,14 @@ def test_generate_from_examples(example_project):
 
         # 2. Check Key Files Exist
         # Database Model
-        assert (project_dir / "backend/src/database/models/users.py").exists()
+        assert (project_dir / "backend/src/database/models/user.py").exists()
         # API Routes
         assert (project_dir / "backend/src/api/routes/users.py").exists()
         # Contract Tests
         assert (project_dir / "tests/contract/api/test_users_api.py").exists()
 
         # 3. Basic Content Checks
-        user_model = (project_dir / "backend/src/database/models/users.py").read_text()
+        user_model = (project_dir / "backend/src/database/models/user.py").read_text()
         assert "class User(Base):" in user_model
         assert "username: Mapped[str] = mapped_column(String" in user_model
 
@@ -93,7 +93,7 @@ def test_clean_command(example_project):
     try:
         # 1. Generate first
         generate.generate(model_path=model_path, target="all")
-        assert (project_dir / "backend/src/database/models/users.py").exists()
+        assert (project_dir / "backend/src/database/models/user.py").exists()
 
         # 2. Run Clean (Selective)
         # We need to mock sys.argv or call the cleanup function directly if exposed,
@@ -108,7 +108,7 @@ def test_clean_command(example_project):
         cleanup_generated(project_dir, scope="selective", dry_run=False)
 
         # 3. Verify files are gone
-        assert not (project_dir / "backend/src/database/models/users.py").exists()
+        assert not (project_dir / "backend/src/database/models/user.py").exists()
         # Directories should still exist
         assert (project_dir / "backend/src").exists()
 

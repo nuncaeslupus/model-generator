@@ -14,6 +14,7 @@ def project_setup(tmp_path):
     config = {
         "project": {"name": "Generic Test Project", "version": "0.1.0"},
         "stack": "python-fastapi",
+        "generation": {"layout": "per-domain"},
         "paths": {
             "database_models": "lib/db/models",  # Custom path 1
             "api_models": "lib/api/schemas",  # Custom path 2
