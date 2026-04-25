@@ -327,9 +327,7 @@ class TestApiModelsGeneratorScope:
         results = generate_api_models(model, config, env, project_root)
         return next(r for r in results if "request" in r["path"].name)["content"]
 
-    def test_owner_field_excluded_from_create_request(
-        self, scoped_model, project_env
-    ):
+    def test_owner_field_excluded_from_create_request(self, scoped_model, project_env):
         """owner_field is set by the handler, not by the API caller."""
         content = self._request_content(scoped_model, project_env)
         create_start = content.index("class CreateWidgetRequest")
@@ -337,9 +335,7 @@ class TestApiModelsGeneratorScope:
         create_block = content[create_start:update_start]
         assert "owner_id" not in create_block
 
-    def test_owner_field_excluded_from_update_request(
-        self, scoped_model, project_env
-    ):
+    def test_owner_field_excluded_from_update_request(self, scoped_model, project_env):
         """owner_field is immutable from the API; update payloads cannot reassign it."""
         content = self._request_content(scoped_model, project_env)
         update_start = content.index("class UpdateWidgetRequest")
@@ -408,9 +404,7 @@ class TestApiRoutesGeneratorScope:
             constraints={},
         )
         assert (
-            result["content"].count(
-                "current_user: Any = Depends(get_current_user)"
-            )
+            result["content"].count("current_user: Any = Depends(get_current_user)")
             == 5
         )
 
@@ -438,8 +432,7 @@ class TestApiRoutesGeneratorScope:
             constraints={},
         )
         assert (
-            "stmt = stmt.where(Widget.owner_id == current_user.id)"
-            in result["content"]
+            "stmt = stmt.where(Widget.owner_id == current_user.id)" in result["content"]
         )
         assert (
             "count_stmt = count_stmt.where(Widget.owner_id == current_user.id)"
@@ -488,22 +481,14 @@ class TestValidateAuthConfig:
     def test_scope_with_auth_config_passes(self):
         from model_generator.generate import _validate_auth_config
 
-        model = {
-            "entities": {
-                "Widget": {"api": {"scope": {"owner_field": "user_id"}}}
-            }
-        }
+        model = {"entities": {"Widget": {"api": {"scope": {"owner_field": "user_id"}}}}}
         config = {"auth": {"dependency_path": "x.y.z"}}
         _validate_auth_config(model, config)  # Should not exit
 
     def test_scope_without_auth_config_exits(self, capsys):
         from model_generator.generate import _validate_auth_config
 
-        model = {
-            "entities": {
-                "Widget": {"api": {"scope": {"owner_field": "user_id"}}}
-            }
-        }
+        model = {"entities": {"Widget": {"api": {"scope": {"owner_field": "user_id"}}}}}
         with pytest.raises(SystemExit) as excinfo:
             _validate_auth_config(model, config={})
         assert excinfo.value.code == 1
@@ -516,11 +501,7 @@ class TestValidateAuthConfig:
         """auth.dependency_path must include a module separator."""
         from model_generator.generate import _validate_auth_config
 
-        model = {
-            "entities": {
-                "Widget": {"api": {"scope": {"owner_field": "user_id"}}}
-            }
-        }
+        model = {"entities": {"Widget": {"api": {"scope": {"owner_field": "user_id"}}}}}
         config = {"auth": {"dependency_path": "no_dots_here"}}
         with pytest.raises(SystemExit) as excinfo:
             _validate_auth_config(model, config)
@@ -553,6 +534,31 @@ class TestApiTestsGenerator:
         assert "def test_post_item_success" in result["content"]
         assert "def test_get_item_by_id_success" in result["content"]
         assert "def test_delete_item_success" in result["content"]
+
+
+class TestApiTestsGeneratorScope:
+    """Test contract test generation when entities declare api.scope."""
+
+    AUTH_PATH = "backend.src.auth.get_current_user"
+
+    def test_main_import_module_derived_from_paths(self, scoped_model, project_env):
+        """Import path follows config.paths.main filename, not a hard-coded `main`."""
+        project_root, config, env = project_env
+        config_with_auth = {
+            **config,
+            "paths": {**config["paths"], "main": "src/app.py"},
+            "auth": {"dependency_path": self.AUTH_PATH},
+        }
+        result = generate_api_tests(
+            scoped_model,
+            config_with_auth,
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        assert "from src.app import app" in result["content"]
+        assert "from src.main import app" not in result["content"]
 
 
 class TestApiEnabledFiltering:

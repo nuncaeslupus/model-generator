@@ -1685,6 +1685,7 @@ class Test{{ entity_name }}sAPI:
 {% if auth_dep_path %}
 {% set auth_dep_module = auth_dep_path.rsplit('.', 1)[0] %}
 {% set auth_dep_func = auth_dep_path.rsplit('.', 1)[1] %}
+{% set main_module = config.paths.main.rsplit('/', 1)[1] | replace('.py', '') %}
     def test_{{ entity_name.lower() }}_scope_access_denied(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
         """Test that user cannot access {{ entity_name }} owned by another user."""
 {% if 'true' in needs_unique_suffix(entity) %}
@@ -1700,7 +1701,7 @@ class Test{{ entity_name }}sAPI:
         {{ entity_name.lower() }}_id = response.json()["{{ get_primary_key_field(entity) }}"]
 
         # 2. Override dependency to simulate User B
-        from {{ config.paths.main.rsplit('/', 1)[0] | path_to_import }}.main import app
+        from {{ config.paths.main.rsplit('/', 1)[0] | path_to_import }}.{{ main_module }} import app
         from {{ auth_dep_module }} import {{ auth_dep_func }}
 
         class MockUserB:
