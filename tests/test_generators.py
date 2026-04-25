@@ -511,6 +511,35 @@ class TestValidateAuthConfig:
         assert "dotted path" in out
 
 
+class TestValidateGenerationConfig:
+    """Test the _validate_generation_config helper."""
+
+    def test_default_layout_passes(self):
+        from model_generator.generate import _validate_generation_config
+
+        _validate_generation_config(config={})
+
+    def test_per_entity_passes(self):
+        from model_generator.generate import _validate_generation_config
+
+        _validate_generation_config({"generation": {"layout": "per-entity"}})
+
+    def test_per_domain_passes(self):
+        from model_generator.generate import _validate_generation_config
+
+        _validate_generation_config({"generation": {"layout": "per-domain"}})
+
+    def test_unknown_layout_exits(self, capsys):
+        from model_generator.generate import _validate_generation_config
+
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_generation_config({"generation": {"layout": "weird"}})
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "weird" in out
+        assert "generation.layout" in out
+
+
 class TestApiTestsGenerator:
     """Test contract test generation."""
 

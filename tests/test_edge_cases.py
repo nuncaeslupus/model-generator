@@ -151,6 +151,29 @@ class TestLoadConfigEdgeCases:
         finally:
             os.chdir(original_cwd)
 
+    def test_default_generation_layout_inserted(self, tmp_path):
+        """When project config does not pin generation.layout, default is per-entity."""
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            config = load_config("python-fastapi")
+            assert config["generation"]["layout"] == "per-entity"
+        finally:
+            os.chdir(original_cwd)
+
+    def test_project_config_can_pin_generation_layout(self, tmp_path):
+        """generation.layout in .model-generator.yaml overrides the default."""
+        (tmp_path / ".model-generator.yaml").write_text(
+            yaml.dump({"generation": {"layout": "per-domain"}})
+        )
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            config = load_config("python-fastapi")
+            assert config["generation"]["layout"] == "per-domain"
+        finally:
+            os.chdir(original_cwd)
+
     def test_project_config_overrides_stack(self, tmp_path):
         """Project config overrides stack defaults."""
         project_config = {

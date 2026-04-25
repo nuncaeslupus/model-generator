@@ -190,6 +190,12 @@ def load_config(stack: str = "python-fastapi") -> dict:
             "version": "0.1.0",
         }
 
+    # Generation defaults. `layout` controls whether per-domain emitters
+    # produce one file per domain ("per-domain") or one file per entity
+    # ("per-entity", default).
+    merged_config.setdefault("generation", {})
+    merged_config["generation"].setdefault("layout", "per-entity")
+
     return merged_config
 
 

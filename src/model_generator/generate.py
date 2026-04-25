@@ -314,6 +314,7 @@ def generate(
     model = load_model(model_path)
     config = load_config(stack)
     _validate_auth_config(model, config)
+    _validate_generation_config(config)
     env = get_template_env(stack, config)
 
     domain = model.get("domain", "unknown")
@@ -429,6 +430,25 @@ def _validate_auth_config(model: dict, config: dict) -> None:
             'like "module.submodule.get_current_user".\n'
             "The segment before the last dot is the import module; the segment "
             "after is the callable."
+        )
+        sys.exit(1)
+
+
+def _validate_generation_config(config: dict) -> None:
+    """Abort if generation.layout has an unknown value."""
+    valid = {"per-entity", "per-domain"}
+    layout = config.get("generation", {}).get("layout", "per-entity")
+    if layout not in valid:
+        choices = ", ".join(repr(v) for v in sorted(valid))
+        print(
+            f"Error: generation.layout must be one of [{choices}], "
+            f'got "{layout}".\n\n'
+            "Set in .model-generator.yaml:\n\n"
+            "  generation:\n"
+            '    layout: "per-entity"  # default; one file per entity\n'
+            "  # or\n"
+            "  generation:\n"
+            '    layout: "per-domain"  # legacy; one file per domain'
         )
         sys.exit(1)
 
