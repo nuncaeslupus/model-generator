@@ -1,58 +1,225 @@
 # Next Session Plan
 
-## Current State (2026-04-25, end of day)
+## Current State (2026-04-25, mid-day, mid-§15)
 
-Review batch §8, §13, §14 merged to `main`. §9 is on `feat/9-owner-scoping` (PR #10), opened today.
+PR #10 (§9 owner-scoping) merged to `main` as squash `62a700c`. §15 (one-file-per-entity layout) is in progress on `feat/15-per-entity-layout` — **3 local commits, not pushed**.
 
-- `e3a390f` — PR #7 `feat(infrastructure): surface opt-in style overrides` (§14)
-- `cc1cb42` — PR #8 `feat: add binary field type support` (§8)
-- `da30d84` — PR #9 `feat: add encrypted binary field support` (§13)
-- `78f2ff4` — PR #10 `feat: add owner-scoped endpoints (api.scope) (§9)` — **open**, awaiting merge
+### `feat/15-per-entity-layout` (this session)
 
-308 tests passing on `feat/9-owner-scoping`, `ruff check .` + `ruff format --check .` clean, `mypy src` clean.
+- `18c6531` — `chore: align make lint with CI` — picked up the two `make lint` follow-ups: `ruff format --check .` added to lint target, and `examples/.*/backend/` + `examples/.*/alembic/` added to `[tool.mypy].exclude` so local mypy stops tripping on gitignored 3.12 generated output.
+- `72c9ab4` — `feat: thread generation.layout config flag (§15.1)` — `load_config` defaults `generation.layout` to `"per-entity"`; `_validate_generation_config()` rejects unknown values. Plumbing only — no emission change yet.
+- `8a7d481` — `feat: add snake_case filter for entity-derived filenames (§15.2)` — Python `snake_case()` in `utils/templates.py` mirroring the existing `to_snake_case` Jinja macro byte-for-byte; registered as a Jinja filter for template-side parity.
+
+**Verification at checkpoint:** 323 tests passing (was 308 — +6 from §15.1 validator/load_config defaults, +9 from §15.2 snake_case), `make lint` clean (ruff check + ruff format check + mypy), working tree clean.
 
 ---
 
-## Priority Next Session — Remaining Review Items (§12, §15) + §9 follow-ups
+## Priority Next Session — Continue §15 (steps 3–6)
 
-### §9 follow-ups (from PR #10 review)
+The full §15 plan is at `~/.claude/plans/tranquil-shimmying-flute.md`. Steps 1–2 landed; step 3 was started this session — partial template edits were reverted to leave a clean checkpoint, but the design analysis is preserved below so it doesn't need redoing.
 
-Gemini-code-assist left 5 inline comments on PR #10. Disposition (user-approved 2026-04-25):
+### §15.3 — database generator: per-entity loop (NEXT UP)
 
-| # | Severity | Disposition | Note |
-|---|----------|-------------|------|
-| 1 | HIGH | **False positive — replied** | Claimed `auth_dep_func` `{% set %}` inside `{% if %}` is unreachable. Jinja2 `{% if %}` does not introduce a scope barrier; only `{% for %}` / `{% block %}` / `{% macro %}` do. The 9 scope-rendering tests pass, which directly disproves the claim. |
-| 2 | HIGH | **False positive — replied** | Same scoping claim, additional locations. Same disposition. |
-| 3 | MEDIUM | **Skipped** | `{{ inject_from }}.id` hardcodes the PK attr name. A configurability knob conflicts with simplicity-first; current shape assumes the dependency returns an object with `.id` (the conventional shape for User-returning auth deps). Revisit only if an adopter actually needs it. |
-| 4 | MEDIUM | **Skipped** | Raw `HTTPException` for `miss_status != 404` skips the project's `format_*` helpers. Default 404 already uses the helper; non-404 is opt-in. Adding `format_forbidden_error` would be feature creep. |
-| 5 | MEDIUM | **Fixed in PR #10** | `contract.py.j2` hardcoded `.main` won't work for adopters whose entry-point file isn't `main.py`. Fixed by deriving the module name from `config.paths.main.rsplit('/', 1)[1] | replace('.py', '')`; regression test added (`TestApiTestsGeneratorScope`). |
+**Files to touch:**
+- `src/model_generator/generators/database.py` — rewrite three functions
+- `templates/database/factory.py.j2` — layout-aware imports + sibling check
+- `templates/database/model.py.j2` — gate section_divider on per-domain
+- `tests/test_generators.py` — pin existing fixture to per-domain, add per-entity test classes
 
-### §12 — Auth scaffolding (nice-to-have)
+**Generator design** (drop into `generators/database.py`, replacing all three functions):
+
+```python
+from ..utils.parser import scan_model_files
+from ..utils.templates import snake_case
+
+
+def _layout(config: dict) -> str:
+    return config.get("generation", {}).get("layout", "per-entity")
+
+
+def generate_database_model(model, config, env, project_root):
+    template = env.get_template("database/model.py.j2")
+    output_dir = project_root / config["paths"]["database_models"]
+    sibling_entities = list(model.get("entities", {}).keys())
+
+    if _layout(config) == "per-entity":
+        return [
+            {
+                "path": output_dir / f"{snake_case(name)}.py",
+                "content": template.render(
+                    model={**model, "entities": {name: e}},
+                    config=config,
+                    sibling_entities=sibling_entities,
+                ),
+            }
+            for name, e in model.get("entities", {}).items()
+        ]
+    domain = model.get("domain", "models")
+    content = template.render(
+        model=model, config=config, sibling_entities=sibling_entities
+    )
+    return {"path": output_dir / f"{domain}.py", "content": content}
+
+
+def generate_init(model, config, env, project_root):
+    output_dir = project_root / config["paths"]["database_models"]
+    domains = scan_model_files(output_dir)
+
+    if _layout(config) == "per-entity":
+        existing = {d["file"] for d in domains}
+        for name in model.get("entities", {}).keys():
+            stem = snake_case(name)
+            if stem not in existing:
+                domains.append(
+                    {"name": stem, "file": stem, "section": None, "entities": [name]}
+                )
+    else:
+        current = model.get("domain", "unknown")
+        if current not in {d["name"] for d in domains}:
+            domains.append(
+                {
+                    "name": current,
+                    "file": current,
+                    "section": model.get("section_header"),
+                    "entities": list(model.get("entities", {}).keys()),
+                }
+            )
+
+    if not domains:
+        print(f"  ℹ️  No model files found in {output_dir}")
+        return None
+
+    template = env.get_template("database/init.py.j2")
+    content = template.render(domains=domains, config=config)
+    return {
+        "path": output_dir / "__init__.py",
+        "content": content,
+        "mode": "write",
+        "domain_count": len(domains),
+        "entity_count": sum(len(d["entities"]) for d in domains),
+    }
+
+
+def generate_factories(model, config, env, project_root):
+    template = env.get_template("database/factory.py.j2")
+    factories_dir = project_root / config["paths"]["database_models"] / "factories"
+    sibling_entities = list(model.get("entities", {}).keys())
+
+    if _layout(config) == "per-entity":
+        return [
+            {
+                "path": factories_dir / f"{snake_case(name)}.py",
+                "content": template.render(
+                    model={**model, "entities": {name: e}},
+                    config=config,
+                    sibling_entities=sibling_entities,
+                ),
+            }
+            for name, e in model.get("entities", {}).items()
+        ]
+    domain = model.get("domain", "models")
+    content = template.render(
+        model=model, config=config, sibling_entities=sibling_entities
+    )
+    return {"path": factories_dir / f"{domain}.py", "content": content}
+```
+
+**`factory.py.j2` changes (two edits):**
+
+(a) Replace lines 79–84 (the model-import block) with a layout-aware version + new cross-entity factory imports block:
+
+```jinja
+{#- Import database models -#}
+{% set db_models_import = config.paths.database_models | path_to_import %}
+{% if config.generation.layout == 'per-entity' %}
+{% for entity_name in model.entities.keys() %}
+from {{ db_models_import }}.{{ entity_name | snake_case }} import {{ entity_name }}
+{% endfor %}
+{% else %}
+from {{ db_models_import }}.{{ model.domain}} import (
+{% for entity_name in model.entities.keys() %}
+    {{ entity_name }},
+{% endfor %}
+)
+{% endif %}
+{% if config.generation.layout == 'per-entity' and ns.entity_refs %}
+{% for ref in ns.entity_refs %}
+from .{{ ref | snake_case }} import {{ ref }}Factory
+{% endfor %}
+{% endif %}
+```
+
+The cross-entity factory imports are the key piece — they make `factory.SubFactory({Ref}Factory)` resolve in per-entity mode where sibling factories live in separate files.
+
+(b) Line 241: change `rel.target in model.entities` → `rel.target in sibling_entities`.
+
+> **Subtle gotcha worth understanding before editing**: in per-entity mode `model.entities` has only 1 entry, so the existing `rel.target in model.entities` check silently suppresses sibling-target `create_related` blocks (a regression). Plumbing `sibling_entities` (the full domain entity list) from the generator preserves the semantic "is this rel target in our domain scope?" in both modes.
+
+**`model.py.j2` change (one edit):**
+
+Line 158 — gate `section_divider` on per-domain so per-entity files don't each emit the same `# USERS MODELS` header (which would produce N redundant comments in the generated `__init__.py`):
+
+```jinja
+{% if config.generation.layout != 'per-entity' %}
+{{ section_divider(model.section_header | default(model.domain | upper + ' MODELS')) }}
+{% endif %}
+```
+
+The model.py.j2 docstring block (lines 12–21) doesn't need changes — it accurately describes a single-entity file.
+
+**Test changes (`tests/test_generators.py`):**
+
+1. Pin existing `project_env` fixture to per-domain so existing assertions about file shape stay precise:
+
+   ```python
+   config_data = {
+       ...,
+       "generation": {"layout": "per-domain"},
+   }
+   ```
+
+2. Add `project_env_per_entity` fixture with `"generation": {"layout": "per-entity"}`.
+
+3. Add new test classes:
+   - `TestDatabaseGeneratorPerEntity` — assert returns a list, one entry per entity, paths end in `{entity_snake}.py`, content contains the entity class.
+   - `TestGenerateInitPerEntity` — patch `scan_model_files` to return per-entity-shaped data; assert init emits `from .user import User` per file.
+   - `TestFactoryGeneratorPerEntity` — assert per-entity factory file emits the new cross-entity factory imports for sibling refs (and that `create_related` is preserved via `sibling_entities`).
+
+**Architectural notes already verified this session:**
+
+- `scan_model_files` is naturally layout-polymorphic — reads what's on disk and returns `[{"file": stem, "entities": [classes]}]`. Per-entity files have one entity per stem; per-domain files have many. **No scanner changes needed for §15.3.**
+- `_generate_target` already handles `dict | list | None` returns; the `GENERATORS` dispatch table needs no changes.
+- SQLAlchemy `relationship()` and `ForeignKey()` use string identifiers — model.py.j2 itself needs no cross-entity imports beyond the section-divider gate.
+
+### §15.4 — api-models per-entity
+
+Write new combined `templates/api/entity.py.j2` (Request + Response in one file, per the user-approved plan decision). Refactor `generate_api_models` to use it in per-entity mode. Update `scan_api_model_files` — current detection is suffix-based (`*_response.py` / `*_requests.py`) and needs a per-entity branch detecting `{entity_snake}.py`. Update `generate_api_init`. Tests.
+
+### §15.5 — api-routes and api-tests per-entity
+
+Same per-entity loop pattern in `generate_api_routes` and `generate_api_tests`. Audit `route.py.j2` for cross-entity references (none expected in current CRUD scaffolding). Tests.
+
+### §15.6 — Example regen + docs
+
+Regenerate `examples/user-auth-project/` with `--clean`. Confirm 149 tests still pass. Add commented `generation.layout` section to `.model-generator.yaml`. Update `docs/agent/json-specification-reference.md` and any user-facing config docs. Note the breaking-shape change in this file.
+
+### Housekeeping
+
+- Branch `feat/15-per-entity-layout` is local-only. Push for backup: `git push -u origin feat/15-per-entity-layout`.
+
+---
+
+## §12 — Auth scaffolding (after §15)
 
 **What:** `auth: {strategy: "bcrypt-session", pepper_env: "APP_PASSWORD_PEPPER"}` → generates a starter auth router (register / login / logout / forgot / reset / change-password) with bcrypt+pepper hashing, itsdangerous session cookies, CSRF middleware, and rate limiting on login/register.
 **Depends on:** User entity with `password` field (already present in the user-auth example).
 **Surface:** new `templates/infrastructure/auth_router.py.j2` + session middleware hook into `main.py.j2`.
-**Estimated scope:** 2–3 days. Biggest item of the batch — substantial new template surface; should be broken into its own multi-commit plan.
-
-### §15 — One-file-per-entity (nice-to-have)
-
-**What:** Optional emit mode where each entity writes to `models/<entity>.py` instead of one file per domain.
-**Motivation:** large domains (10+ entities) produce 1000+ line files that IDEs choke on.
-**Surface:** config flag `generation.layout: "per-entity" | "per-domain"`; the domain-level loop in `model.py.j2` / `factory.py.j2` / `contract.py.j2` is split to emit N files. Imports in `route.py.j2` and `tests/conftest.py` need updating to match.
-**Estimated scope:** 1–2 days — touches many templates, but is mostly a refactor, not new functionality.
-
-### Sequencing recommendation
-
-1. **Merge PR #10** (§9 owner-scoping) once review settles.
-2. **§15** (one-file-per-entity) — standalone refactor; lower risk than §12 and unblocks better IDE ergonomics for large domains.
-3. **§12** (auth scaffolding) — last, most ambitious; benefits from §9 already landing.
+**Estimated scope:** 2–3 days. Should be broken into its own multi-commit plan.
 
 ### Incidental follow-ups still open
 
 - **Composite-FK `__table_args__` emission.** `model.py.j2` emits N separate `ForeignKey(...)` columns for a multi-column FK instead of a single `ForeignKeyConstraint` in `__table_args__`. SQLAlchemy's `configure_mappers()` raises `AmbiguousForeignKeysError` when two entities (or one entity, as in self-ref) share multiple FK paths — even when both sides specify `foreign_keys`. Affects any composite-FK relationship. Scope: new spec shape (`relationships[].composite_fk: true`?) + `__table_args__` emission change. Not blocking any current adopter.
 - **Upstream fix in `nuncaeslupus/my-skills`.** Gemini-bot correctly flagged on PR #3 that `.claude/skills/mutmut-report/analyze_mutmut.py`'s `run_cmd` should raise rather than `sys.exit(1)`. Fix belongs upstream — file a PR against `nuncaeslupus/my-skills`, then pull via `git subtree pull --prefix=.claude/skills shared-skills main --squash`.
-- **`make lint` runs mypy across the whole tree.** `make lint` invokes `mypy . --explicit-package-bases`, which trips on gitignored generated output in `examples/*/backend/` (3.12 generic syntax under a 3.11 mypy pin). CI doesn't see this because the files aren't checked in. Options: (a) add `examples/*/backend` to mypy `exclude` in root `pyproject.toml`; (b) tighten `make lint` to `mypy src`. Not blocking any feature.
-- **`make lint` does not run `ruff format --check`.** Discovered while shipping PR #10 — CI runs both `ruff check` and `ruff format --check`, but `make lint` runs only the former. PR #10's first CI run failed because `tests/test_generators.py` wasn't formatted to canonical style. Add `ruff format --check .` to the `lint` target so the local pre-commit checklist matches CI.
 
 ---
 
@@ -69,11 +236,13 @@ Gemini-code-assist left 5 inline comments on PR #10. Disposition (user-approved 
 
 ## Recently Completed Fixes
 
-### §9 — Owner-scoped endpoints (2026-04-25, PR #10 open)
+### §15.1 + §15.2 — Per-entity layout plumbing (2026-04-25, in progress)
 
-Branch `feat/9-owner-scoping`, commits:
-- `78f2ff4` — feat: add owner-scoped endpoints (api.scope) (§9)
-- *(pending)* — fix: address PR #10 review (formatter + contract import + regression test)
+Branch `feat/15-per-entity-layout`, 3 local commits (not pushed). See "Priority Next Session" block above for §15.3+ design. 323 tests passing at the §15.2 tip.
+
+### §9 — Owner-scoped endpoints (2026-04-25, merged)
+
+Merged to `main` as **`62a700c`** (squash of 2 commits on `feat/9-owner-scoping`).
 
 Per-entity `api.scope: {owner_field, inject_from, miss_status}` gates CRUD on a per-row owner check. Adopter sets `auth.dependency_path` in `.model-generator.yaml`; the generator threads that callable through FastAPI `Depends()`. Scoped behavior: `list` filters by `owner_field == current_user.id`; `get`/`update`/`delete` reject cross-owner access (404 default, configurable); `create` injects current user and force-assigns `owner_field`; `owner_field` is excluded from `Create`/`Update` request schemas. `generate.py` validates the spec/config pair eagerly: `api.scope` without dotted `auth.dependency_path` exits with a remediation message.
 
