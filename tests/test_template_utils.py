@@ -1,6 +1,11 @@
 """Tests for template utilities and custom Jinja2 filters."""
 
-from model_generator.utils.templates import get_template_env, path_to_import, wrap_text
+from model_generator.utils.templates import (
+    get_template_env,
+    path_to_import,
+    snake_case,
+    wrap_text,
+)
 
 
 class TestPathToImport:
@@ -51,6 +56,41 @@ class TestPathToImportFilter:
         env = get_template_env("python-fastapi")
         filter_fn = env.filters["path_to_import"]
         assert filter_fn("backend/src/api/models") == "backend.src.api.models"
+
+
+class TestSnakeCase:
+    """Test CamelCase → snake_case conversion (mirrors to_snake_case macro)."""
+
+    def test_pascal_case(self):
+        assert snake_case("UserSession") == "user_session"
+
+    def test_single_capital(self):
+        assert snake_case("User") == "user"
+
+    def test_acronym_prefix(self):
+        # Two adjacent capitals each get their own underscore — matches the
+        # naive macro algorithm. Acceptable for entity names like ApiKey.
+        assert snake_case("ApiKey") == "api_key"
+
+    def test_already_snake_case(self):
+        assert snake_case("user_session") == "user_session"
+
+    def test_lowercase_passthrough(self):
+        assert snake_case("user") == "user"
+
+    def test_empty_string(self):
+        assert snake_case("") == ""
+
+    def test_single_letter(self):
+        assert snake_case("A") == "a"
+
+    def test_multi_word(self):
+        assert snake_case("PortfolioAsset") == "portfolio_asset"
+
+    def test_filter_registered(self):
+        env = get_template_env("python-fastapi")
+        filter_fn = env.filters["snake_case"]
+        assert filter_fn("UserRole") == "user_role"
 
 
 class TestWrapText:

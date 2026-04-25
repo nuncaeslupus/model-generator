@@ -72,6 +72,27 @@ def _normalize_decimal(value: float | int | str) -> str:
     return str(d)
 
 
+def snake_case(name: str) -> str:
+    """Convert CamelCase to snake_case.
+
+    Mirrors the ``to_snake_case`` Jinja macro in
+    ``stacks/python-fastapi/templates/_shared/_entity.j2`` so generators
+    deriving filenames in Python and templates emitting the same names
+    in Jinja agree byte-for-byte.
+
+    Examples:
+        User           → user
+        UserSession    → user_session
+        ApiKey         → api_key
+    """
+    parts: list[str] = []
+    for i, ch in enumerate(name):
+        if ch.isupper() and i > 0:
+            parts.append("_")
+        parts.append(ch.lower())
+    return "".join(parts)
+
+
 def get_template_env(
     stack: str = "python-fastapi", config: dict | None = None
 ) -> Environment:
@@ -101,5 +122,6 @@ def get_template_env(
     env.filters["path_to_import"] = _path_to_import_filter
     env.filters["wrap"] = wrap_text
     env.filters["normalize_decimal"] = _normalize_decimal
+    env.filters["snake_case"] = snake_case
 
     return env
