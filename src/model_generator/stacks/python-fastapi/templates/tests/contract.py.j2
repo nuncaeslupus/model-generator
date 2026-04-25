@@ -1678,4 +1678,54 @@ class Test{{ entity_name }}sAPI:
 {% endif %}
 
     # Add additional business logic tests here as needed for {{ entity_name }}
+
+{% set scope = entity.api.scope if entity.api is defined else none %}
+{% if scope %}
+{% set auth_dep_path = config.get('auth', {}).get('dependency_path') %}
+{% if auth_dep_path %}
+{% set auth_dep_module = auth_dep_path.rsplit('.', 1)[0] %}
+{% set auth_dep_func = auth_dep_path.rsplit('.', 1)[1] %}
+    def test_{{ entity_name.lower() }}_scope_access_denied(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
+        """Test that user cannot access {{ entity_name }} owned by another user."""
+{% if 'true' in needs_unique_suffix(entity) %}
+        unique_suffix = str(uuid.uuid4())[:8]
+{% endif %}
+        # 1. Create {{ entity_name.lower() }} as User A (assumed default test user)
+        response = client.post(
+            "/api/v1/{{ entity_table_kebab }}",
+            json={
+{{ build_test_data_fields(entity, field_to_fixture, 'scope', '', true, constraints, enums) }}            },
+        )
+        assert response.status_code == 201
+        {{ entity_name.lower() }}_id = response.json()["{{ get_primary_key_field(entity) }}"]
+
+        # 2. Override dependency to simulate User B
+        from {{ config.paths.main.rsplit('/', 1)[0] | path_to_import }}.main import app
+        from {{ auth_dep_module }} import {{ auth_dep_func }}
+
+        class MockUserB:
+            id = "user_b_id_999"
+
+        app.dependency_overrides[{{ auth_dep_func }}] = lambda: MockUserB()
+
+        try:
+            # 3. Attempt to GET User A's {{ entity_name }} as User B
+            response = client.get(f"/api/v1/{{ entity_table_kebab }}/{ {{ entity_name.lower() }}_id }")
+            assert response.status_code == {{ scope.miss_status | default(404) }}
+
+            # 4. Attempt to PUT User A's {{ entity_name }} as User B
+{% if updatable_fields %}
+            update_response = client.put(f"/api/v1/{{ entity_table_kebab }}/{ {{ entity_name.lower() }}_id }", json={})
+            assert update_response.status_code == {{ scope.miss_status | default(404) }}
+{% endif %}
+
+            # 5. Attempt to DELETE User A's {{ entity_name }} as User B
+            delete_response = client.delete(f"/api/v1/{{ entity_table_kebab }}/{ {{ entity_name.lower() }}_id }")
+            assert delete_response.status_code == {{ scope.miss_status | default(404) }}
+        finally:
+            # Restore dependency overrides
+            app.dependency_overrides.pop({{ auth_dep_func }}, None)
+{% endif %}
+{% endif %}
+
 {% endfor %}

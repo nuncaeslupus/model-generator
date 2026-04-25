@@ -440,10 +440,45 @@ For immutable entities, typically set `"created": true, "updated": false`.
 | `enabled` | bool | `false` | Generate API endpoints for this entity |
 | `prefix` | string | table name | URL prefix: `/api/v1/{prefix}` |
 | `endpoints` | array | all 5 | Which CRUD endpoints to generate |
+| `scope` | object | — | Owner-scope `list`, `get`, `update`, `delete` to a single user (see below) |
 
 **Available endpoints:** `list`, `create`, `get`, `update`, `delete`
 
 For immutable entities, use `["list", "create", "get"]`.
+
+### Owner Scoping (`api.scope`)
+
+```json
+"api": {
+  "enabled": true,
+  "scope": {
+    "owner_field": "user_id",
+    "miss_status": 404
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `owner_field` | string | required | Field on the entity that holds the owner's user ID |
+| `inject_from` | string | `current_user` | Parameter name injected into handler signatures |
+| `miss_status` | integer | `404` | Status returned when the row exists but isn't owned by the caller |
+
+When `scope` is set, the generated handlers behave as follows:
+
+- `list` filters every query by `owner_field == current_user.id`.
+- `get` / `update` / `delete` reject cross-owner access (404 by default, or `miss_status`).
+- `create` injects `current_user` and force-assigns `owner_field = current_user.id` after building the entity from the request body.
+- `owner_field` is excluded from both `Create` and `Update` request models — it is set by the handler, not the API caller, and is immutable from the API's perspective.
+
+`api.scope` requires `auth.dependency_path` in `.model-generator.yaml`:
+
+```yaml
+auth:
+  dependency_path: "backend.src.auth.get_current_user"
+```
+
+The generator imports this function and injects it via FastAPI's `Depends()`. The adopter writes the function — the generator does not emit it. Generation will fail loudly if `scope` is declared without this config.
 
 ---
 

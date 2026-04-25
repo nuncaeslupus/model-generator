@@ -30,3 +30,10 @@ paths:
 #   line_length: 100
 #   quote_style: "single"
 #   indent_style: "tab"
+
+# Required when any entity declares api.scope (owner-scoped endpoints).
+# The generator imports this dependency and threads it into list/get/update/delete
+# handlers via FastAPI's Depends(). The adopter is responsible for writing the
+# function — the generator does not emit it.
+# auth:
+#   dependency_path: "backend.src.auth.get_current_user"

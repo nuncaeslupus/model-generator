@@ -73,6 +73,38 @@ def minimal_model():
 
 
 @pytest.fixture
+def scoped_model():
+    """Model with an owner-scoped entity for testing api.scope generation."""
+    return {
+        "domain": "widgets",
+        "entities": {
+            "Widget": {
+                "table": "widgets",
+                "fields": {
+                    "id": {
+                        "type": "uuid",
+                        "primary_key": True,
+                        "auto_generate": True,
+                    },
+                    "name": {
+                        "type": "text",
+                        "max_length": 100,
+                        "required": True,
+                    },
+                    "owner_id": {"type": "uuid", "required": True},
+                },
+                "timestamps": {"created": True, "updated": True},
+                "api": {
+                    "enabled": True,
+                    "endpoints": ["list", "create", "get", "update", "delete"],
+                    "scope": {"owner_field": "owner_id"},
+                },
+            }
+        },
+    }
+
+
+@pytest.fixture
 def project_env(tmp_path):
     """Set up a temporary project with config and template environment."""
     config_data = {
@@ -287,6 +319,34 @@ class TestApiModelsGenerator:
         assert long_desc in request["content"]
 
 
+class TestApiModelsGeneratorScope:
+    """Test API request model generation when entities declare api.scope."""
+
+    def _request_content(self, model, project_env):
+        project_root, config, env = project_env
+        results = generate_api_models(model, config, env, project_root)
+        return next(r for r in results if "request" in r["path"].name)["content"]
+
+    def test_owner_field_excluded_from_create_request(
+        self, scoped_model, project_env
+    ):
+        """owner_field is set by the handler, not by the API caller."""
+        content = self._request_content(scoped_model, project_env)
+        create_start = content.index("class CreateWidgetRequest")
+        update_start = content.index("class UpdateWidgetRequest")
+        create_block = content[create_start:update_start]
+        assert "owner_id" not in create_block
+
+    def test_owner_field_excluded_from_update_request(
+        self, scoped_model, project_env
+    ):
+        """owner_field is immutable from the API; update payloads cannot reassign it."""
+        content = self._request_content(scoped_model, project_env)
+        update_start = content.index("class UpdateWidgetRequest")
+        update_block = content[update_start:]
+        assert "owner_id" not in update_block
+
+
 class TestApiRoutesGenerator:
     """Test API routes generation."""
 
@@ -314,6 +374,160 @@ class TestApiRoutesGenerator:
         assert "async def get_item" in result["content"]
         assert "async def update_item" in result["content"]
         assert "async def delete_item" in result["content"]
+
+
+class TestApiRoutesGeneratorScope:
+    """Test API route generation when entities declare api.scope."""
+
+    AUTH_PATH = "backend.src.auth.get_current_user"
+
+    def _config_with_auth(self, config):
+        return {**config, "auth": {"dependency_path": self.AUTH_PATH}}
+
+    def test_imports_auth_dependency(self, scoped_model, project_env):
+        project_root, config, env = project_env
+        result = generate_api_routes(
+            scoped_model,
+            self._config_with_auth(config),
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        assert "from backend.src.auth import get_current_user" in result["content"]
+
+    def test_all_handlers_receive_current_user(self, scoped_model, project_env):
+        """All 5 CRUD handlers inject current_user when scope is set."""
+        project_root, config, env = project_env
+        result = generate_api_routes(
+            scoped_model,
+            self._config_with_auth(config),
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        assert (
+            result["content"].count(
+                "current_user: Any = Depends(get_current_user)"
+            )
+            == 5
+        )
+
+    def test_create_handler_auto_sets_owner_field(self, scoped_model, project_env):
+        """Create handler force-assigns owner_field from current_user.id."""
+        project_root, config, env = project_env
+        result = generate_api_routes(
+            scoped_model,
+            self._config_with_auth(config),
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        assert "widget.owner_id = current_user.id" in result["content"]
+
+    def test_list_query_filters_by_owner(self, scoped_model, project_env):
+        project_root, config, env = project_env
+        result = generate_api_routes(
+            scoped_model,
+            self._config_with_auth(config),
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        assert (
+            "stmt = stmt.where(Widget.owner_id == current_user.id)"
+            in result["content"]
+        )
+        assert (
+            "count_stmt = count_stmt.where(Widget.owner_id == current_user.id)"
+            in result["content"]
+        )
+
+    def test_default_miss_status_uses_not_found(self, scoped_model, project_env):
+        """404 falls through to format_not_found_error; HTTPException not imported."""
+        project_root, config, env = project_env
+        result = generate_api_routes(
+            scoped_model,
+            self._config_with_auth(config),
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        assert "if widget.owner_id != current_user.id:" in result["content"]
+        assert "from fastapi import HTTPException" not in result["content"]
+
+    def test_custom_miss_status_uses_http_exception(self, scoped_model, project_env):
+        """Non-404 miss_status emits HTTPException with the custom code."""
+        project_root, config, env = project_env
+        scoped_model["entities"]["Widget"]["api"]["scope"]["miss_status"] = 403
+        result = generate_api_routes(
+            scoped_model,
+            self._config_with_auth(config),
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        assert "from fastapi import HTTPException" in result["content"]
+        assert "status_code=403" in result["content"]
+
+
+class TestValidateAuthConfig:
+    """Test the _validate_auth_config helper."""
+
+    def test_no_scope_passes_without_auth_config(self):
+        from model_generator.generate import _validate_auth_config
+
+        model = {"entities": {"Item": {"api": {"enabled": True}}}}
+        _validate_auth_config(model, config={})  # Should not exit
+
+    def test_scope_with_auth_config_passes(self):
+        from model_generator.generate import _validate_auth_config
+
+        model = {
+            "entities": {
+                "Widget": {"api": {"scope": {"owner_field": "user_id"}}}
+            }
+        }
+        config = {"auth": {"dependency_path": "x.y.z"}}
+        _validate_auth_config(model, config)  # Should not exit
+
+    def test_scope_without_auth_config_exits(self, capsys):
+        from model_generator.generate import _validate_auth_config
+
+        model = {
+            "entities": {
+                "Widget": {"api": {"scope": {"owner_field": "user_id"}}}
+            }
+        }
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_config(model, config={})
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "Widget" in out
+        assert "auth.dependency_path" in out
+        assert "api.scope" in out
+
+    def test_scope_with_dotless_auth_path_exits(self, capsys):
+        """auth.dependency_path must include a module separator."""
+        from model_generator.generate import _validate_auth_config
+
+        model = {
+            "entities": {
+                "Widget": {"api": {"scope": {"owner_field": "user_id"}}}
+            }
+        }
+        config = {"auth": {"dependency_path": "no_dots_here"}}
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_config(model, config)
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "no_dots_here" in out
+        assert "dotted path" in out
 
 
 class TestApiTestsGenerator:

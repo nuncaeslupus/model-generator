@@ -33,10 +33,18 @@
     has_uuid_pk=false,
     enum_imports=[],
     db_models=[],
-    has_password_field=false
+    has_password_field=false,
+    has_scoped_endpoints=false,
+    scope_miss_status=[]
 ) %}
 {% for entity_name, entity in model.entities.items() %}
 {% set _ = ns.db_models.append(entity_name) %}
+{% if entity.api is defined and entity.api.scope is defined %}
+{% set ns.has_scoped_endpoints = true %}
+{% if entity.api.scope.miss_status is defined and entity.api.scope.miss_status != 404 and entity.api.scope.miss_status not in ns.scope_miss_status %}
+{% set _ = ns.scope_miss_status.append(entity.api.scope.miss_status) %}
+{% endif %}
+{% endif %}
 {% for field_name, field in entity.fields.items() %}
 {% if field.type == 'uuid' and field.primary_key | default(false) %}{% set ns.has_uuid_pk = true %}{% endif %}
 {% if field.type in ['json_object', 'json_array'] %}{% set ns.has_any = true %}{% endif %}
@@ -78,12 +86,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response, Query
 from fastapi import status as http_status
+{% if ns.scope_miss_status | length > 0 %}
+from fastapi import HTTPException
+{% endif %}
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-{% if ns.has_any %}
 from typing import Any
-{% endif %}
 
 from {{ config.paths.api_models.rsplit('/', 1)[0] | path_to_import }}.errors import format_integrity_error, format_not_found_error
 from {{ config.paths.api_models | path_to_import }}.pagination import PaginatedResponse, calculate_page_info
@@ -95,6 +104,14 @@ from {{ config.paths.database_models.rsplit('/', 1)[0] | path_to_import }} impor
 from {{ config.paths.database_models | path_to_import }}.{{ model.domain }} import {{ ns.db_models | join(', ') }}
 {% if ns.enum_imports | length > 0 %}
 from {{ config.paths.database_models | path_to_import }}.enums import {{ ns.enum_imports | join(', ') }}
+{% endif %}
+{% if ns.has_scoped_endpoints %}
+{% set auth_dep_path = config.get('auth', {}).get('dependency_path') %}
+{% if auth_dep_path %}
+{% set auth_dep_module = auth_dep_path.rsplit('.', 1)[0] %}
+{% set auth_dep_func = auth_dep_path.rsplit('.', 1)[1] %}
+from {{ auth_dep_module }} import {{ auth_dep_func }}
+{% endif %}
 {% endif %}
 
 # Import request models
@@ -125,6 +142,11 @@ router = APIRouter(tags=["{{ model.domain }}"])
 {% set pk_python_type = 'str' %}
 {% endif %}
 {% set endpoints = entity.api.endpoints if (entity.api is defined and entity.api.endpoints is defined) else ["list", "create", "get", "update", "delete"] %}
+{% set scope = entity.api.scope if entity.api is defined else none %}
+{% if scope %}
+{% set inject_from = scope.inject_from | default('current_user') %}
+{% set miss_status = scope.miss_status | default(404) %}
+{% endif %}
 
 {{ section_banner(entity_name + ' CRUD OPERATIONS') }}
 
@@ -161,11 +183,20 @@ async def list_{{ entity_plural }}(
     sort_by: str | None = Query(None, description="Sort by field name"),
     order: str = Query("desc", pattern="^(asc|desc)$", description="Sort order (asc or desc)"),
     session: AsyncSession = Depends(get_session),
+{% if scope %}
+    {{ inject_from }}: Any = Depends({{ auth_dep_func }}),
+{% endif %}
 ) -> PaginatedResponse[{{ entity_name }}Response]:
     """List {{ entity_plural }} with pagination, filtering, and sorting."""
     # Build base query
     stmt = select({{ entity_name }})
     count_stmt = select(func.count()).select_from({{ entity_name }})
+
+{% if scope %}
+    # Apply ownership scope
+    stmt = stmt.where({{ entity_name }}.{{ scope.owner_field }} == {{ inject_from }}.id)
+    count_stmt = count_stmt.where({{ entity_name }}.{{ scope.owner_field }} == {{ inject_from }}.id)
+{% endif %}
 
     # Apply filters
 {% for field_name, field in entity.fields.items() %}
@@ -263,6 +294,9 @@ async def list_{{ entity_plural }}(
 async def create_{{ entity_lower }}(
     request: Create{{ entity_name }}Request,
     session: AsyncSession = Depends(get_session),
+{% if scope %}
+    {{ inject_from }}: Any = Depends({{ auth_dep_func }}),
+{% endif %}
 ) -> {{ entity_name }}Response:
     """Create new {{ entity_lower }}."""
     # TODO: Add any business logic validation here
@@ -278,6 +312,9 @@ async def create_{{ entity_lower }}(
 {% else %}
 
     {{ entity_lower }} = {{ entity_name }}(**request.model_dump())
+{% endif %}
+{% if scope %}
+    {{ entity_lower }}.{{ scope.owner_field }} = {{ inject_from }}.id
 {% endif %}
     session.add({{ entity_lower }})
 
@@ -298,11 +335,25 @@ async def create_{{ entity_lower }}(
 async def get_{{ entity_lower }}(
     {{ pk_field }}: {{ pk_python_type }},
     session: AsyncSession = Depends(get_session),
+{% if scope %}
+    {{ inject_from }}: Any = Depends({{ auth_dep_func }}),
+{% endif %}
 ) -> {{ entity_name }}Response:
     """Get single {{ entity_lower }} by ID."""
     {{ entity_lower }} = await session.get({{ entity_name }}, {{ pk_field }})
     if not {{ entity_lower }}:
         raise format_not_found_error("{{ entity_name }}", {{ pk_field }})
+{% if scope %}
+    if {{ entity_lower }}.{{ scope.owner_field }} != {{ inject_from }}.id:
+{% if miss_status == 404 %}
+        raise format_not_found_error("{{ entity_name }}", {{ pk_field }})
+{% else %}
+        raise HTTPException(
+            status_code={{ miss_status }},
+            detail={"error": "forbidden", "message": "Access denied to this {{ entity_name }}"},
+        )
+{% endif %}
+{% endif %}
     return _convert_{{ entity_lower }}_to_response({{ entity_lower }})
 {% endif %}
 
@@ -315,11 +366,25 @@ async def update_{{ entity_lower }}(
     {{ pk_field }}: {{ pk_python_type }},
     request: Update{{ entity_name }}Request,
     session: AsyncSession = Depends(get_session),
+{% if scope %}
+    {{ inject_from }}: Any = Depends({{ auth_dep_func }}),
+{% endif %}
 ) -> {{ entity_name }}Response:
     """Update existing {{ entity_lower }}."""
     {{ entity_lower }} = await session.get({{ entity_name }}, {{ pk_field }})
     if not {{ entity_lower }}:
         raise format_not_found_error("{{ entity_name }}", {{ pk_field }})
+{% if scope %}
+    if {{ entity_lower }}.{{ scope.owner_field }} != {{ inject_from }}.id:
+{% if miss_status == 404 %}
+        raise format_not_found_error("{{ entity_name }}", {{ pk_field }})
+{% else %}
+        raise HTTPException(
+            status_code={{ miss_status }},
+            detail={"error": "forbidden", "message": "Access denied to this {{ entity_name }}"},
+        )
+{% endif %}
+{% endif %}
 
     # Partial updates (only provided fields)
     update_data = request.model_dump(exclude_unset=True)
@@ -343,11 +408,25 @@ async def update_{{ entity_lower }}(
 async def delete_{{ entity_lower }}(
     {{ pk_field }}: {{ pk_python_type }},
     session: AsyncSession = Depends(get_session),
+{% if scope %}
+    {{ inject_from }}: Any = Depends({{ auth_dep_func }}),
+{% endif %}
 ) -> Response:
     """Delete {{ entity_lower }}."""
     {{ entity_lower }} = await session.get({{ entity_name }}, {{ pk_field }})
     if not {{ entity_lower }}:
         raise format_not_found_error("{{ entity_name }}", {{ pk_field }})
+{% if scope %}
+    if {{ entity_lower }}.{{ scope.owner_field }} != {{ inject_from }}.id:
+{% if miss_status == 404 %}
+        raise format_not_found_error("{{ entity_name }}", {{ pk_field }})
+{% else %}
+        raise HTTPException(
+            status_code={{ miss_status }},
+            detail={"error": "forbidden", "message": "Access denied to this {{ entity_name }}"},
+        )
+{% endif %}
+{% endif %}
 
     await session.delete({{ entity_lower }})
     await session.commit()

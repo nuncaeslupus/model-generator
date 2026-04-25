@@ -313,6 +313,7 @@ def generate(
 
     model = load_model(model_path)
     config = load_config(stack)
+    _validate_auth_config(model, config)
     env = get_template_env(stack, config)
 
     domain = model.get("domain", "unknown")
@@ -394,6 +395,40 @@ def _validate_project_root(project_root: Path) -> None:
             f"Error: No .model-generator.yaml found in {project_root}.\n"
             "Create a .model-generator.yaml in your project root, or run model-gen "
             "from inside the project directory."
+        )
+        sys.exit(1)
+
+
+def _validate_auth_config(model: dict, config: dict) -> None:
+    """Abort if any entity declares api.scope without auth.dependency_path in config."""
+    scoped = [
+        name
+        for name, entity in model.get("entities", {}).items()
+        if entity.get("api", {}).get("scope")
+    ]
+    if not scoped:
+        return
+
+    auth_dep = config.get("auth", {}).get("dependency_path")
+    if not auth_dep:
+        names = ", ".join(scoped)
+        print(
+            f"Error: Entities ({names}) declare api.scope but "
+            "auth.dependency_path is not set in .model-generator.yaml.\n\n"
+            "Add this to your .model-generator.yaml:\n\n"
+            "  auth:\n"
+            '    dependency_path: "path.to.your.get_current_user"\n\n'
+            "The generator will import this function and inject it via "
+            "FastAPI's Depends() in scoped endpoints."
+        )
+        sys.exit(1)
+
+    if "." not in auth_dep:
+        print(
+            f'Error: auth.dependency_path "{auth_dep}" must be a dotted path '
+            'like "module.submodule.get_current_user".\n'
+            "The segment before the last dot is the import module; the segment "
+            "after is the callable."
         )
         sys.exit(1)
 
