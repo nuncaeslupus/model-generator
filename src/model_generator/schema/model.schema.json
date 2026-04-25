@@ -197,6 +197,7 @@
                         "text",
                         "longtext",
                         "boolean",
+                        "binary",
                         "datetime",
                         "enum",
                         "json_object",
@@ -627,6 +628,29 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "scope": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "owner_field": {
+                            "type": "string",
+                            "description": "Field name that holds the owner user ID"
+                        },
+                        "inject_from": {
+                            "type": "string",
+                            "default": "current_user",
+                            "description": "Parameter name to inject from Depends()"
+                        },
+                        "miss_status": {
+                            "type": "integer",
+                            "default": 404,
+                            "description": "Status code when ownership check fails"
+                        }
+                    },
+                    "required": [
+                        "owner_field"
+                    ]
                 }
             }
         },

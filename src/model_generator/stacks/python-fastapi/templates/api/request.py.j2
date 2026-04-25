@@ -95,10 +95,11 @@ from {{ config.paths.api_models.rsplit('/', 1)[0] | path_to_import }}.validators
 {{ section_divider(model.section_header | default(model.domain | upper + ' MODELS')) }}
 
 {% for entity_name, entity in model.entities.items() %}
+{% set scope_owner_field = entity.api.scope.owner_field if (entity.api is defined and entity.api.scope is defined) else none %}
 {#- Determine create fields (exclude readonly, auto-generated pk, timestamps) -#}
 {% set create_fields = [] %}
 {% for field_name, field in entity.fields.items() %}
-{% if not field.api_exclude_create | default(false) and not field.api_readonly | default(false) and not (field.primary_key | default(false) and field.auto_generate | default(true)) %}
+{% if not field.api_exclude_create | default(false) and not field.api_readonly | default(false) and not (field.primary_key | default(false) and field.auto_generate | default(true)) and field_name != scope_owner_field %}
 {#- Use api_field_name if defined, otherwise use field_name -#}
 {% set api_name = field.api_field_name | default(field_name) %}
 {% set _ = create_fields.append({'name': api_name, 'db_name': field_name, 'field': field}) %}
@@ -313,7 +314,7 @@ class Create{{ entity_name }}Request(BaseModel):
 {#- Determine update fields (all optional except readonly/pk/timestamps) -#}
 {% set update_fields = [] %}
 {% for field_name, field in entity.fields.items() %}
-{% if not field.api_exclude_update | default(false) and not field.api_readonly | default(false) and not field.primary_key | default(false) %}
+{% if not field.api_exclude_update | default(false) and not field.api_readonly | default(false) and not field.primary_key | default(false) and field_name != scope_owner_field %}
 {% set _ = update_fields.append({'name': field_name, 'field': field}) %}
 {% endif %}
 {% endfor %}
