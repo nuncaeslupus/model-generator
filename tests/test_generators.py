@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from model_generator.generators import (
+    generate_api_init,
     generate_api_models,
     generate_api_routes,
     generate_api_tests,
@@ -503,6 +504,92 @@ class TestFactoryGeneratorPerEntity:
         )
         assert "from .post import PostFactory" in author_content
         assert "PostFactory.create_batch(count, author=obj)" in author_content
+
+
+class TestApiModelsGeneratorPerEntity:
+    """Per-entity api-models emission: two files per entity."""
+
+    def test_returns_one_response_and_one_request_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        project_root, config, env = project_env_per_entity
+        result = generate_api_models(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
+        assert len(result) == 4
+        names = {r["path"].name for r in result}
+        assert names == {
+            "author_response.py",
+            "author_requests.py",
+            "post_response.py",
+            "post_requests.py",
+        }
+
+    def test_response_file_contains_only_one_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """author_response.py contains AuthorResponse and not PostResponse."""
+        project_root, config, env = project_env_per_entity
+        result = generate_api_models(multi_entity_model, config, env, project_root)
+        author_resp = next(
+            r["content"] for r in result if r["path"].name == "author_response.py"
+        )
+        assert "class AuthorResponse(BaseModel):" in author_resp
+        assert "class PostResponse" not in author_resp
+
+    def test_request_file_contains_only_one_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """author_requests.py contains Create/UpdateAuthorRequest and not Post."""
+        project_root, config, env = project_env_per_entity
+        result = generate_api_models(multi_entity_model, config, env, project_root)
+        author_req = next(
+            r["content"] for r in result if r["path"].name == "author_requests.py"
+        )
+        assert "class CreateAuthorRequest(BaseModel):" in author_req
+        assert "class UpdateAuthorRequest(BaseModel):" in author_req
+        assert "CreatePostRequest" not in author_req
+
+
+class TestGenerateApiInitPerEntity:
+    """Per-entity api __init__.py emission."""
+
+    def test_emits_one_import_block_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        project_root, config, env = project_env_per_entity
+        with patch(
+            "model_generator.generators.api.scan_api_model_files", return_value=[]
+        ):
+            result = generate_api_init(multi_entity_model, config, env, project_root)
+        assert result is not None
+        assert "from .author_response import" in result["content"]
+        assert "from .author_requests import" in result["content"]
+        assert "from .post_response import" in result["content"]
+        assert "from .post_requests import" in result["content"]
+        assert result["domain_count"] == 2
+
+    def test_existing_per_entity_files_not_redeclared(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """If scan finds 'author', model contributes only Post."""
+        project_root, config, env = project_env_per_entity
+        existing = [
+            {
+                "name": "author",
+                "section": None,
+                "response_models": ["AuthorResponse"],
+                "request_models": ["CreateAuthorRequest", "UpdateAuthorRequest"],
+            }
+        ]
+        with patch(
+            "model_generator.generators.api.scan_api_model_files",
+            return_value=existing,
+        ):
+            result = generate_api_init(multi_entity_model, config, env, project_root)
+        assert result is not None
+        assert result["domain_count"] == 2  # author (existing) + post (added)
+        assert "from .author_response import" in result["content"]
+        assert "from .post_response import" in result["content"]
 
 
 class TestApiModelsGenerator:

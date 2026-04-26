@@ -3,11 +3,18 @@ API generation utilities (models, routes, tests).
 """
 
 from pathlib import Path
+from typing import cast
 
 from jinja2 import Environment
 
 from ..utils.loaders import load_shared_constraints, load_shared_enums
 from ..utils.parser import scan_api_model_files
+from ..utils.templates import snake_case
+
+
+def _layout(config: dict) -> str:
+    """Return the configured generation layout (defaulting to per-entity)."""
+    return cast(str, config.get("generation", {}).get("layout", "per-entity"))
 
 
 def _filter_api_entities(model: dict) -> dict | None:
@@ -41,28 +48,61 @@ def generate_api_models(
     project_root: Path,
     model_path: Path | None = None,
 ) -> list[dict] | None:
-    """Generate Pydantic response and request models."""
+    """Generate Pydantic response and request models.
+
+    In per-entity layout (the default) returns two files per entity
+    (``{entity_snake}_response.py`` + ``{entity_snake}_requests.py``). In
+    per-domain layout returns one combined response file and one combined
+    request file. Templates iterate ``model.entities`` so per-entity mode
+    just feeds them sliced inputs — no template change required.
+    """
     filtered = _filter_api_entities(model)
     if filtered is None:
         return None
 
     enums = load_shared_enums(model_path or project_root)
-
-    outputs = []
-    domain = filtered.get("domain", "models")
     output_dir = project_root / config["paths"]["api_models"]
+    response_template = env.get_template("api/response.py.j2")
+    request_template = env.get_template("api/request.py.j2")
 
-    # Response models
-    template = env.get_template("api/response.py.j2")
-    content = template.render(model=filtered, config=config, enums=enums)
-    outputs.append({"path": output_dir / f"{domain}_response.py", "content": content})
+    if _layout(config) == "per-entity":
+        outputs = []
+        for name, entity in filtered.get("entities", {}).items():
+            sliced = {**filtered, "entities": {name: entity}}
+            stem = snake_case(name)
+            outputs.append(
+                {
+                    "path": output_dir / f"{stem}_response.py",
+                    "content": response_template.render(
+                        model=sliced, config=config, enums=enums
+                    ),
+                }
+            )
+            outputs.append(
+                {
+                    "path": output_dir / f"{stem}_requests.py",
+                    "content": request_template.render(
+                        model=sliced, config=config, enums=enums
+                    ),
+                }
+            )
+        return outputs
 
-    # Request models
-    template = env.get_template("api/request.py.j2")
-    content = template.render(model=filtered, config=config, enums=enums)
-    outputs.append({"path": output_dir / f"{domain}_requests.py", "content": content})
-
-    return outputs
+    domain = filtered.get("domain", "models")
+    return [
+        {
+            "path": output_dir / f"{domain}_response.py",
+            "content": response_template.render(
+                model=filtered, config=config, enums=enums
+            ),
+        },
+        {
+            "path": output_dir / f"{domain}_requests.py",
+            "content": request_template.render(
+                model=filtered, config=config, enums=enums
+            ),
+        },
+    ]
 
 
 def generate_api_init(
@@ -71,27 +111,45 @@ def generate_api_init(
     """Generate __init__.py with exports for all API model files."""
     output_dir = project_root / config["paths"]["api_models"]
     domains = scan_api_model_files(output_dir)
-
-    # Include current model even if its files haven't been written yet
     filtered = _filter_api_entities(model)
-    current_domain = model.get("domain", "unknown")
-    domain_names = {d["name"] for d in domains}
-    if filtered is not None and current_domain not in domain_names:
-        entities = list(filtered.get("entities", {}).keys())
-        domains.append(
-            {
-                "name": current_domain,
-                "section": current_domain.upper().replace("_", " ") + " MODELS",
-                "response_models": [f"{e}Response" for e in entities],
-                "request_models": [f"Create{e}Request" for e in entities]
-                + [
-                    f"Update{e}Request"
-                    for e in entities
-                    if filtered["entities"][e].get("mutability", "mutable")
-                    != "immutable"
-                ],
-            }
-        )
+
+    if _layout(config) == "per-entity":
+        existing_names = {d["name"] for d in domains}
+        if filtered is not None:
+            for entity_name, entity in filtered.get("entities", {}).items():
+                stem = snake_case(entity_name)
+                if stem in existing_names:
+                    continue
+                request_models = [f"Create{entity_name}Request"]
+                if entity.get("mutability", "mutable") != "immutable":
+                    request_models.append(f"Update{entity_name}Request")
+                domains.append(
+                    {
+                        "name": stem,
+                        "section": None,
+                        "response_models": [f"{entity_name}Response"],
+                        "request_models": request_models,
+                    }
+                )
+    else:
+        current_domain = model.get("domain", "unknown")
+        domain_names = {d["name"] for d in domains}
+        if filtered is not None and current_domain not in domain_names:
+            entities = list(filtered.get("entities", {}).keys())
+            domains.append(
+                {
+                    "name": current_domain,
+                    "section": current_domain.upper().replace("_", " ") + " MODELS",
+                    "response_models": [f"{e}Response" for e in entities],
+                    "request_models": [f"Create{e}Request" for e in entities]
+                    + [
+                        f"Update{e}Request"
+                        for e in entities
+                        if filtered["entities"][e].get("mutability", "mutable")
+                        != "immutable"
+                    ],
+                }
+            )
 
     if not domains:
         print(f"  ℹ️  No API model files found in {output_dir}")
