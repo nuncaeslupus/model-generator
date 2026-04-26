@@ -1,60 +1,50 @@
 # Next Session Plan
 
-## Current State (2026-04-26, post-§15.3)
+## Current State (2026-04-26, post-§15.4)
 
-PR #10 (§9 owner-scoping) merged to `main` as squash `62a700c`. §15 (one-file-per-entity layout) is in progress on `feat/15-per-entity-layout` — **5 local commits, not pushed**.
+PR #10 (§9 owner-scoping) merged to `main` as squash `62a700c`. §15 (one-file-per-entity layout) is in progress on `feat/15-per-entity-layout` — **6 local commits, not pushed**.
 
 ### `feat/15-per-entity-layout`
 
 - `18c6531` — `chore: align make lint with CI` — picked up the two `make lint` follow-ups: `ruff format --check .` added to lint target, and `examples/.*/backend/` + `examples/.*/alembic/` added to `[tool.mypy].exclude` so local mypy stops tripping on gitignored 3.12 generated output.
 - `72c9ab4` — `feat: thread generation.layout config flag (§15.1)` — `load_config` defaults `generation.layout` to `"per-entity"`; `_validate_generation_config()` rejects unknown values. Plumbing only — no emission change yet.
 - `8a7d481` — `feat: add snake_case filter for entity-derived filenames (§15.2)` — Python `snake_case()` in `utils/templates.py` mirroring the existing `to_snake_case` Jinja macro byte-for-byte; registered as a Jinja filter for template-side parity.
-- `c5aefd0` — `docs: capture §15 mid-session checkpoint in next-session.md` — captured the §15.3 design before pausing; this commit is the one being superseded by the current rewrite.
+- `c5aefd0` — `docs: capture §15 mid-session checkpoint in next-session.md` — captured the §15.3 design before pausing; superseded by `96a3bbc`.
 - `be47358` — `feat: split database emission per-entity (§15.3)` — generator + factory.py.j2 + model.py.j2 changes plus the entity_refs gap fix (sibling factory imports for `one_to_many` create_related). Test fixtures pinned to per-domain across `test_generators.py` (`project_env`), `test_integration.py`, and `test_edge_cases.py::test_database_only`; `test_full_generation.py` updated to expect per-entity `user.py` since it copies the example config which intentionally rides on the new default.
+- `96a3bbc` — `docs: checkpoint §15.3 done in next-session.md` — captured §15.3 outcome and the §15.4 design question (combined vs two-file).
+- `32641ac` — `feat: split api-models emission per-entity (§15.4)` — chose two-file path (no template changes). `generate_api_models` slices `model.entities` per render and emits `{stem}_response.py` + `{stem}_requests.py`; `generate_api_init` adds a layout-aware fallback (mirror of `generate_init` from §15.3). +5 tests (`TestApiModelsGeneratorPerEntity` × 3, `TestGenerateApiInitPerEntity` × 2).
 
-**Verification at checkpoint:** 333 tests passing (was 323 — +10 new per-entity test classes covering database, init, factory; the multi_entity_model fixture exercises both SubFactory and create_related sibling-import paths). `make lint` clean (ruff check + ruff format check + mypy), working tree clean.
+**Verification at checkpoint:** 338 tests passing (was 333 — +5 new). `make lint` clean (ruff check + ruff format check + mypy), working tree clean.
 
 ---
 
-## Priority Next Session — Continue §15 (steps 4–6)
+## Priority Next Session — Continue §15 (steps 5–6)
 
-The full §15 plan is at `~/.claude/plans/tranquil-shimmying-flute.md`. Steps 1–3 landed; step 4 has an open design question that needs a decision before implementation.
+The full §15 plan is at `~/.claude/plans/tranquil-shimmying-flute.md`. Steps 1–4 landed.
 
-### §15.4 — api-models per-entity (NEXT UP)
+### §15.5 — api-routes and api-tests per-entity (NEXT UP)
 
-**Open design decision (asked & deferred this session):**
+Same layout-aware slicing pattern in `generate_api_routes` and `generate_api_tests` (`generators/api.py:192-220` and `223-255`). Audit `route.py.j2` and `tests/contract.py.j2` for cross-entity references (none expected in current CRUD scaffolding — confirmed during the §15.3 entity_refs analysis, but `route.py.j2` was not directly inspected). Per-entity output should be `routes/{entity_snake}.py` and `tests/api/test_{entity_snake}_api.py`. Both helpers currently return `dict | None`; per-entity bumps them to `list[dict] | None` (callers in `generate.py:80-90` already handle the list shape from §15.3 / §15.4).
 
-The original plan calls for a new combined `templates/api/entity.py.j2` that emits Request + Response classes for a single entity in one file. That requires writing ~600+ lines (response.py.j2 is 222, request.py.j2 is 448) and merging two templates' import-collection / validator-collection logic. A simpler alternative reuses the existing two templates with sliced `model.entities` and emits two files per entity (`user_response.py` + `user_requests.py`). Both produce working output; the tradeoffs:
+**Files to touch:**
+- `src/model_generator/generators/api.py` — `generate_api_routes` and `generate_api_tests`, mirror the slicing pattern from `generate_api_models` (lines 68-89).
+- `tests/test_generators.py` — `TestApiRoutesGenerator` (line 591) and `TestApiTestsGenerator` (line 788) ride on per-domain-pinned `project_env`. Add `TestApiRoutesGeneratorPerEntity` and `TestApiTestsGeneratorPerEntity` using `multi_entity_model` + `project_env_per_entity`.
 
-| Path | Output shape | New code | Risk |
-| --- | --- | --- | --- |
-| Combined `entity.py.j2` (plan) | one file per entity | new ~600+ line template | merge-bug surface, validator/import dedup |
-| Two-file per-entity (alternative) | two files per entity | generator + scanner only | doubles file count vs. database/factories |
-
-**Decide first.** If picking the combined template, plan to budget a full session for §15.4 alone — write the template against the existing per-domain output as ground truth and snapshot-test against it for both layouts. If picking two-file, §15.4 + §15.5 might both fit one session.
-
-**Files to touch (either path):**
-- `src/model_generator/generators/api.py` — `generate_api_models` and `generate_api_init` need the same layout-aware loop pattern §15.3 added to `generators/database.py`.
-- `src/model_generator/utils/parser.py` — `scan_api_model_files` (line 69) is currently suffix-based (`*_response.py` / `*_requests.py`) and must add a per-entity branch detecting `{entity_snake}.py` (combined) or `{entity_snake}_response.py` + `{entity_snake}_requests.py` (two-file).
-- `tests/test_generators.py` — `TestApiModelsGenerator` currently asserts `items_response.py` / `items_requests.py` filenames and rides on the per-domain-pinned `project_env`; after §15.4 lands, add `TestApiModelsGeneratorPerEntity` using the existing `multi_entity_model` + `project_env_per_entity` fixtures (added in `be47358`).
-
-**Path-specific files:**
-- Combined: NEW `templates/api/entity.py.j2`. Per-domain mode keeps `request.py.j2` + `response.py.j2` unchanged.
-- Two-file: no template changes; generator slices `model.entities` to one entity per render and passes through to the existing templates.
-
-### §15.5 — api-routes and api-tests per-entity
-
-Same per-entity loop pattern in `generate_api_routes` and `generate_api_tests`. Audit `route.py.j2` for cross-entity references (none expected in current CRUD scaffolding — confirmed during the §15.3 entity_refs analysis). Per-entity output should be `routes/{entity_snake}.py` and `tests/api/test_{entity_snake}_api.py`. Tests.
+**Audit note:** `routes/__init__.py` and `tests/api/__init__.py` aren't currently emitted by any generator (FastAPI route registration is by import in `main.py.j2`, not by package init). Confirm during §15.5 that this stays true — if `main.py.j2` needs to import `routes.{stem}` per entity instead of `routes.{domain}`, that's a §15.5 template change.
 
 ### §15.6 — Example regen + docs
 
 Regenerate `examples/user-auth-project/` with `--clean`. Confirm 149 tests still pass. Add commented `generation.layout` section to `.model-generator.yaml`. Update `docs/agent/json-specification-reference.md` and any user-facing config docs. Note the breaking-shape change in this file.
 
+**Pre-regen blocker — `# None` banner bug discovered during §15.4:** Both `database/init.py.j2:22` and `api/init.py.j2:19` use `{{ domain.section | default(...) }}`. Jinja's `default` filter only fires on *undefined*, not `None` — and §15.3 / §15.4 deliberately set `section=None` for per-entity emission to suppress per-file banners. Result: per-entity `__init__.py` will emit literal `# None` banners. **Not yet visible** because the example hasn't been regenerated since §15.3, but will manifest the moment §15.6 runs `--clean`.
+
+Fix before §15.6: change both templates to `{% if domain.section %}# {{ domain.section }}{% endif %}` (one-line edit each), or pass `boolean=true` to `default()`. Add a per-entity `__init__.py` content assertion to `TestGenerateInitPerEntity` and `TestGenerateApiInitPerEntity` that grep-rejects `# None` to lock the fix.
+
 **Watch for during regen:** the User entity has 3 `one_to_many` sibling relationships (UserSession, ApiKey, UserRole) — these exercise the entity_refs gap fix from §15.3. If the regen produces a User factory that NameErrors at import time, the fix isn't doing its job.
 
 ### Housekeeping
 
-- Branch `feat/15-per-entity-layout` is local-only (5 commits ahead of origin/main). Push for backup: `git push -u origin feat/15-per-entity-layout`.
+- Branch `feat/15-per-entity-layout` is local-only (6 commits ahead of origin/main). Push for backup: `git push -u origin feat/15-per-entity-layout`.
 
 ---
 
@@ -114,6 +104,21 @@ Regenerate `examples/user-auth-project/` with `--clean`. Confirm 149 tests still
 - `multi_entity_model` fixture (Author + Post with both a `reference` field and a `one_to_many` sibling rel) drives all three classes.
 
 **Verification:** 333 passing (was 323; +10 new), `make lint` clean, working tree clean.
+
+### §15.4 — api-models generator: per-entity loop (2026-04-26, `32641ac`)
+
+**Generator design landed (two-file path chosen over combined-template path):**
+- `_layout(config)` helper duplicated locally in `generators/api.py` (3 lines, mirror of `database.py:14-16`). DRY trade accepted to keep §15.4's blast radius contained to one module.
+- `generate_api_models` returns `list[dict] | None` in both modes. Per-entity slices `model.entities` to one entity per render and emits two files per entity (`{snake_case(EntityName)}_response.py` + `{snake_case(EntityName)}_requests.py`); per-domain still emits one combined response + one combined request file.
+- `generate_api_init` is layout-aware: per-entity appends one synthetic domain entry per current-model entity (`name=stem`, `section=None`, `response_models=[EntityResponse]`, `request_models=[Create/UpdateEntityRequest]`); per-domain keeps the legacy single-domain entry. Mutability check still drops `Update*Request` for `mutability: immutable` entities.
+
+**No template changes.** `request.py.j2` and `response.py.j2` already iterate `for name, entity in model.entities.items()` — feeding sliced inputs Just Works. The existing `scan_api_model_files` (`utils/parser.py:69-129`) already groups by stripping `_response` / `_requests` suffixes, so it handles per-entity files transparently.
+
+**New test classes:**
+- `TestApiModelsGeneratorPerEntity` (3 tests) — four-file return shape (one Response + one Requests per entity), snake_case paths (`author_response.py`, etc.), content isolation (`author_response.py` contains `AuthorResponse` and not `PostResponse`).
+- `TestGenerateApiInitPerEntity` (2 tests) — patched `scan_api_model_files` baseline, asserts `from .author_response import` / `from .post_response import` appear; existing per-entity files don't get redeclared (dedup case).
+
+**Verification:** 338 passing (was 333; +5 new), `make lint` clean, working tree clean.
 
 ### §15.1 + §15.2 — Per-entity layout plumbing (2026-04-25)
 
