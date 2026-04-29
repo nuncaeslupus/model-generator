@@ -16,7 +16,9 @@ This package contains all Pydantic models for API requests and responses.
 """
 
 {% for domain in domains %}
-# {{ domain.section | default(domain.name | upper + ' MODELS') }}
+{% if domain.section %}
+# {{ domain.section }}
+{% endif %}
 {% if domain.response_models %}
 from .{{ domain.name }}_response import (
 {% for model in domain.response_models | sort %}

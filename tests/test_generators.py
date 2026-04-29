@@ -432,6 +432,18 @@ class TestGenerateInitPerEntity:
         assert result["domain_count"] == 2
         assert result["entity_count"] == 2
 
+    def test_no_none_banner_emitted(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """section=None must suppress the banner, not render '# None'."""
+        project_root, config, env = project_env_per_entity
+        with patch(
+            "model_generator.generators.database.scan_model_files", return_value=[]
+        ):
+            result = generate_init(multi_entity_model, config, env, project_root)
+        assert result is not None
+        assert "# None" not in result["content"]
+
     def test_existing_per_entity_files_not_redeclared(
         self, multi_entity_model, project_env_per_entity
     ):
@@ -567,6 +579,18 @@ class TestGenerateApiInitPerEntity:
         assert "from .post_response import" in result["content"]
         assert "from .post_requests import" in result["content"]
         assert result["domain_count"] == 2
+
+    def test_no_none_banner_emitted(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """section=None must suppress the banner, not render '# None'."""
+        project_root, config, env = project_env_per_entity
+        with patch(
+            "model_generator.generators.api.scan_api_model_files", return_value=[]
+        ):
+            result = generate_api_init(multi_entity_model, config, env, project_root)
+        assert result is not None
+        assert "# None" not in result["content"]
 
     def test_existing_per_entity_files_not_redeclared(
         self, multi_entity_model, project_env_per_entity

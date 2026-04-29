@@ -19,7 +19,9 @@
 from .base import Base
 
 {% for domain in domains %}
-# {{ domain.section | default(domain.name | capitalize + ' Models') }}
+{% if domain.section %}
+# {{ domain.section }}
+{% endif %}
 from .{{ domain.file }} import (
 {% for entity in domain.entities | sort %}
     {{ entity }},
