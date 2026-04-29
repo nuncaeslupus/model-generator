@@ -1,50 +1,45 @@
 # Next Session Plan
 
-## Current State (2026-04-26, post-§15.4)
+## Current State (2026-04-29, post-§15.5)
 
-PR #10 (§9 owner-scoping) merged to `main` as squash `62a700c`. §15 (one-file-per-entity layout) is in progress on `feat/15-per-entity-layout` — **6 local commits, not pushed**.
+PR #10 (§9 owner-scoping) merged to `main` as squash `62a700c`. §15 (one-file-per-entity layout) is in progress on `feat/15-per-entity-layout` — **8 local commits, not pushed**.
 
 ### `feat/15-per-entity-layout`
 
-- `18c6531` — `chore: align make lint with CI` — picked up the two `make lint` follow-ups: `ruff format --check .` added to lint target, and `examples/.*/backend/` + `examples/.*/alembic/` added to `[tool.mypy].exclude` so local mypy stops tripping on gitignored 3.12 generated output.
-- `72c9ab4` — `feat: thread generation.layout config flag (§15.1)` — `load_config` defaults `generation.layout` to `"per-entity"`; `_validate_generation_config()` rejects unknown values. Plumbing only — no emission change yet.
-- `8a7d481` — `feat: add snake_case filter for entity-derived filenames (§15.2)` — Python `snake_case()` in `utils/templates.py` mirroring the existing `to_snake_case` Jinja macro byte-for-byte; registered as a Jinja filter for template-side parity.
-- `c5aefd0` — `docs: capture §15 mid-session checkpoint in next-session.md` — captured the §15.3 design before pausing; superseded by `96a3bbc`.
-- `be47358` — `feat: split database emission per-entity (§15.3)` — generator + factory.py.j2 + model.py.j2 changes plus the entity_refs gap fix (sibling factory imports for `one_to_many` create_related). Test fixtures pinned to per-domain across `test_generators.py` (`project_env`), `test_integration.py`, and `test_edge_cases.py::test_database_only`; `test_full_generation.py` updated to expect per-entity `user.py` since it copies the example config which intentionally rides on the new default.
-- `96a3bbc` — `docs: checkpoint §15.3 done in next-session.md` — captured §15.3 outcome and the §15.4 design question (combined vs two-file).
-- `32641ac` — `feat: split api-models emission per-entity (§15.4)` — chose two-file path (no template changes). `generate_api_models` slices `model.entities` per render and emits `{stem}_response.py` + `{stem}_requests.py`; `generate_api_init` adds a layout-aware fallback (mirror of `generate_init` from §15.3). +5 tests (`TestApiModelsGeneratorPerEntity` × 3, `TestGenerateApiInitPerEntity` × 2).
+- `18c6531` — `chore: align make lint with CI`
+- `72c9ab4` — `feat: thread generation.layout config flag (§15.1)`
+- `8a7d481` — `feat: add snake_case filter for entity-derived filenames (§15.2)`
+- `c5aefd0` — `docs: capture §15 mid-session checkpoint in next-session.md` *(superseded)*
+- `be47358` — `feat: split database emission per-entity (§15.3)`
+- `96a3bbc` — `docs: checkpoint §15.3 done in next-session.md`
+- `32641ac` — `feat: split api-models emission per-entity (§15.4)`
+- `d5fd258` — `fix: suppress # None banner in per-entity __init__.py emission`
+- `f6ae082` — `feat: split api-routes and api-tests emission per-entity (§15.5)` — chose `dict | list[dict]` return shape pattern (matching §15.3) so existing per-domain tests don't have to unwrap `[0]`. `route.py.j2` got 3 layout-aware import edits (DB model, api requests, api response). Infrastructure plumbing fix bundled in: `main.py.j2` + `conftest_root.py.j2` iterate over layout-aware `route_modules` / `factory_modules` (computed in `generate.py` and wizard), threaded through `generate_main` / `generate_test_conftest_root`. The conftest_root side was a latent §15.3-era bug — factories went per-entity but the conftest still looked them up by domain name. +6 tests (`TestApiRoutesGeneratorPerEntity` × 4, `TestApiTestsGeneratorPerEntity` × 2). Pinned `test_api_tests_only` to per-domain (mirror of §15.3's `test_database_only`); updated `test_full_generation.py` route/test assertions to per-entity shape (rides on example config).
 
-**Verification at checkpoint:** 338 tests passing (was 333 — +5 new). `make lint` clean (ruff check + ruff format check + mypy), working tree clean.
+**Verification at checkpoint:** 346 tests passing (was 338 — +2 from `# None` banner fix, +6 from §15.5). `make lint` clean (ruff check + ruff format check + mypy), working tree clean.
 
 ---
 
-## Priority Next Session — Continue §15 (steps 5–6)
+## Priority Next Session — §15.6 Example regen + docs (LAST §15 STEP)
 
-The full §15 plan is at `~/.claude/plans/tranquil-shimmying-flute.md`. Steps 1–4 landed.
+The full §15 plan is at `~/.claude/plans/tranquil-shimmying-flute.md`. Steps 1–5 landed.
 
-### §15.5 — api-routes and api-tests per-entity (NEXT UP)
-
-Same layout-aware slicing pattern in `generate_api_routes` and `generate_api_tests` (`generators/api.py:192-220` and `223-255`). Audit `route.py.j2` and `tests/contract.py.j2` for cross-entity references (none expected in current CRUD scaffolding — confirmed during the §15.3 entity_refs analysis, but `route.py.j2` was not directly inspected). Per-entity output should be `routes/{entity_snake}.py` and `tests/api/test_{entity_snake}_api.py`. Both helpers currently return `dict | None`; per-entity bumps them to `list[dict] | None` (callers in `generate.py:80-90` already handle the list shape from §15.3 / §15.4).
-
-**Files to touch:**
-- `src/model_generator/generators/api.py` — `generate_api_routes` and `generate_api_tests`, mirror the slicing pattern from `generate_api_models` (lines 68-89).
-- `tests/test_generators.py` — `TestApiRoutesGenerator` (line 591) and `TestApiTestsGenerator` (line 788) ride on per-domain-pinned `project_env`. Add `TestApiRoutesGeneratorPerEntity` and `TestApiTestsGeneratorPerEntity` using `multi_entity_model` + `project_env_per_entity`.
-
-**Audit note:** `routes/__init__.py` and `tests/api/__init__.py` aren't currently emitted by any generator (FastAPI route registration is by import in `main.py.j2`, not by package init). Confirm during §15.5 that this stays true — if `main.py.j2` needs to import `routes.{stem}` per entity instead of `routes.{domain}`, that's a §15.5 template change.
-
-### §15.6 — Example regen + docs
+### §15.6 — Example regen + docs (FINAL §15 STEP)
 
 Regenerate `examples/user-auth-project/` with `--clean`. Confirm 149 tests still pass. Add commented `generation.layout` section to `.model-generator.yaml`. Update `docs/agent/json-specification-reference.md` and any user-facing config docs. Note the breaking-shape change in this file.
 
-**Pre-regen blocker — `# None` banner bug discovered during §15.4:** Both `database/init.py.j2:22` and `api/init.py.j2:19` use `{{ domain.section | default(...) }}`. Jinja's `default` filter only fires on *undefined*, not `None` — and §15.3 / §15.4 deliberately set `section=None` for per-entity emission to suppress per-file banners. Result: per-entity `__init__.py` will emit literal `# None` banners. **Not yet visible** because the example hasn't been regenerated since §15.3, but will manifest the moment §15.6 runs `--clean`.
+**Watch for during regen:**
 
-Fix before §15.6: change both templates to `{% if domain.section %}# {{ domain.section }}{% endif %}` (one-line edit each), or pass `boolean=true` to `default()`. Add a per-entity `__init__.py` content assertion to `TestGenerateInitPerEntity` and `TestGenerateApiInitPerEntity` that grep-rejects `# None` to lock the fix.
+- The User entity has 3 `one_to_many` sibling relationships (UserSession, ApiKey, UserRole) — these exercise the entity_refs gap fix from §15.3. If the regen produces a User factory that NameErrors at import time, the fix isn't doing its job.
+- `# None` banner fix from `d5fd258` should now keep `__init__.py` files clean. Watch for any remaining literal `# None` lines anywhere.
+- `routes/user.py`, `routes/user_session.py`, etc. should each import their DB model from `database.models.{entity_snake}` and api models from `api.models.{entity_snake}_*`. `main.py` should `from app.api.routes.user import router as user_router` (not `from .users`). `tests/conftest.py` should iterate `factory_modules` (entity stems).
+- `test_full_generation.py::test_generate_from_examples` already passes with the new shape (it copies the example config), but `tests/contract/api/test_*_api.py` now arrives as one-per-entity — make sure the example's 149 tests don't double-count or mis-skip.
 
-**Watch for during regen:** the User entity has 3 `one_to_many` sibling relationships (UserSession, ApiKey, UserRole) — these exercise the entity_refs gap fix from §15.3. If the regen produces a User factory that NameErrors at import time, the fix isn't doing its job.
+**Polish in §15.6:** `factory.py.j2`'s docstring "Usage" example uses `model.domain` (e.g., `from .factories.users import UserFactory`) but the per-entity file lives at `factories/user.py`. Misleading but not a hard break.
 
 ### Housekeeping
 
-- Branch `feat/15-per-entity-layout` is local-only (6 commits ahead of origin/main). Push for backup: `git push -u origin feat/15-per-entity-layout`.
+- Branch `feat/15-per-entity-layout` is local-only (8 commits ahead of origin/main). Push for backup: `git push -u origin feat/15-per-entity-layout`.
 
 ---
 
