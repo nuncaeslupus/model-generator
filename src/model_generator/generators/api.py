@@ -197,8 +197,14 @@ def generate_api_routes(
     enums: dict | None = None,
     constraints: dict | None = None,
     model_path: Path | None = None,
-) -> dict | None:
-    """Generate FastAPI routes."""
+) -> dict | list[dict] | None:
+    """Generate FastAPI routes.
+
+    In per-entity layout (the default) returns one dict per entity at
+    ``routes/{entity_snake}.py``; in per-domain layout returns a single
+    dict at ``routes/{domain}.py``. The route template adapts its DB-model
+    and api-model imports based on ``config.generation.layout``.
+    """
     filtered = _filter_api_entities(model)
     if filtered is None:
         return None
@@ -209,15 +215,27 @@ def generate_api_routes(
         constraints = load_shared_constraints(model_path or project_root)
 
     template = env.get_template("api/route.py.j2")
+    output_dir = project_root / config["paths"]["api_routes"]
+
+    if _layout(config) == "per-entity":
+        return [
+            {
+                "path": output_dir / f"{snake_case(name)}.py",
+                "content": template.render(
+                    model={**filtered, "entities": {name: entity}},
+                    config=config,
+                    enums=enums,
+                    constraints=constraints,
+                ),
+            }
+            for name, entity in filtered.get("entities", {}).items()
+        ]
+
+    domain = filtered.get("domain", "models")
     content = template.render(
         model=filtered, config=config, enums=enums, constraints=constraints
     )
-
-    output_dir = project_root / config["paths"]["api_routes"]
-    domain = filtered.get("domain", "models")
-    output_file = output_dir / f"{domain}.py"
-
-    return {"path": output_file, "content": content}
+    return {"path": output_dir / f"{domain}.py", "content": content}
 
 
 def generate_api_tests(
@@ -228,8 +246,15 @@ def generate_api_tests(
     enums: dict | None = None,
     constraints: dict | None = None,
     model_path: Path | None = None,
-) -> dict | None:
-    """Generate API contract tests."""
+) -> dict | list[dict] | None:
+    """Generate API contract tests.
+
+    In per-entity layout (the default) returns one dict per entity at
+    ``tests/api/test_{entity_snake}_api.py``; in per-domain layout returns
+    a single dict at ``tests/api/test_{domain}_api.py``. The contract
+    template iterates ``model.entities`` and has no cross-entity imports,
+    so per-entity mode just feeds it sliced inputs — no template change.
+    """
     # Both API and tests must be enabled
     filtered = _filter_api_entities(model)
     if filtered is None:
@@ -244,12 +269,24 @@ def generate_api_tests(
         constraints = load_shared_constraints(model_path or project_root)
 
     template = env.get_template("tests/contract.py.j2")
+    output_dir = project_root / config["paths"]["api_tests"]
+
+    if _layout(config) == "per-entity":
+        return [
+            {
+                "path": output_dir / f"test_{snake_case(name)}_api.py",
+                "content": template.render(
+                    model={**filtered, "entities": {name: entity}},
+                    config=config,
+                    enums=enums,
+                    constraints=constraints,
+                ),
+            }
+            for name, entity in filtered.get("entities", {}).items()
+        ]
+
+    domain = filtered.get("domain", "models")
     content = template.render(
         model=filtered, config=config, enums=enums, constraints=constraints
     )
-
-    output_dir = project_root / config["paths"]["api_tests"]
-    domain = filtered.get("domain", "models")
-    output_file = output_dir / f"test_{domain}_api.py"
-
-    return {"path": output_file, "content": content}
+    return {"path": output_dir / f"test_{domain}_api.py", "content": content}

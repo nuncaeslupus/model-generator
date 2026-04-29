@@ -47,6 +47,7 @@ from .utils import (
     run_quality_tools,
 )
 from .utils.conftest_generator import generate_conftest_content
+from .utils.templates import snake_case
 
 # TDD-ordered generation targets
 INFRASTRUCTURE_TARGETS = [
@@ -634,9 +635,15 @@ def main() -> None:
 
     config = load_config(args.stack)
     env = get_template_env(args.stack, config)
+    layout = config.get("generation", {}).get("layout", "per-entity")
 
-    # Extract domains from all model files (only those with api-enabled entities)
-    domains = []
+    # Build module-name lists for infrastructure templates that import per-entity
+    # (or per-domain) generated modules. `domains` is still the per-spec domain
+    # list; `route_modules` and `factory_modules` are the layout-aware module
+    # stems that main.py and the root conftest import from.
+    domains: list[str] = []
+    route_modules: list[str] = []
+    factory_modules: list[str] = []
     extra_deps: list[str] = []
     for model_file in model_files:
         model = load_model(model_file)
@@ -647,8 +654,24 @@ def main() -> None:
         )
         if domain not in domains and has_api:
             domains.append(domain)
+
+        if layout == "per-entity":
+            for name, entity in model.get("entities", {}).items():
+                stem = snake_case(name)
+                if (
+                    entity.get("api", {}).get("enabled", True)
+                    and stem not in route_modules
+                ):
+                    route_modules.append(stem)
+                if stem not in factory_modules:
+                    factory_modules.append(stem)
+
         extra_deps.extend(model.get("dependencies", []))
     extra_deps = sorted(set(extra_deps))
+
+    if layout != "per-entity":
+        route_modules = list(domains)
+        factory_modules = list(domains)
 
     # Generate infrastructure
     if (
@@ -660,6 +683,8 @@ def main() -> None:
             env=env,
             project_root=project_root,
             domains=domains,
+            route_modules=route_modules,
+            factory_modules=factory_modules,
             project_config=config,
             extra_deps=extra_deps,
             diff=args.diff,

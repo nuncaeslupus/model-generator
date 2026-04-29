@@ -102,23 +102,42 @@ def run_generate() -> None:
             load_model,
             run_quality_tools,
         )
+        from ...utils.templates import snake_case
 
         stack = "python-fastapi"
         config = load_config(stack)
         env = get_template_env(stack, config)
+        layout = config.get("generation", {}).get("layout", "per-entity")
 
-        domains = []
+        domains: list[str] = []
+        route_modules: list[str] = []
+        factory_modules: list[str] = []
         for model_file in selected_files:
             model = load_model(model_file)
             domain = model.get("domain", "unknown")
             if domain not in domains:
                 domains.append(domain)
+            if layout == "per-entity":
+                for name, entity in model.get("entities", {}).items():
+                    stem = snake_case(name)
+                    if (
+                        entity.get("api", {}).get("enabled", True)
+                        and stem not in route_modules
+                    ):
+                        route_modules.append(stem)
+                    if stem not in factory_modules:
+                        factory_modules.append(stem)
+        if layout != "per-entity":
+            route_modules = list(domains)
+            factory_modules = list(domains)
 
         infra_files = generate_infrastructure(
             config=config,
             env=env,
             project_root=project_root,
             domains=domains,
+            route_modules=route_modules,
+            factory_modules=factory_modules,
             project_config=config,
         )
         if infra_files:

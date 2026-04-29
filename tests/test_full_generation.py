@@ -67,16 +67,16 @@ def test_generate_from_examples(example_project):
         # Database Model
         assert (project_dir / "backend/src/database/models/user.py").exists()
         # API Routes
-        assert (project_dir / "backend/src/api/routes/users.py").exists()
+        assert (project_dir / "backend/src/api/routes/user.py").exists()
         # Contract Tests
-        assert (project_dir / "tests/contract/api/test_users_api.py").exists()
+        assert (project_dir / "tests/contract/api/test_user_api.py").exists()
 
         # 3. Basic Content Checks
         user_model = (project_dir / "backend/src/database/models/user.py").read_text()
         assert "class User(Base):" in user_model
         assert "username: Mapped[str] = mapped_column(String" in user_model
 
-        api_route = (project_dir / "backend/src/api/routes/users.py").read_text()
+        api_route = (project_dir / "backend/src/api/routes/user.py").read_text()
         assert "@router.post" in api_route
         assert "async def create_user" in api_route
 

@@ -299,6 +299,7 @@ def multi_entity_model():
                         "back_populates": "author",
                     },
                 },
+                "timestamps": {"created": True, "updated": True},
             },
             "Post": {
                 "table": "posts",
@@ -328,6 +329,7 @@ def multi_entity_model():
                         "back_populates": "posts",
                     },
                 },
+                "timestamps": {"created": True, "updated": True},
             },
         },
     }
@@ -432,9 +434,7 @@ class TestGenerateInitPerEntity:
         assert result["domain_count"] == 2
         assert result["entity_count"] == 2
 
-    def test_no_none_banner_emitted(
-        self, multi_entity_model, project_env_per_entity
-    ):
+    def test_no_none_banner_emitted(self, multi_entity_model, project_env_per_entity):
         """section=None must suppress the banner, not render '# None'."""
         project_root, config, env = project_env_per_entity
         with patch(
@@ -580,9 +580,7 @@ class TestGenerateApiInitPerEntity:
         assert "from .post_requests import" in result["content"]
         assert result["domain_count"] == 2
 
-    def test_no_none_banner_emitted(
-        self, multi_entity_model, project_env_per_entity
-    ):
+    def test_no_none_banner_emitted(self, multi_entity_model, project_env_per_entity):
         """section=None must suppress the banner, not render '# None'."""
         project_root, config, env = project_env_per_entity
         with patch(
@@ -614,6 +612,102 @@ class TestGenerateApiInitPerEntity:
         assert result["domain_count"] == 2  # author (existing) + post (added)
         assert "from .author_response import" in result["content"]
         assert "from .post_response import" in result["content"]
+
+
+class TestApiRoutesGeneratorPerEntity:
+    """Per-entity api routes emission."""
+
+    def test_returns_list_with_one_route_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        project_root, config, env = project_env_per_entity
+        result = generate_api_routes(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, list)
+        assert len(result) == 2
+        names = {r["path"].name for r in result}
+        assert names == {"author.py", "post.py"}
+
+    def test_db_model_imports_use_per_entity_paths(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """DB model is imported from {db_models}.{entity_snake}, not {domain}."""
+        project_root, config, env = project_env_per_entity
+        result = generate_api_routes(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        by_name = {r["path"].name: r["content"] for r in result}
+        assert "from src.database.models.author import Author" in by_name["author.py"]
+        assert "from src.database.models.post import Post" in by_name["post.py"]
+        # Per-domain import shape must NOT appear.
+        assert "from src.database.models.blog import" not in by_name["author.py"]
+        assert "from src.database.models.blog import" not in by_name["post.py"]
+
+    def test_api_model_imports_use_per_entity_paths(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """API models are imported from per-entity files, not per-domain combined."""
+        project_root, config, env = project_env_per_entity
+        result = generate_api_routes(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        by_name = {r["path"].name: r["content"] for r in result}
+        assert (
+            "from src.api.models.author_requests import CreateAuthorRequest"
+            in by_name["author.py"]
+        )
+        assert (
+            "from src.api.models.author_response import AuthorResponse"
+            in by_name["author.py"]
+        )
+        # Per-domain combined imports must NOT appear.
+        assert "from src.api.models.blog_requests" not in by_name["author.py"]
+        assert "from src.api.models.blog_response" not in by_name["author.py"]
+
+    def test_content_isolated_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """author.py only has Author handlers; post.py only has Post handlers."""
+        project_root, config, env = project_env_per_entity
+        result = generate_api_routes(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        by_name = {r["path"].name: r["content"] for r in result}
+        assert "async def create_author" in by_name["author.py"]
+        assert "async def create_post" not in by_name["author.py"]
+        assert "async def create_post" in by_name["post.py"]
+        assert "async def create_author" not in by_name["post.py"]
+
+
+class TestApiTestsGeneratorPerEntity:
+    """Per-entity api contract test emission."""
+
+    def test_returns_list_with_one_test_file_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        project_root, config, env = project_env_per_entity
+        result = generate_api_tests(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, list)
+        assert len(result) == 2
+        names = {r["path"].name for r in result}
+        assert names == {"test_author_api.py", "test_post_api.py"}
+
+    def test_content_isolated_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """test_author_api.py only references Author response/request models."""
+        project_root, config, env = project_env_per_entity
+        result = generate_api_tests(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        by_name = {r["path"].name: r["content"] for r in result}
+        assert "AuthorResponse" in by_name["test_author_api.py"]
+        assert "PostResponse" not in by_name["test_author_api.py"]
+        assert "PostResponse" in by_name["test_post_api.py"]
+        assert "AuthorResponse" not in by_name["test_post_api.py"]
 
 
 class TestApiModelsGenerator:

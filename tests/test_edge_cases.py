@@ -718,6 +718,7 @@ class TestPartialGeneration:
         config = {
             "project": {"name": "Test"},
             "stack": "python-fastapi",
+            "generation": {"layout": "per-domain"},
             "paths": {
                 "database_models": "src/db/models",
                 "factories": "src/db/models/factories",
