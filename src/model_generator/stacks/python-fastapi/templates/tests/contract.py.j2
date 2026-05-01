@@ -84,6 +84,7 @@ from fastapi.testclient import TestClient
 @pytest.mark.contract
 class Test{{ entity_name }}sAPI:
     """Contract tests validating {{ entity_name }} API against generated models."""
+{% set endpoints = entity.api.endpoints if (entity.api is defined and entity.api.endpoints is defined) else ["list", "create", "get", "update", "delete"] %}
 
 {{ section_banner('SECTION 1: READ OPERATIONS') }}
 
@@ -608,7 +609,7 @@ class Test{{ entity_name }}sAPI:
         assert "error" in error  # Structured error format
         assert "message" in error
 
-{%if 'true' in should_generate_test(entity, ['put_', 'update']) %}
+{%if 'true' in should_generate_test(entity, ['put_', 'update']) and 'update' in endpoints %}
 {{ section_banner('SECTION 4: UPDATE OPERATIONS') }}
 
 {% set updatable_fields = [] %}
@@ -1108,7 +1109,7 @@ class Test{{ entity_name }}sAPI:
 {% endif %}
 
 {%endif %}
-{%if 'true' in should_generate_test(entity, ['delete']) %}
+{%if 'true' in should_generate_test(entity, ['delete']) and 'delete' in endpoints %}
 {{ section_banner('SECTION 5: DELETE OPERATIONS') }}
 
     def test_delete_{{ entity_name.lower() }}_success(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
@@ -1587,7 +1588,7 @@ class Test{{ entity_name }}sAPI:
 {% set _ = immutable_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'type': field.type}) %}
 {% endif %}
 {% endfor %}
-{% if immutable_fields %}
+{% if immutable_fields and 'update' in endpoints %}
     def test_{{ entity_name.lower() }}_immutable_fields(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
         """Test immutable fields cannot be changed via update endpoint."""
 {% if 'true' in needs_unique_suffix(entity) %}

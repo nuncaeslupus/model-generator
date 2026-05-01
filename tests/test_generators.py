@@ -1014,6 +1014,72 @@ class TestApiTestsGenerator:
         assert "def test_get_item_by_id_success" in result["content"]
         assert "def test_delete_item_success" in result["content"]
 
+    def test_skips_put_tests_when_update_endpoint_excluded(self, project_env):
+        """If api.endpoints omits 'update', no test_put_* tests should be emitted."""
+        project_root, config, env = project_env
+        model = {
+            "domain": "items",
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "name": {"type": "text", "max_length": 100, "required": True},
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                    "api": {
+                        "enabled": True,
+                        "endpoints": ["list", "create", "get", "delete"],
+                    },
+                }
+            },
+        }
+        result = generate_api_tests(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert "def test_put_item" not in result["content"]
+        assert "def test_item_immutable_fields" not in result["content"]
+        # Sections that ARE in endpoints should still emit
+        assert "def test_delete_item" in result["content"]
+        assert "def test_post_item" in result["content"]
+
+    def test_skips_delete_tests_when_delete_endpoint_excluded(self, project_env):
+        """If api.endpoints omits 'delete', no test_delete_* tests should be emitted."""
+        project_root, config, env = project_env
+        model = {
+            "domain": "items",
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "name": {"type": "text", "max_length": 100, "required": True},
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                    "api": {
+                        "enabled": True,
+                        "endpoints": ["list", "create", "get"],
+                    },
+                }
+            },
+        }
+        result = generate_api_tests(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert "def test_delete_item" not in result["content"]
+        assert "def test_put_item" not in result["content"]
+        # READ + CREATE still emitted
+        assert "def test_post_item" in result["content"]
+        assert "def test_get_item_by_id_success" in result["content"]
+
 
 class TestApiTestsGeneratorScope:
     """Test contract test generation when entities declare api.scope."""

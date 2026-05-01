@@ -7,7 +7,7 @@ A **one-shot bootstrap code generator** that creates production-ready API backen
 - **Database models** — SQLAlchemy ORM with constraints, relationships, and indexes
 - **API models** — Pydantic request/response schemas with validators
 - **API routes** — FastAPI CRUD endpoints
-- **Tests** — pytest contract tests with FactoryBoy factories (149 tests in example project)
+- **Tests** — pytest contract tests with FactoryBoy factories (143 tests in example project)
 - **Migrations** — Alembic infrastructure
 
 ## Quick Start
@@ -21,7 +21,7 @@ uv sync --extra dev
 cd examples/user-auth-project
 uv run model-gen models/ --target all
 uv venv && uv sync --extra dev
-uv run pytest  # 149 tests pass
+uv run pytest  # 143 tests pass
 ```
 
 For your own project, see the [Installation Guide](./docs/user/installation.md).
