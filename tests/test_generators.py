@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from model_generator.generators import (
+    generate_api_init,
     generate_api_models,
     generate_api_routes,
     generate_api_tests,
@@ -106,10 +107,15 @@ def scoped_model():
 
 @pytest.fixture
 def project_env(tmp_path):
-    """Set up a temporary project with config and template environment."""
+    """Set up a temporary project with config and template environment.
+
+    Pinned to per-domain layout so existing assertions about file shape
+    (e.g., `items.py`, not `item.py`) stay precise as the default flips.
+    """
     config_data = {
         "project": {"name": "Test Project", "version": "0.1.0"},
         "stack": "python-fastapi",
+        "generation": {"layout": "per-domain"},
         "paths": {
             "database_models": "src/database/models",
             "factories": "src/database/models/factories",
@@ -258,6 +264,450 @@ class TestFactoryGenerator:
 
         db_models_dir = project_root / config["paths"]["database_models"]
         assert result["path"] == db_models_dir / "factories" / "models.py"
+
+
+@pytest.fixture
+def multi_entity_model():
+    """Two-entity model exercising both reference fields and one_to_many siblings.
+
+    Post → Author via reference field (drives SubFactory imports).
+    Author → Post via one_to_many (drives create_related sibling-factory imports).
+    """
+    return {
+        "domain": "blog",
+        "description": "Blog domain with authored posts",
+        "entities": {
+            "Author": {
+                "table": "authors",
+                "description": "Post author",
+                "fields": {
+                    "id": {
+                        "type": "uuid",
+                        "primary_key": True,
+                        "auto_generate": True,
+                    },
+                    "name": {
+                        "type": "text",
+                        "max_length": 100,
+                        "required": True,
+                    },
+                },
+                "relationships": {
+                    "posts": {
+                        "type": "one_to_many",
+                        "target": "Post",
+                        "back_populates": "author",
+                    },
+                },
+                "timestamps": {"created": True, "updated": True},
+            },
+            "Post": {
+                "table": "posts",
+                "description": "Authored post",
+                "fields": {
+                    "id": {
+                        "type": "uuid",
+                        "primary_key": True,
+                        "auto_generate": True,
+                    },
+                    "title": {
+                        "type": "text",
+                        "max_length": 200,
+                        "required": True,
+                    },
+                    "author_id": {
+                        "type": "reference",
+                        "reference_entity": "Author",
+                        "reference_table": "authors",
+                        "required": True,
+                    },
+                },
+                "relationships": {
+                    "author": {
+                        "type": "many_to_one",
+                        "target": "Author",
+                        "back_populates": "posts",
+                    },
+                },
+                "timestamps": {"created": True, "updated": True},
+            },
+        },
+    }
+
+
+@pytest.fixture
+def project_env_per_entity(tmp_path):
+    """Same as project_env but with generation.layout pinned to per-entity."""
+    config_data = {
+        "project": {"name": "Test Project", "version": "0.1.0"},
+        "stack": "python-fastapi",
+        "generation": {"layout": "per-entity"},
+        "paths": {
+            "database_models": "src/database/models",
+            "factories": "src/database/models/factories",
+            "api_models": "src/api/models",
+            "api_routes": "src/api/routes",
+            "api_tests": "tests/api",
+            "base": "src/database/models/base.py",
+            "engine": "src/database/engine.py",
+            "main": "src/main.py",
+            "errors": "src/api/errors.py",
+            "validators": "src/api/validators.py",
+            "test_conftest_root": "tests/conftest.py",
+            "enums": "src/database/models/enums.py",
+            "constraints": "src/database/models/constraints.py",
+            "migrations": "alembic",
+        },
+    }
+
+    config_path = tmp_path / ".model-generator.yaml"
+    with open(config_path, "w") as f:
+        yaml.dump(config_data, f)
+
+    original_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    config = load_config("python-fastapi")
+    env = get_template_env("python-fastapi")
+    os.chdir(original_cwd)
+
+    return tmp_path, config, env
+
+
+class TestDatabaseGeneratorPerEntity:
+    """Per-entity database model emission."""
+
+    def test_returns_list_of_dicts(self, multi_entity_model, project_env_per_entity):
+        project_root, config, env = project_env_per_entity
+        result = generate_database_model(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
+        assert len(result) == 2
+
+    def test_one_file_per_entity_using_snake_case(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        project_root, config, env = project_env_per_entity
+        result = generate_database_model(multi_entity_model, config, env, project_root)
+        output_dir = project_root / config["paths"]["database_models"]
+        paths = {r["path"] for r in result}
+        assert output_dir / "author.py" in paths
+        assert output_dir / "post.py" in paths
+
+    def test_each_file_contains_only_its_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        project_root, config, env = project_env_per_entity
+        result = generate_database_model(multi_entity_model, config, env, project_root)
+        by_name = {r["path"].name: r["content"] for r in result}
+        assert "class Author(Base):" in by_name["author.py"]
+        assert "class Post" not in by_name["author.py"]
+        assert "class Post(Base):" in by_name["post.py"]
+        assert "class Author" not in by_name["post.py"]
+
+    def test_section_divider_omitted(self, multi_entity_model, project_env_per_entity):
+        """section_divider is gated on per-domain to avoid N redundant headers.
+
+        The docstring header at the top of each file still contains the
+        domain name; the section divider is a separate full-width banner
+        emitted around the entity classes, which is what should disappear.
+        """
+        project_root, config, env = project_env_per_entity
+        result = generate_database_model(multi_entity_model, config, env, project_root)
+        divider_banner = "# " + "=" * 76 + "\n# BLOG MODELS"
+        for entry in result:
+            assert divider_banner not in entry["content"]
+
+
+class TestGenerateInitPerEntity:
+    """Per-entity __init__.py emission."""
+
+    def test_emits_one_import_line_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        project_root, config, env = project_env_per_entity
+        with patch(
+            "model_generator.generators.database.scan_model_files", return_value=[]
+        ):
+            result = generate_init(multi_entity_model, config, env, project_root)
+        assert result is not None
+        assert "from .author import" in result["content"]
+        assert "from .post import" in result["content"]
+        assert result["domain_count"] == 2
+        assert result["entity_count"] == 2
+
+    def test_no_none_banner_emitted(self, multi_entity_model, project_env_per_entity):
+        """section=None must suppress the banner, not render '# None'."""
+        project_root, config, env = project_env_per_entity
+        with patch(
+            "model_generator.generators.database.scan_model_files", return_value=[]
+        ):
+            result = generate_init(multi_entity_model, config, env, project_root)
+        assert result is not None
+        assert "# None" not in result["content"]
+
+    def test_existing_per_entity_files_not_redeclared(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """If scan_model_files lists 'author', model contributes only Post."""
+        project_root, config, env = project_env_per_entity
+        existing = [
+            {
+                "name": "author",
+                "file": "author",
+                "section": None,
+                "entities": ["Author"],
+            }
+        ]
+        with patch(
+            "model_generator.generators.database.scan_model_files",
+            return_value=existing,
+        ):
+            result = generate_init(multi_entity_model, config, env, project_root)
+        assert result is not None
+        assert result["domain_count"] == 2  # author (existing) + post (added)
+        assert "from .author import" in result["content"]
+        assert "from .post import" in result["content"]
+
+
+class TestFactoryGeneratorPerEntity:
+    """Per-entity factory emission and cross-entity import preservation."""
+
+    def test_returns_list_with_one_factory_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        project_root, config, env = project_env_per_entity
+        result = generate_factories(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
+        assert len(result) == 2
+        names = {r["path"].name for r in result}
+        assert names == {"author.py", "post.py"}
+
+    def test_db_model_imports_use_per_entity_paths(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """Factory imports the model from {db_models}.{entity_snake}, not {domain}."""
+        project_root, config, env = project_env_per_entity
+        result = generate_factories(multi_entity_model, config, env, project_root)
+        by_name = {r["path"].name: r["content"] for r in result}
+        assert "from src.database.models.author import Author" in by_name["author.py"]
+        assert "from src.database.models.post import Post" in by_name["post.py"]
+        # Per-domain import shape must NOT appear.
+        assert "from src.database.models.blog import" not in by_name["author.py"]
+        assert "from src.database.models.blog import" not in by_name["post.py"]
+
+    def test_subfactory_reference_imports_sibling_factory(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """Post has author_id reference → post.py imports AuthorFactory."""
+        project_root, config, env = project_env_per_entity
+        result = generate_factories(multi_entity_model, config, env, project_root)
+        post_content = next(r["content"] for r in result if r["path"].name == "post.py")
+        assert "from .author import AuthorFactory" in post_content
+        assert "factory.SubFactory(AuthorFactory)" in post_content
+
+    def test_create_related_preserved_via_sibling_entities(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """Author has one_to_many → Post; create_related must survive the
+        per-entity slicing of model.entities, and PostFactory must be imported."""
+        project_root, config, env = project_env_per_entity
+        result = generate_factories(multi_entity_model, config, env, project_root)
+        author_content = next(
+            r["content"] for r in result if r["path"].name == "author.py"
+        )
+        assert "from .post import PostFactory" in author_content
+        assert "PostFactory.create_batch(count, author=obj)" in author_content
+
+
+class TestApiModelsGeneratorPerEntity:
+    """Per-entity api-models emission: two files per entity."""
+
+    def test_returns_one_response_and_one_request_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        project_root, config, env = project_env_per_entity
+        result = generate_api_models(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
+        assert len(result) == 4
+        names = {r["path"].name for r in result}
+        assert names == {
+            "author_response.py",
+            "author_requests.py",
+            "post_response.py",
+            "post_requests.py",
+        }
+
+    def test_response_file_contains_only_one_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """author_response.py contains AuthorResponse and not PostResponse."""
+        project_root, config, env = project_env_per_entity
+        result = generate_api_models(multi_entity_model, config, env, project_root)
+        author_resp = next(
+            r["content"] for r in result if r["path"].name == "author_response.py"
+        )
+        assert "class AuthorResponse(BaseModel):" in author_resp
+        assert "class PostResponse" not in author_resp
+
+    def test_request_file_contains_only_one_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """author_requests.py contains Create/UpdateAuthorRequest and not Post."""
+        project_root, config, env = project_env_per_entity
+        result = generate_api_models(multi_entity_model, config, env, project_root)
+        author_req = next(
+            r["content"] for r in result if r["path"].name == "author_requests.py"
+        )
+        assert "class CreateAuthorRequest(BaseModel):" in author_req
+        assert "class UpdateAuthorRequest(BaseModel):" in author_req
+        assert "CreatePostRequest" not in author_req
+
+
+class TestGenerateApiInitPerEntity:
+    """Per-entity api __init__.py emission."""
+
+    def test_emits_one_import_block_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        project_root, config, env = project_env_per_entity
+        with patch(
+            "model_generator.generators.api.scan_api_model_files", return_value=[]
+        ):
+            result = generate_api_init(multi_entity_model, config, env, project_root)
+        assert result is not None
+        assert "from .author_response import" in result["content"]
+        assert "from .author_requests import" in result["content"]
+        assert "from .post_response import" in result["content"]
+        assert "from .post_requests import" in result["content"]
+        assert result["domain_count"] == 2
+
+    def test_no_none_banner_emitted(self, multi_entity_model, project_env_per_entity):
+        """section=None must suppress the banner, not render '# None'."""
+        project_root, config, env = project_env_per_entity
+        with patch(
+            "model_generator.generators.api.scan_api_model_files", return_value=[]
+        ):
+            result = generate_api_init(multi_entity_model, config, env, project_root)
+        assert result is not None
+        assert "# None" not in result["content"]
+
+    def test_existing_per_entity_files_not_redeclared(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """If scan finds 'author', model contributes only Post."""
+        project_root, config, env = project_env_per_entity
+        existing = [
+            {
+                "name": "author",
+                "section": None,
+                "response_models": ["AuthorResponse"],
+                "request_models": ["CreateAuthorRequest", "UpdateAuthorRequest"],
+            }
+        ]
+        with patch(
+            "model_generator.generators.api.scan_api_model_files",
+            return_value=existing,
+        ):
+            result = generate_api_init(multi_entity_model, config, env, project_root)
+        assert result is not None
+        assert result["domain_count"] == 2  # author (existing) + post (added)
+        assert "from .author_response import" in result["content"]
+        assert "from .post_response import" in result["content"]
+
+
+class TestApiRoutesGeneratorPerEntity:
+    """Per-entity api routes emission."""
+
+    def test_returns_list_with_one_route_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        project_root, config, env = project_env_per_entity
+        result = generate_api_routes(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, list)
+        assert len(result) == 2
+        names = {r["path"].name for r in result}
+        assert names == {"author.py", "post.py"}
+
+    def test_db_model_imports_use_per_entity_paths(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """DB model is imported from {db_models}.{entity_snake}, not {domain}."""
+        project_root, config, env = project_env_per_entity
+        result = generate_api_routes(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        by_name = {r["path"].name: r["content"] for r in result}
+        assert "from src.database.models.author import Author" in by_name["author.py"]
+        assert "from src.database.models.post import Post" in by_name["post.py"]
+        # Per-domain import shape must NOT appear.
+        assert "from src.database.models.blog import" not in by_name["author.py"]
+        assert "from src.database.models.blog import" not in by_name["post.py"]
+
+    def test_api_model_imports_use_per_entity_paths(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """API models are imported from per-entity files, not per-domain combined."""
+        project_root, config, env = project_env_per_entity
+        result = generate_api_routes(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        by_name = {r["path"].name: r["content"] for r in result}
+        assert (
+            "from src.api.models.author_requests import CreateAuthorRequest"
+            in by_name["author.py"]
+        )
+        assert (
+            "from src.api.models.author_response import AuthorResponse"
+            in by_name["author.py"]
+        )
+        # Per-domain combined imports must NOT appear.
+        assert "from src.api.models.blog_requests" not in by_name["author.py"]
+        assert "from src.api.models.blog_response" not in by_name["author.py"]
+
+    def test_content_isolated_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """author.py only has Author handlers; post.py only has Post handlers."""
+        project_root, config, env = project_env_per_entity
+        result = generate_api_routes(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        by_name = {r["path"].name: r["content"] for r in result}
+        assert "async def create_author" in by_name["author.py"]
+        assert "async def create_post" not in by_name["author.py"]
+        assert "async def create_post" in by_name["post.py"]
+        assert "async def create_author" not in by_name["post.py"]
+
+
+class TestApiTestsGeneratorPerEntity:
+    """Per-entity api contract test emission."""
+
+    def test_returns_list_with_one_test_file_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        project_root, config, env = project_env_per_entity
+        result = generate_api_tests(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, list)
+        assert len(result) == 2
+        names = {r["path"].name for r in result}
+        assert names == {"test_author_api.py", "test_post_api.py"}
+
+    def test_content_isolated_per_entity(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """test_author_api.py only references Author response/request models."""
+        project_root, config, env = project_env_per_entity
+        result = generate_api_tests(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        by_name = {r["path"].name: r["content"] for r in result}
+        assert "AuthorResponse" in by_name["test_author_api.py"]
+        assert "PostResponse" not in by_name["test_author_api.py"]
+        assert "PostResponse" in by_name["test_post_api.py"]
+        assert "AuthorResponse" not in by_name["test_post_api.py"]
 
 
 class TestApiModelsGenerator:
@@ -511,6 +961,35 @@ class TestValidateAuthConfig:
         assert "dotted path" in out
 
 
+class TestValidateGenerationConfig:
+    """Test the _validate_generation_config helper."""
+
+    def test_default_layout_passes(self):
+        from model_generator.generate import _validate_generation_config
+
+        _validate_generation_config(config={})
+
+    def test_per_entity_passes(self):
+        from model_generator.generate import _validate_generation_config
+
+        _validate_generation_config({"generation": {"layout": "per-entity"}})
+
+    def test_per_domain_passes(self):
+        from model_generator.generate import _validate_generation_config
+
+        _validate_generation_config({"generation": {"layout": "per-domain"}})
+
+    def test_unknown_layout_exits(self, capsys):
+        from model_generator.generate import _validate_generation_config
+
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_generation_config({"generation": {"layout": "weird"}})
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "weird" in out
+        assert "generation.layout" in out
+
+
 class TestApiTestsGenerator:
     """Test contract test generation."""
 
@@ -534,6 +1013,72 @@ class TestApiTestsGenerator:
         assert "def test_post_item_success" in result["content"]
         assert "def test_get_item_by_id_success" in result["content"]
         assert "def test_delete_item_success" in result["content"]
+
+    def test_skips_put_tests_when_update_endpoint_excluded(self, project_env):
+        """If api.endpoints omits 'update', no test_put_* tests should be emitted."""
+        project_root, config, env = project_env
+        model = {
+            "domain": "items",
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "name": {"type": "text", "max_length": 100, "required": True},
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                    "api": {
+                        "enabled": True,
+                        "endpoints": ["list", "create", "get", "delete"],
+                    },
+                }
+            },
+        }
+        result = generate_api_tests(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert "def test_put_item" not in result["content"]
+        assert "def test_item_immutable_fields" not in result["content"]
+        # Sections that ARE in endpoints should still emit
+        assert "def test_delete_item" in result["content"]
+        assert "def test_post_item" in result["content"]
+
+    def test_skips_delete_tests_when_delete_endpoint_excluded(self, project_env):
+        """If api.endpoints omits 'delete', no test_delete_* tests should be emitted."""
+        project_root, config, env = project_env
+        model = {
+            "domain": "items",
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "name": {"type": "text", "max_length": 100, "required": True},
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                    "api": {
+                        "enabled": True,
+                        "endpoints": ["list", "create", "get"],
+                    },
+                }
+            },
+        }
+        result = generate_api_tests(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert "def test_delete_item" not in result["content"]
+        assert "def test_put_item" not in result["content"]
+        # READ + CREATE still emitted
+        assert "def test_post_item" in result["content"]
+        assert "def test_get_item_by_id_success" in result["content"]
 
 
 class TestApiTestsGeneratorScope:

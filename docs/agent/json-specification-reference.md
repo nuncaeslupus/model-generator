@@ -482,6 +482,30 @@ The generator imports this function and injects it via FastAPI's `Depends()`. Th
 
 ---
 
+## Generation Layout (`.model-generator.yaml`)
+
+Controls how generated code is split across files. Set in `.model-generator.yaml`, **not** in the model JSON.
+
+```yaml
+generation:
+  layout: "per-entity"   # default
+  # or
+  layout: "per-domain"
+```
+
+| Layout | DB models | Factories | API models | Routes | Contract tests |
+|---|---|---|---|---|---|
+| **per-entity** (default) | `models/{entity_snake}.py` | `factories/{entity_snake}.py` | `{entity_snake}_response.py` + `{entity_snake}_requests.py` | `routes/{entity_snake}.py` | `test_{entity_snake}_api.py` |
+| **per-domain** | `models/{domain}.py` (all entities) | `factories/{domain}.py` | `{domain}_response.py` + `{domain}_requests.py` | `routes/{domain}.py` | `test_{domain}_api.py` |
+
+Per-entity is the recommended default — keeps diffs small as a domain grows, and lets adopters move individual entities into their own modules later. Per-domain is preserved for projects that prefer one file per domain spec; it stays available indefinitely.
+
+The `domain` and `section_header` from the model JSON still drive things like `__tablename__` defaults, FastAPI tags, and section banners in `__init__.py`. Only the file layout differs.
+
+**Breaking-shape note (2026-04-30):** The default layout flipped from per-domain to per-entity in the §15 release. Adopters who want the prior file shape should pin `generation.layout: per-domain` in their `.model-generator.yaml`. Templates and generators support both modes indefinitely.
+
+---
+
 ## Tests Configuration
 
 ```json

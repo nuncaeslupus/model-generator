@@ -93,7 +93,7 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 show_error_codes = true
-exclude = ["tests/", ".claude/"]
+exclude = ["tests/", ".claude/", "examples/.*/backend/", "examples/.*/alembic/"]
 
 [tool.mutmut]
 paths_to_mutate = ["src/model_generator/"]

@@ -101,7 +101,13 @@ from {{ config.paths.api_models.rsplit('/', 1)[0] | path_to_import }}.utils impo
 
 {% endif %}
 from {{ config.paths.database_models.rsplit('/', 1)[0] | path_to_import }} import get_session
+{% if config.get('generation', {}).get('layout', 'per-entity') == 'per-entity' %}
+{% for entity_name in ns.db_models %}
+from {{ config.paths.database_models | path_to_import }}.{{ entity_name | snake_case }} import {{ entity_name }}
+{% endfor %}
+{% else %}
 from {{ config.paths.database_models | path_to_import }}.{{ model.domain }} import {{ ns.db_models | join(', ') }}
+{% endif %}
 {% if ns.enum_imports | length > 0 %}
 from {{ config.paths.database_models | path_to_import }}.enums import {{ ns.enum_imports | join(', ') }}
 {% endif %}
@@ -115,17 +121,25 @@ from {{ auth_dep_module }} import {{ auth_dep_func }}
 {% endif %}
 
 # Import request models
+{% set is_per_entity = config.get('generation', {}).get('layout', 'per-entity') == 'per-entity' %}
 {% for entity_name, entity in model.entities.items() %}
-from {{ config.paths.api_models | path_to_import }}.{{ model.domain }}_requests import Create{{ entity_name }}Request{% if entity.mutability | default('mutable') != 'immutable' %}, Update{{ entity_name }}Request{% endif %}
+{% set req_module = (entity_name | snake_case) if is_per_entity else model.domain %}
+from {{ config.paths.api_models | path_to_import }}.{{ req_module }}_requests import Create{{ entity_name }}Request{% if entity.mutability | default('mutable') != 'immutable' %}, Update{{ entity_name }}Request{% endif %}
 
 {% endfor %}
 
 # Import response models
+{% if is_per_entity %}
+{% for entity_name, entity in model.entities.items() %}
+from {{ config.paths.api_models | path_to_import }}.{{ entity_name | snake_case }}_response import {{ entity_name }}Response
+{% endfor %}
+{% else %}
 from {{ config.paths.api_models | path_to_import }}.{{ model.domain }}_response import (
 {% for entity_name, entity in model.entities.items() %}
     {{ entity_name }}Response,
 {% endfor %}
 )
+{% endif %}
 
 router = APIRouter(tags=["{{ model.domain }}"])
 

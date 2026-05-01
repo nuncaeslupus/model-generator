@@ -5,6 +5,14 @@ project:
 
 stack: python-fastapi
 
+# Generated layout: how generated code is split across files.
+#   per-entity (default): one file per entity, e.g. models/user.py + models/role.py.
+#   per-domain:           one file per spec domain, e.g. models/users.py with both.
+# Per-entity is the recommended default — keeps diffs small as a domain grows
+# and lets adopters move individual entities into their own modules later.
+# generation:
+#   layout: per-entity
+
 paths:
   # Infrastructure (generated once)
   base: backend/src/database/models/base.py

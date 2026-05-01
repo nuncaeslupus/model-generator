@@ -200,8 +200,15 @@ def generate_main(
     project_root: Path,
     domains: list[str],
     project_config: dict,
+    route_modules: list[str] | None = None,
 ) -> dict | None:
-    """Generate FastAPI main application."""
+    """Generate FastAPI main application.
+
+    ``domains`` is kept for backward compatibility. ``route_modules`` is the
+    layout-aware list of route module stems imported by main.py — entity
+    snake_case names in per-entity mode, domain names in per-domain mode.
+    Defaults to ``domains`` when not provided.
+    """
     main_path = config["paths"].get("main", "backend/src/main.py")
     output_path = project_root / main_path
 
@@ -222,7 +229,7 @@ def generate_main(
 
     template = env.get_template("infrastructure/main.py.j2")
     content = template.render(
-        domains=domains,
+        domains=route_modules if route_modules is not None else domains,
         api_routes_import=api_routes_import,
         db_import=db_import,
         main_module=main_module,
@@ -237,8 +244,15 @@ def generate_test_conftest_root(
     env: Environment,
     project_root: Path,
     domains: list[str],
+    factory_modules: list[str] | None = None,
 ) -> dict | None:
-    """Generate root test conftest with database and client fixtures."""
+    """Generate root test conftest with database and client fixtures.
+
+    ``domains`` is kept for backward compatibility. ``factory_modules`` is the
+    layout-aware list of factory module stems imported by conftest.py — entity
+    snake_case names in per-entity mode, domain names in per-domain mode.
+    Defaults to ``domains`` when not provided.
+    """
     conftest_path = config["paths"].get("test_conftest_root", "tests/conftest.py")
     output_path = project_root / conftest_path
 
@@ -266,7 +280,7 @@ def generate_test_conftest_root(
 
     template = env.get_template("tests/conftest_root.py.j2")
     content = template.render(
-        domains=domains,
+        domains=factory_modules if factory_modules is not None else domains,
         database_models_import=database_models_import,
         main_import=main_import,
         engine_import=engine_import,
@@ -338,6 +352,8 @@ def generate_infrastructure(
     extra_deps: list[str] | None = None,
     diff: bool = False,
     dry_run: bool = False,
+    route_modules: list[str] | None = None,
+    factory_modules: list[str] | None = None,
 ) -> list[Path]:
     """
     Generate all infrastructure files.
@@ -359,8 +375,17 @@ def generate_infrastructure(
         generate_errors(config, env, project_root),
         generate_validators(config, env, project_root),
         generate_utils(config, env, project_root),
-        generate_main(config, env, project_root, domains, project_config),
-        generate_test_conftest_root(config, env, project_root, domains),
+        generate_main(
+            config,
+            env,
+            project_root,
+            domains,
+            project_config,
+            route_modules=route_modules,
+        ),
+        generate_test_conftest_root(
+            config, env, project_root, domains, factory_modules=factory_modules
+        ),
     ]
 
     for result in generators:

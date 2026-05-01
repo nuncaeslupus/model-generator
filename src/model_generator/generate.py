@@ -39,6 +39,7 @@ from .generators import (
     generate_migration_init,
 )
 from .utils import (
+    get_layout,
     get_template_env,
     load_config,
     load_model,
@@ -47,6 +48,7 @@ from .utils import (
     run_quality_tools,
 )
 from .utils.conftest_generator import generate_conftest_content
+from .utils.templates import snake_case
 
 # TDD-ordered generation targets
 INFRASTRUCTURE_TARGETS = [
@@ -314,6 +316,7 @@ def generate(
     model = load_model(model_path)
     config = load_config(stack)
     _validate_auth_config(model, config)
+    _validate_generation_config(config)
     env = get_template_env(stack, config)
 
     domain = model.get("domain", "unknown")
@@ -429,6 +432,25 @@ def _validate_auth_config(model: dict, config: dict) -> None:
             'like "module.submodule.get_current_user".\n'
             "The segment before the last dot is the import module; the segment "
             "after is the callable."
+        )
+        sys.exit(1)
+
+
+def _validate_generation_config(config: dict) -> None:
+    """Abort if generation.layout has an unknown value."""
+    valid = {"per-entity", "per-domain"}
+    layout = get_layout(config)
+    if layout not in valid:
+        choices = ", ".join(repr(v) for v in sorted(valid))
+        print(
+            f"Error: generation.layout must be one of [{choices}], "
+            f'got "{layout}".\n\n'
+            "Set in .model-generator.yaml:\n\n"
+            "  generation:\n"
+            '    layout: "per-entity"  # default; one file per entity\n'
+            "  # or\n"
+            "  generation:\n"
+            '    layout: "per-domain"  # legacy; one file per domain'
         )
         sys.exit(1)
 
@@ -614,9 +636,17 @@ def main() -> None:
 
     config = load_config(args.stack)
     env = get_template_env(args.stack, config)
+    layout = get_layout(config)
 
-    # Extract domains from all model files (only those with api-enabled entities)
-    domains = []
+    # Build module-name lists for infrastructure templates that import per-entity
+    # (or per-domain) generated modules. `domains` is still the per-spec domain
+    # list; `route_modules` and `factory_modules` are the layout-aware module
+    # stems that main.py and the root conftest import from. `factory_modules`
+    # mirrors the per-domain gating: only include factories from domains that
+    # have at least one API-enabled entity (parity with `domains`).
+    domains: list[str] = []
+    route_modules: list[str] = []
+    factory_modules: list[str] = []
     extra_deps: list[str] = []
     for model_file in model_files:
         model = load_model(model_file)
@@ -627,8 +657,24 @@ def main() -> None:
         )
         if domain not in domains and has_api:
             domains.append(domain)
+
+        if layout == "per-entity":
+            for name, entity in model.get("entities", {}).items():
+                stem = snake_case(name)
+                if (
+                    entity.get("api", {}).get("enabled", True)
+                    and stem not in route_modules
+                ):
+                    route_modules.append(stem)
+                if has_api and stem not in factory_modules:
+                    factory_modules.append(stem)
+
         extra_deps.extend(model.get("dependencies", []))
     extra_deps = sorted(set(extra_deps))
+
+    if layout != "per-entity":
+        route_modules = list(domains)
+        factory_modules = list(domains)
 
     # Generate infrastructure
     if (
@@ -640,6 +686,8 @@ def main() -> None:
             env=env,
             project_root=project_root,
             domains=domains,
+            route_modules=route_modules,
+            factory_modules=factory_modules,
             project_config=config,
             extra_deps=extra_deps,
             diff=args.diff,

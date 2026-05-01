@@ -155,7 +155,9 @@ from .constraints import {{ ns.constraint_imports | sort | join(', ') }}
 {%- endif %}
 
 
+{% if config.generation.layout != 'per-entity' %}
 {{ section_divider(model.section_header | default(model.domain | upper + ' MODELS')) }}
+{% endif %}
 
 {% for entity_name, entity in model.entities.items() %}
 

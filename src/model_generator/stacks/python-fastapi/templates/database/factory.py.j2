@@ -16,16 +16,19 @@ This module contains factories for:
 {% endfor %}
 
 Usage:
-    from {{ config.paths.database_models | path_to_import }}.factories.{{ model.domain }} import UserFactory
+{%- set is_per_entity = config.get('generation', {}).get('layout', 'per-entity') == 'per-entity' %}
+{%- set example_entity = model.entities.keys() | list | first %}
+{%- set example_module = (example_entity | snake_case) if is_per_entity else model.domain %}
+    from {{ config.paths.database_models | path_to_import }}.factories.{{ example_module }} import {{ example_entity }}Factory
 
     # Create single instance
-    user = UserFactory.create()
+    obj = {{ example_entity }}Factory.create()
 
     # Create batch
-    users = UserFactory.create_batch(10)
+    objs = {{ example_entity }}Factory.create_batch(10)
 
     # Build without saving
-    user = UserFactory.build()
+    obj = {{ example_entity }}Factory.build()
 """
 
 {#- Calculate necessary imports -#}
@@ -55,6 +58,11 @@ Usage:
 {% endfor %}
 {% if entity.relationships is defined and entity.relationships | length > 0 %}
 {% set ns.has_relationships = true %}
+{% for rel_name, rel in entity.relationships.items() %}
+{% if rel.type == 'one_to_many' and rel.target in sibling_entities and rel.target not in ns.entity_refs %}
+{% set _ = ns.entity_refs.append(rel.target) %}
+{% endif %}
+{% endfor %}
 {% endif %}
 {% endfor %}
 
@@ -77,11 +85,22 @@ from typing import Any
 
 {#- Import database models -#}
 {% set db_models_import = config.paths.database_models | path_to_import %}
+{% if config.generation.layout == 'per-entity' %}
+{% for entity_name in model.entities.keys() %}
+from {{ db_models_import }}.{{ entity_name | snake_case }} import {{ entity_name }}
+{% endfor %}
+{% else %}
 from {{ db_models_import }}.{{ model.domain}} import (
 {% for entity_name in model.entities.keys() %}
     {{ entity_name }},
 {% endfor %}
 )
+{% endif %}
+{% if config.generation.layout == 'per-entity' and ns.entity_refs %}
+{% for ref in ns.entity_refs %}
+from .{{ ref | snake_case }} import {{ ref }}Factory
+{% endfor %}
+{% endif %}
 {% if ns.enum_imports %}
 
 from {{ db_models_import }}.enums import (
@@ -227,7 +246,7 @@ class {{ entity_name }}Factory(factory.alchemy.SQLAlchemyModelFactory):
             return
 
 {% for rel_name, rel in entity.relationships.items() %}
-{% if rel.type == 'one_to_many' and rel.target in model.entities %}
+{% if rel.type == 'one_to_many' and rel.target in sibling_entities %}
         # Create {{ rel_name }} ({{ rel.type }})
         if "{{ rel_name }}" not in kwargs or kwargs["{{ rel_name }}"]:
             count = kwargs.get("{{ rel_name }}_count", fake.pyint(min_value=1, max_value=3))

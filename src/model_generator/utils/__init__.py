@@ -5,6 +5,7 @@ Utility modules for model-generator.
 from .constants import GENERATED_MARKER
 from .loaders import (
     deep_merge,
+    get_layout,
     load_config,
     load_model,
     load_shared_constraints,
@@ -17,6 +18,7 @@ from .templates import get_template_env, path_to_import
 __all__ = [
     "deep_merge",
     "GENERATED_MARKER",
+    "get_layout",
     "get_template_env",
     "load_config",
     "load_model",

@@ -6,21 +6,42 @@ from pathlib import Path
 
 from jinja2 import Environment
 
+from ..utils.loaders import get_layout
 from ..utils.parser import scan_model_files
+from ..utils.templates import snake_case
 
 
 def generate_database_model(
     model: dict, config: dict, env: Environment, project_root: Path
-) -> dict:
-    """Generate SQLAlchemy database model with all entities."""
+) -> dict | list[dict]:
+    """Generate SQLAlchemy database model(s).
+
+    In per-entity layout (the default) returns one dict per entity, each
+    pointing at ``{entity_snake}.py``. In per-domain layout returns a single
+    dict pointing at ``{domain}.py`` with all entities in one file.
+    """
     template = env.get_template("database/model.py.j2")
-    content = template.render(model=model, config=config)
-
     output_dir = project_root / config["paths"]["database_models"]
-    domain = model.get("domain", "models")
-    output_file = output_dir / f"{domain}.py"
+    sibling_entities = list(model.get("entities", {}).keys())
 
-    return {"path": output_file, "content": content}
+    if get_layout(config) == "per-entity":
+        return [
+            {
+                "path": output_dir / f"{snake_case(name)}.py",
+                "content": template.render(
+                    model={**model, "entities": {name: entity}},
+                    config=config,
+                    sibling_entities=sibling_entities,
+                ),
+            }
+            for name, entity in model.get("entities", {}).items()
+        ]
+
+    domain = model.get("domain", "models")
+    content = template.render(
+        model=model, config=config, sibling_entities=sibling_entities
+    )
+    return {"path": output_dir / f"{domain}.py", "content": content}
 
 
 def generate_init(
@@ -30,18 +51,31 @@ def generate_init(
     output_dir = project_root / config["paths"]["database_models"]
     domains = scan_model_files(output_dir)
 
-    # Include current model even if its file hasn't been written yet
-    current_domain = model.get("domain", "unknown")
-    domain_names = {d["name"] for d in domains}
-    if current_domain not in domain_names:
-        domains.append(
-            {
-                "name": current_domain,
-                "file": current_domain,
-                "section": model.get("section_header"),
-                "entities": list(model.get("entities", {}).keys()),
-            }
-        )
+    if get_layout(config) == "per-entity":
+        existing_files = {d["file"] for d in domains}
+        for name in model.get("entities", {}).keys():
+            stem = snake_case(name)
+            if stem not in existing_files:
+                domains.append(
+                    {
+                        "name": stem,
+                        "file": stem,
+                        "section": None,
+                        "entities": [name],
+                    }
+                )
+    else:
+        current_domain = model.get("domain", "unknown")
+        domain_names = {d["name"] for d in domains}
+        if current_domain not in domain_names:
+            domains.append(
+                {
+                    "name": current_domain,
+                    "file": current_domain,
+                    "section": model.get("section_header"),
+                    "entities": list(model.get("entities", {}).keys()),
+                }
+            )
 
     if not domains:
         print(f"  ℹ️  No model files found in {output_dir}")
@@ -63,15 +97,33 @@ def generate_init(
 
 def generate_factories(
     model: dict, config: dict, env: Environment, project_root: Path
-) -> dict | None:
-    """Generate FactoryBoy factories for test data generation."""
-    template = env.get_template("database/factory.py.j2")
-    content = template.render(model=model, config=config)
+) -> dict | list[dict]:
+    """Generate FactoryBoy factories for test data generation.
 
-    db_models_dir = project_root / config["paths"]["database_models"]
-    factories_dir = db_models_dir / "factories"
+    Per-entity layout returns one factory file per entity; per-domain returns
+    a single combined file. ``sibling_entities`` (the full domain entity
+    list) is threaded into the template so cross-entity ``create_related``
+    blocks survive the per-entity slicing of ``model.entities``.
+    """
+    template = env.get_template("database/factory.py.j2")
+    factories_dir = project_root / config["paths"]["database_models"] / "factories"
+    sibling_entities = list(model.get("entities", {}).keys())
+
+    if get_layout(config) == "per-entity":
+        return [
+            {
+                "path": factories_dir / f"{snake_case(name)}.py",
+                "content": template.render(
+                    model={**model, "entities": {name: entity}},
+                    config=config,
+                    sibling_entities=sibling_entities,
+                ),
+            }
+            for name, entity in model.get("entities", {}).items()
+        ]
 
     domain = model.get("domain", "models")
-    output_file = factories_dir / f"{domain}.py"
-
-    return {"path": output_file, "content": content}
+    content = template.render(
+        model=model, config=config, sibling_entities=sibling_entities
+    )
+    return {"path": factories_dir / f"{domain}.py", "content": content}
