@@ -16,16 +16,19 @@ This module contains factories for:
 {% endfor %}
 
 Usage:
-    from {{ config.paths.database_models | path_to_import }}.factories.{{ model.domain }} import UserFactory
+{%- set is_per_entity = config.get('generation', {}).get('layout', 'per-entity') == 'per-entity' %}
+{%- set example_entity = model.entities.keys() | list | first %}
+{%- set example_module = (example_entity | snake_case) if is_per_entity else model.domain %}
+    from {{ config.paths.database_models | path_to_import }}.factories.{{ example_module }} import {{ example_entity }}Factory
 
     # Create single instance
-    user = UserFactory.create()
+    obj = {{ example_entity }}Factory.create()
 
     # Create batch
-    users = UserFactory.create_batch(10)
+    objs = {{ example_entity }}Factory.create_batch(10)
 
     # Build without saving
-    user = UserFactory.build()
+    obj = {{ example_entity }}Factory.build()
 """
 
 {#- Calculate necessary imports -#}
