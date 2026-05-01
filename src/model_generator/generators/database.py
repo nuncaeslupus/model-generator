@@ -3,17 +3,12 @@ Database model generation utilities.
 """
 
 from pathlib import Path
-from typing import cast
 
 from jinja2 import Environment
 
+from ..utils.loaders import get_layout
 from ..utils.parser import scan_model_files
 from ..utils.templates import snake_case
-
-
-def _layout(config: dict) -> str:
-    """Return the configured generation layout (defaulting to per-entity)."""
-    return cast(str, config.get("generation", {}).get("layout", "per-entity"))
 
 
 def generate_database_model(
@@ -29,7 +24,7 @@ def generate_database_model(
     output_dir = project_root / config["paths"]["database_models"]
     sibling_entities = list(model.get("entities", {}).keys())
 
-    if _layout(config) == "per-entity":
+    if get_layout(config) == "per-entity":
         return [
             {
                 "path": output_dir / f"{snake_case(name)}.py",
@@ -56,7 +51,7 @@ def generate_init(
     output_dir = project_root / config["paths"]["database_models"]
     domains = scan_model_files(output_dir)
 
-    if _layout(config) == "per-entity":
+    if get_layout(config) == "per-entity":
         existing_files = {d["file"] for d in domains}
         for name in model.get("entities", {}).keys():
             stem = snake_case(name)
@@ -114,7 +109,7 @@ def generate_factories(
     factories_dir = project_root / config["paths"]["database_models"] / "factories"
     sibling_entities = list(model.get("entities", {}).keys())
 
-    if _layout(config) == "per-entity":
+    if get_layout(config) == "per-entity":
         return [
             {
                 "path": factories_dir / f"{snake_case(name)}.py",

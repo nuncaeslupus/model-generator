@@ -3,18 +3,12 @@ API generation utilities (models, routes, tests).
 """
 
 from pathlib import Path
-from typing import cast
 
 from jinja2 import Environment
 
-from ..utils.loaders import load_shared_constraints, load_shared_enums
+from ..utils.loaders import get_layout, load_shared_constraints, load_shared_enums
 from ..utils.parser import scan_api_model_files
 from ..utils.templates import snake_case
-
-
-def _layout(config: dict) -> str:
-    """Return the configured generation layout (defaulting to per-entity)."""
-    return cast(str, config.get("generation", {}).get("layout", "per-entity"))
 
 
 def _filter_api_entities(model: dict) -> dict | None:
@@ -65,7 +59,7 @@ def generate_api_models(
     response_template = env.get_template("api/response.py.j2")
     request_template = env.get_template("api/request.py.j2")
 
-    if _layout(config) == "per-entity":
+    if get_layout(config) == "per-entity":
         outputs = []
         for name, entity in filtered.get("entities", {}).items():
             sliced = {**filtered, "entities": {name: entity}}
@@ -113,7 +107,7 @@ def generate_api_init(
     domains = scan_api_model_files(output_dir)
     filtered = _filter_api_entities(model)
 
-    if _layout(config) == "per-entity":
+    if get_layout(config) == "per-entity":
         existing_names = {d["name"] for d in domains}
         if filtered is not None:
             for entity_name, entity in filtered.get("entities", {}).items():
@@ -217,7 +211,7 @@ def generate_api_routes(
     template = env.get_template("api/route.py.j2")
     output_dir = project_root / config["paths"]["api_routes"]
 
-    if _layout(config) == "per-entity":
+    if get_layout(config) == "per-entity":
         return [
             {
                 "path": output_dir / f"{snake_case(name)}.py",
@@ -271,7 +265,7 @@ def generate_api_tests(
     template = env.get_template("tests/contract.py.j2")
     output_dir = project_root / config["paths"]["api_tests"]
 
-    if _layout(config) == "per-entity":
+    if get_layout(config) == "per-entity":
         return [
             {
                 "path": output_dir / f"test_{snake_case(name)}_api.py",

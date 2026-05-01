@@ -39,6 +39,7 @@ from .generators import (
     generate_migration_init,
 )
 from .utils import (
+    get_layout,
     get_template_env,
     load_config,
     load_model,
@@ -438,7 +439,7 @@ def _validate_auth_config(model: dict, config: dict) -> None:
 def _validate_generation_config(config: dict) -> None:
     """Abort if generation.layout has an unknown value."""
     valid = {"per-entity", "per-domain"}
-    layout = config.get("generation", {}).get("layout", "per-entity")
+    layout = get_layout(config)
     if layout not in valid:
         choices = ", ".join(repr(v) for v in sorted(valid))
         print(
@@ -635,12 +636,14 @@ def main() -> None:
 
     config = load_config(args.stack)
     env = get_template_env(args.stack, config)
-    layout = config.get("generation", {}).get("layout", "per-entity")
+    layout = get_layout(config)
 
     # Build module-name lists for infrastructure templates that import per-entity
     # (or per-domain) generated modules. `domains` is still the per-spec domain
     # list; `route_modules` and `factory_modules` are the layout-aware module
-    # stems that main.py and the root conftest import from.
+    # stems that main.py and the root conftest import from. `factory_modules`
+    # mirrors the per-domain gating: only include factories from domains that
+    # have at least one API-enabled entity (parity with `domains`).
     domains: list[str] = []
     route_modules: list[str] = []
     factory_modules: list[str] = []
@@ -663,7 +666,7 @@ def main() -> None:
                     and stem not in route_modules
                 ):
                     route_modules.append(stem)
-                if stem not in factory_modules:
+                if has_api and stem not in factory_modules:
                     factory_modules.append(stem)
 
         extra_deps.extend(model.get("dependencies", []))

@@ -97,6 +97,7 @@ def run_generate() -> None:
     if target in INFRASTRUCTURE_TARGETS:
         from ...generators.infrastructure import generate_infrastructure
         from ...utils import (
+            get_layout,
             get_template_env,
             load_config,
             load_model,
@@ -107,7 +108,7 @@ def run_generate() -> None:
         stack = "python-fastapi"
         config = load_config(stack)
         env = get_template_env(stack, config)
-        layout = config.get("generation", {}).get("layout", "per-entity")
+        layout = get_layout(config)
 
         domains: list[str] = []
         route_modules: list[str] = []
@@ -115,7 +116,11 @@ def run_generate() -> None:
         for model_file in selected_files:
             model = load_model(model_file)
             domain = model.get("domain", "unknown")
-            if domain not in domains:
+            has_api = any(
+                e.get("api", {}).get("enabled", True)
+                for e in model.get("entities", {}).values()
+            )
+            if domain not in domains and has_api:
                 domains.append(domain)
             if layout == "per-entity":
                 for name, entity in model.get("entities", {}).items():
@@ -125,7 +130,7 @@ def run_generate() -> None:
                         and stem not in route_modules
                     ):
                         route_modules.append(stem)
-                    if stem not in factory_modules:
+                    if has_api and stem not in factory_modules:
                         factory_modules.append(stem)
         if layout != "per-entity":
             route_modules = list(domains)

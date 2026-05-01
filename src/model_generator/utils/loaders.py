@@ -199,6 +199,15 @@ def load_config(stack: str = "python-fastapi") -> dict:
     return merged_config
 
 
+def get_layout(config: dict) -> str:
+    """Return the configured generation layout (defaulting to per-entity).
+
+    `load_config` already injects the default, but this helper guards
+    against ad-hoc config dicts (e.g. test fixtures) that bypass it.
+    """
+    return cast(str, config.get("generation", {}).get("layout", "per-entity"))
+
+
 def load_shared_enums(model_path: Path) -> dict:
     """
     Load enum definitions from _shared/enums.json.
