@@ -1,8 +1,8 @@
 # Next Session Plan
 
-## Current State (2026-04-29, post-§15.5)
+## Current State (2026-05-01, post-§15.6 — full §15 epic complete)
 
-PR #10 (§9 owner-scoping) merged to `main` as squash `62a700c`. §15 (one-file-per-entity layout) is in progress on `feat/15-per-entity-layout` — **8 local commits, not pushed**.
+PR #10 (§9 owner-scoping) merged to `main` as squash `62a700c`. §15 (one-file-per-entity layout) is **complete** on `feat/15-per-entity-layout` — **11 local commits, ready to push and PR**.
 
 ### `feat/15-per-entity-layout`
 
@@ -13,37 +13,30 @@ PR #10 (§9 owner-scoping) merged to `main` as squash `62a700c`. §15 (one-file-
 - `be47358` — `feat: split database emission per-entity (§15.3)`
 - `96a3bbc` — `docs: checkpoint §15.3 done in next-session.md`
 - `32641ac` — `feat: split api-models emission per-entity (§15.4)`
+- `9989c75` — `docs: checkpoint §15.4 done in next-session.md`
 - `d5fd258` — `fix: suppress # None banner in per-entity __init__.py emission`
-- `f6ae082` — `feat: split api-routes and api-tests emission per-entity (§15.5)` — chose `dict | list[dict]` return shape pattern (matching §15.3) so existing per-domain tests don't have to unwrap `[0]`. `route.py.j2` got 3 layout-aware import edits (DB model, api requests, api response). Infrastructure plumbing fix bundled in: `main.py.j2` + `conftest_root.py.j2` iterate over layout-aware `route_modules` / `factory_modules` (computed in `generate.py` and wizard), threaded through `generate_main` / `generate_test_conftest_root`. The conftest_root side was a latent §15.3-era bug — factories went per-entity but the conftest still looked them up by domain name. +6 tests (`TestApiRoutesGeneratorPerEntity` × 4, `TestApiTestsGeneratorPerEntity` × 2). Pinned `test_api_tests_only` to per-domain (mirror of §15.3's `test_database_only`); updated `test_full_generation.py` route/test assertions to per-entity shape (rides on example config).
+- `f6ae082` — `feat: split api-routes and api-tests emission per-entity (§15.5)`
+- `89a1317` — `docs: checkpoint §15.5 done in next-session.md`
+- `cb5cf89` — `docs: polish factory docstring + document layout in example config (§15.6)` — `factory.py.j2` Usage example now picks `model.entities | first` and a layout-aware module path (was hardcoded `UserFactory` from `factories.{domain}`). Example `.model-generator.yaml` gains a commented `generation.layout` section.
+- `4987fa8` — `fix: gate contract test sections by entity.api.endpoints` — pre-existing bug surfaced by §15.6 regen. `contract.py.j2` now resolves `endpoints = entity.api.endpoints if defined else default` at the entity-class boundary (mirror of `route.py.j2:144`) and gates Section 4 (UPDATE), Section 5 (DELETE), and the `_immutable_fields` test by membership in that list. The existing `should_generate_test()` allowlist still applies as the first gate. Affected example: 6 user-auth-project tests that 405'd against missing routes (Transaction DELETE, UserSession PUT/`_immutable_fields`) are no longer emitted. Test count claim in CLAUDE.md / README updated 149 → 143. New tests: `TestApiTestsGenerator.test_skips_put_tests_when_update_endpoint_excluded` + `test_skips_delete_tests_when_delete_endpoint_excluded`.
 
-**Verification at checkpoint:** 346 tests passing (was 338 — +2 from `# None` banner fix, +6 from §15.5). `make lint` clean (ruff check + ruff format check + mypy), working tree clean.
+**Verification at checkpoint:** 348 model-generator tests passing (was 346 pre-gating-fix), 143 / 143 example tests passing (was 143/149 with 6 known failures). `make lint` clean, working tree clean.
 
----
-
-## Priority Next Session — §15.6 Example regen + docs (LAST §15 STEP)
-
-The full §15 plan is at `~/.claude/plans/tranquil-shimmying-flute.md`. Steps 1–5 landed.
-
-### §15.6 — Example regen + docs (FINAL §15 STEP)
-
-Regenerate `examples/user-auth-project/` with `--clean`. Confirm 149 tests still pass. Add commented `generation.layout` section to `.model-generator.yaml`. Update `docs/agent/json-specification-reference.md` and any user-facing config docs. Note the breaking-shape change in this file.
-
-**Watch for during regen:**
-
-- The User entity has 3 `one_to_many` sibling relationships (UserSession, ApiKey, UserRole) — these exercise the entity_refs gap fix from §15.3. If the regen produces a User factory that NameErrors at import time, the fix isn't doing its job.
-- `# None` banner fix from `d5fd258` should now keep `__init__.py` files clean. Watch for any remaining literal `# None` lines anywhere.
-- `routes/user.py`, `routes/user_session.py`, etc. should each import their DB model from `database.models.{entity_snake}` and api models from `api.models.{entity_snake}_*`. `main.py` should `from app.api.routes.user import router as user_router` (not `from .users`). `tests/conftest.py` should iterate `factory_modules` (entity stems).
-- `test_full_generation.py::test_generate_from_examples` already passes with the new shape (it copies the example config), but `tests/contract/api/test_*_api.py` now arrives as one-per-entity — make sure the example's 149 tests don't double-count or mis-skip.
-
-**Polish in §15.6:** `factory.py.j2`'s docstring "Usage" example uses `model.domain` (e.g., `from .factories.users import UserFactory`) but the per-entity file lives at `factories/user.py`. Misleading but not a hard break.
-
-### Housekeeping
-
-- Branch `feat/15-per-entity-layout` is local-only (8 commits ahead of origin/main). Push for backup: `git push -u origin feat/15-per-entity-layout`.
+**Docs updated:** `docs/agent/json-specification-reference.md` gains a `Generation Layout` section with the per-entity vs per-domain table and breaking-shape note. `examples/user-auth-project/.model-generator.yaml` documents the option for adopters.
 
 ---
 
-## §12 — Auth scaffolding (after §15)
+## Priority Next Session — Open the §15 PR
+
+1. `git push -u origin feat/15-per-entity-layout`
+2. Open PR with the body assembled from the per-step commit messages — the `§15.x` tags on commits map cleanly to PR sections.
+3. Watch CI; address any review feedback. The §14 / §13 / §9 PRs are reasonable templates for review tone and structure.
+
+---
+
+## Future Work
+
+### §12 — Auth scaffolding (after §15 lands)
 
 **What:** `auth: {strategy: "bcrypt-session", pepper_env: "APP_PASSWORD_PEPPER"}` → generates a starter auth router (register / login / logout / forgot / reset / change-password) with bcrypt+pepper hashing, itsdangerous session cookies, CSRF middleware, and rate limiting on login/register.
 **Depends on:** User entity with `password` field (already present in the user-auth example).
@@ -54,7 +47,6 @@ Regenerate `examples/user-auth-project/` with `--clean`. Confirm 149 tests still
 
 - **Composite-FK `__table_args__` emission.** `model.py.j2` emits N separate `ForeignKey(...)` columns for a multi-column FK instead of a single `ForeignKeyConstraint` in `__table_args__`. SQLAlchemy's `configure_mappers()` raises `AmbiguousForeignKeysError` when two entities (or one entity, as in self-ref) share multiple FK paths — even when both sides specify `foreign_keys`. Affects any composite-FK relationship. Scope: new spec shape (`relationships[].composite_fk: true`?) + `__table_args__` emission change. Not blocking any current adopter.
 - **Upstream fix in `nuncaeslupus/my-skills`.** Gemini-bot correctly flagged on PR #3 that `.claude/skills/mutmut-report/analyze_mutmut.py`'s `run_cmd` should raise rather than `sys.exit(1)`. Fix belongs upstream — file a PR against `nuncaeslupus/my-skills`, then pull via `git subtree pull --prefix=.claude/skills shared-skills main --squash`.
-- **Factory docstring drift in per-entity mode.** `factory.py.j2`'s docstring "Usage" example uses `model.domain` (e.g., `from .factories.users import UserFactory`) but the per-entity file lives at `factories/user.py`. Misleading but not a hard break. Polish in §15.6.
 
 ---
 
