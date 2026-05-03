@@ -961,6 +961,67 @@ class TestValidateAuthConfig:
         assert "dotted path" in out
 
 
+class TestValidateAuthStrategy:
+    """Test the _validate_auth_strategy helper."""
+
+    def _user_model(self):
+        return {"entities": {"User": {"fields": {"password_hash": {"type": "text"}}}}}
+
+    def test_no_strategy_passes(self):
+        from model_generator.generate import _validate_auth_strategy
+
+        _validate_auth_strategy([self._user_model()], config={})
+
+    def test_bcrypt_session_with_user_and_pepper_passes(self):
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
+        _validate_auth_strategy([self._user_model()], config)
+
+    def test_unknown_strategy_exits(self, capsys):
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "magic-jwt", "pepper_env": "X"}}
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_strategy([self._user_model()], config)
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "magic-jwt" in out
+        assert "bcrypt-session" in out
+
+    def test_missing_pepper_env_exits(self, capsys):
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "bcrypt-session"}}
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_strategy([self._user_model()], config)
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "pepper_env" in out
+
+    def test_missing_user_entity_exits(self, capsys):
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
+        models = [{"entities": {"Item": {"fields": {}}}}]
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_strategy(models, config)
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "User" in out
+
+    def test_user_without_password_hash_exits(self, capsys):
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
+        models = [{"entities": {"User": {"fields": {"username": {"type": "text"}}}}}]
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_strategy(models, config)
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "password_hash" in out
+
+
 class TestValidateGenerationConfig:
     """Test the _validate_generation_config helper."""
 

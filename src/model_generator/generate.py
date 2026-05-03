@@ -455,6 +455,77 @@ def _validate_generation_config(config: dict) -> None:
         sys.exit(1)
 
 
+def _validate_auth_strategy(models: list[dict], config: dict) -> None:
+    """Abort if auth.strategy is set but its prerequisites are missing.
+
+    Cross-model validation: takes the full list of loaded models so it can
+    check that *some* spec contains a User entity with a password_hash field.
+    Called once from main() after the aggregation loop, not per-model.
+    """
+    auth = config.get("auth") or {}
+    strategy = auth.get("strategy")
+    if not strategy:
+        return
+
+    valid_strategies = {"bcrypt-session"}
+    if strategy not in valid_strategies:
+        choices = ", ".join(repr(v) for v in sorted(valid_strategies))
+        print(
+            f'Error: auth.strategy "{strategy}" is not supported.\n'
+            f"Allowed strategies: [{choices}].\n\n"
+            "Set in .model-generator.yaml:\n\n"
+            "  auth:\n"
+            '    strategy: "bcrypt-session"\n'
+            '    pepper_env: "APP_PASSWORD_PEPPER"'
+        )
+        sys.exit(1)
+
+    pepper_env = auth.get("pepper_env")
+    if not isinstance(pepper_env, str) or not pepper_env.strip():
+        print(
+            f'Error: auth.strategy "{strategy}" requires auth.pepper_env to '
+            "name a non-empty environment variable.\n\n"
+            "Set in .model-generator.yaml:\n\n"
+            "  auth:\n"
+            f'    strategy: "{strategy}"\n'
+            '    pepper_env: "APP_PASSWORD_PEPPER"'
+        )
+        sys.exit(1)
+
+    user_entity = None
+    for model in models:
+        entities = model.get("entities", {}) or {}
+        if "User" in entities:
+            user_entity = entities["User"]
+            break
+
+    if user_entity is None:
+        print(
+            f'Error: auth.strategy "{strategy}" requires a "User" entity in '
+            "your model specifications, but none was found.\n\n"
+            'Define a User entity with a "password_hash" field in one of your '
+            "*.model.json files."
+        )
+        sys.exit(1)
+
+    fields = user_entity.get("fields", {}) or {}
+    if "password_hash" not in fields:
+        print(
+            f'Error: auth.strategy "{strategy}" requires the "User" entity to '
+            'have a "password_hash" field, but none was found.\n\n'
+            "Add to your User entity:\n\n"
+            '  "password_hash": {\n'
+            '    "type": "text",\n'
+            '    "max_length": 255,\n'
+            '    "required": true,\n'
+            '    "api_field_name": "password",\n'
+            '    "api_exclude_response": true,\n'
+            '    "api_exclude_update": true\n'
+            "  }"
+        )
+        sys.exit(1)
+
+
 def _generate_target(
     target: str,
     model: dict,
@@ -648,8 +719,10 @@ def main() -> None:
     route_modules: list[str] = []
     factory_modules: list[str] = []
     extra_deps: list[str] = []
+    loaded_models: list[dict] = []
     for model_file in model_files:
         model = load_model(model_file)
+        loaded_models.append(model)
         domain = model.get("domain", "unknown")
         has_api = any(
             e.get("api", {}).get("enabled", True)
@@ -671,6 +744,8 @@ def main() -> None:
 
         extra_deps.extend(model.get("dependencies", []))
     extra_deps = sorted(set(extra_deps))
+
+    _validate_auth_strategy(loaded_models, config)
 
     if layout != "per-entity":
         route_modules = list(domains)
