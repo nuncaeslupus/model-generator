@@ -2112,6 +2112,49 @@ class TestInfrastructureGenerators:
         assert "FastAPI" in result["content"]
         assert "users" in result["content"]
 
+    def test_generate_main_no_auth_router_when_strategy_unset(self, project_env):
+        project_root, config, env = project_env
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        # No auth.strategy → no auth-router import or include.
+        assert "auth_router" not in result["content"]
+        assert "/api/v1/auth" not in result["content"]
+
+    def test_generate_main_with_auth_router(self, project_env_per_entity):
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        # Default auth.path resolves to backend.src.auth.router.
+        assert (
+            "from backend.src.auth.router import router as auth_router"
+            in result["content"]
+        )
+        assert (
+            'app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])'
+            in result["content"]
+        )
+
+    def test_generate_main_honors_custom_auth_path(self, project_env_per_entity):
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "X",
+                "path": "src/api/auth.py",
+            },
+        }
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        assert "from src.api.auth import router as auth_router" in result["content"]
+
     def test_generate_test_conftest_root(self, project_env):
         project_root, config, env = project_env
         result = generate_test_conftest_root(

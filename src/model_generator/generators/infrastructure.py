@@ -227,6 +227,13 @@ def generate_main(
     main_dir = str(Path(main_path).parent)
     main_module = path_to_import(main_dir, "main", python_root=python_root)
 
+    auth_router_import = None
+    auth = config.get("auth") or {}
+    if auth.get("strategy"):
+        auth_path = auth.get("path", "backend/src/auth/router.py")
+        auth_module_path = auth_path[:-3] if auth_path.endswith(".py") else auth_path
+        auth_router_import = path_to_import(auth_module_path, python_root=python_root)
+
     template = env.get_template("infrastructure/main.py.j2")
     content = template.render(
         domains=route_modules if route_modules is not None else domains,
@@ -234,6 +241,7 @@ def generate_main(
         db_import=db_import,
         main_module=main_module,
         project=project_config.get("project", {}),
+        auth_router_import=auth_router_import,
     )
 
     return {"path": output_path, "content": content}
