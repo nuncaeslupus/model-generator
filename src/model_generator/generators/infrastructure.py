@@ -240,6 +240,16 @@ def generate_main(
         csrf_module_path = str(Path(auth_path).parent / "csrf")
         csrf_module_import = path_to_import(csrf_module_path, python_root=python_root)
 
+    rate_limit_module_import = None
+    if auth.get("strategy"):
+        rate_limit = auth.get("rate_limit") or {}
+        if rate_limit.get("enabled") is not False:
+            auth_path = auth.get("path", "backend/src/auth/router.py")
+            rate_limit_module_path = str(Path(auth_path).parent / "rate_limit")
+            rate_limit_module_import = path_to_import(
+                rate_limit_module_path, python_root=python_root
+            )
+
     template = env.get_template("infrastructure/main.py.j2")
     content = template.render(
         domains=route_modules if route_modules is not None else domains,
@@ -249,6 +259,7 @@ def generate_main(
         project=project_config.get("project", {}),
         auth_router_import=auth_router_import,
         csrf_module_import=csrf_module_import,
+        rate_limit_module_import=rate_limit_module_import,
     )
 
     return {"path": output_path, "content": content}
@@ -292,6 +303,10 @@ def generate_auth_router(
         db_models_import=db_models_import,
         db_import=db_import,
         project=project_config.get("project", {}),
+        rate_limit_enabled=(config.get("auth", {}).get("rate_limit") or {}).get(
+            "enabled"
+        )
+        is not False,
     )
 
     return {"path": output_path, "content": content}
@@ -321,6 +336,51 @@ def generate_csrf(
 
     template = env.get_template("infrastructure/csrf.py.j2")
     content = template.render()
+
+    return {"path": output_path, "content": content}
+
+
+def generate_rate_limit(
+    config: dict,
+    env: Environment,
+    project_root: Path,
+) -> dict | None:
+    """Generate the rate-limit module (shared slowapi Limiter instance).
+
+    Emitted only when ``config.auth.strategy`` is set AND
+    ``config.auth.rate_limit.enabled`` is not False (rate limiting is on
+    by default for auth-enabled projects). The file lives next to the
+    auth router so the router can import it via
+    ``from .rate_limit import limiter``. Bootstrap-only: returns None
+    when the file already exists.
+    """
+    auth = config.get("auth") or {}
+    if not auth.get("strategy"):
+        return None
+
+    rate_limit = auth.get("rate_limit") or {}
+    if rate_limit.get("enabled") is False:
+        return None
+
+    auth_path = auth.get("path", "backend/src/auth/router.py")
+    rate_limit_path = str(Path(auth_path).parent / "rate_limit.py")
+    output_path = project_root / rate_limit_path
+
+    if output_path.exists():
+        return None
+
+    backend = rate_limit.get("backend", "memory")
+    default_storage_uri = (
+        "redis://localhost:6379/0" if backend == "redis" else "memory://"
+    )
+
+    template = env.get_template("infrastructure/rate_limit.py.j2")
+    content = template.render(
+        login_limit=rate_limit.get("login", "5/minute"),
+        register_limit=rate_limit.get("register", "3/hour"),
+        forgot_limit=rate_limit.get("forgot", "3/hour"),
+        default_storage_uri=default_storage_uri,
+    )
 
     return {"path": output_path, "content": content}
 
@@ -477,6 +537,7 @@ def generate_infrastructure(
         ),
         generate_auth_router(config, env, project_root, project_config),
         generate_csrf(config, env, project_root),
+        generate_rate_limit(config, env, project_root),
         generate_test_conftest_root(
             config, env, project_root, domains, factory_modules=factory_modules
         ),

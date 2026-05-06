@@ -2179,6 +2179,55 @@ class TestInfrastructureGenerators:
         )
         assert "CsrfMiddleware" not in result["content"]
 
+    def test_generate_main_includes_rate_limit_when_set(self, project_env_per_entity):
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        content = result["content"]
+        # slowapi pieces imported and limiter pulled from sibling of auth.path
+        assert "from slowapi import _rate_limit_exceeded_handler" in content
+        assert "from slowapi.errors import RateLimitExceeded" in content
+        assert "from backend.src.auth.rate_limit import limiter" in content
+        # Wired onto the FastAPI app
+        assert "app.state.limiter = limiter" in content
+        assert (
+            "app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)"
+            in content
+        )
+
+    def test_generate_main_no_rate_limit_when_strategy_unset(self, project_env):
+        project_root, config, env = project_env
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        content = result["content"]
+        assert "RateLimitExceeded" not in content
+        assert "app.state.limiter" not in content
+
+    def test_generate_main_no_rate_limit_when_disabled(self, project_env_per_entity):
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "X",
+                "rate_limit": {"enabled": False},
+            },
+        }
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        content = result["content"]
+        # Auth + CSRF still wired, rate-limit pieces absent
+        assert "auth_router" in content
+        assert "RateLimitExceeded" not in content
+        assert "app.state.limiter" not in content
+
     def test_generate_test_conftest_root(self, project_env):
         project_root, config, env = project_env
         result = generate_test_conftest_root(
@@ -2412,6 +2461,57 @@ class TestAuthRouterGenerator:
         # Logout clears it alongside the session cookie
         assert "clear_csrf_cookie(response)" in content
 
+    def test_emits_rate_limit_decorators_by_default(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        content = result["content"]
+        # Sibling import for the limiter and limit constants
+        assert (
+            "from .rate_limit import FORGOT_LIMIT, LOGIN_LIMIT, REGISTER_LIMIT, limiter"
+            in content
+        )
+        # Decorators wrap the three abusable endpoints
+        assert "@limiter.limit(REGISTER_LIMIT)" in content
+        assert "@limiter.limit(LOGIN_LIMIT)" in content
+        assert "@limiter.limit(FORGOT_LIMIT)" in content
+        # change-password is authenticated → not rate-limited
+        change_block = content.split('@router.post("/change-password"')[1]
+        assert "@limiter.limit" not in change_block
+        # register and forgot pick up the request: Request param the
+        # decorator needs to extract the IP for the keyfunc.
+        register_block = content.split("async def register(")[1].split(") ->")[0]
+        assert "request: Request" in register_block
+        forgot_block = content.split("async def forgot_password(")[1].split(") ->")[0]
+        assert "request: Request" in forgot_block
+
+    def test_no_rate_limit_when_disabled(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "X",
+                "rate_limit": {"enabled": False},
+            },
+        }
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        content = result["content"]
+        assert "@limiter.limit" not in content
+        assert "from .rate_limit" not in content
+        # register and forgot drop the unused request: Request param
+        register_block = content.split("async def register(")[1].split(") ->")[0]
+        assert "request: Request" not in register_block
+        forgot_block = content.split("async def forgot_password(")[1].split(") ->")[0]
+        assert "request: Request" not in forgot_block
+
 
 class TestCsrfGenerator:
     """Smoke-test the §12.4 CSRF middleware emission helper."""
@@ -2482,3 +2582,125 @@ class TestCsrfGenerator:
         result = generate_csrf(config, env, project_root)
         # csrf.py is sibling of auth.path
         assert result["path"] == project_root / "src/api/csrf.py"
+
+
+class TestRateLimitGenerator:
+    """Smoke-test the §12.5 rate-limit module emission helper."""
+
+    def test_returns_none_when_strategy_unset(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_rate_limit
+
+        project_root, config, env = project_env_per_entity
+        assert generate_rate_limit(config, env, project_root) is None
+
+    def test_returns_none_when_explicitly_disabled(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_rate_limit
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "X",
+                "rate_limit": {"enabled": False},
+            },
+        }
+        assert generate_rate_limit(config, env, project_root) is None
+
+    def test_emits_module_with_default_limits(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_rate_limit
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+        result = generate_rate_limit(config, env, project_root)
+
+        assert result is not None
+        assert result["path"] == project_root / "backend/src/auth/rate_limit.py"
+        content = result["content"]
+        # Default limits from the §12 plan
+        assert 'LOGIN_LIMIT = "5/minute"' in content
+        assert 'REGISTER_LIMIT = "3/hour"' in content
+        assert 'FORGOT_LIMIT = "3/hour"' in content
+        # Memory backend by default
+        assert '"memory://"' in content
+        # IP-based key, env override hook
+        assert "from slowapi import Limiter" in content
+        assert "from slowapi.util import get_remote_address" in content
+        assert "limiter = Limiter(key_func=get_remote_address" in content
+        assert 'os.environ.get("RATELIMIT_STORAGE_URI"' in content
+
+    def test_uses_configured_limits(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_rate_limit
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "X",
+                "rate_limit": {
+                    "login": "10/minute",
+                    "register": "5/hour",
+                    "forgot": "2/hour",
+                },
+            },
+        }
+        result = generate_rate_limit(config, env, project_root)
+        content = result["content"]
+        assert 'LOGIN_LIMIT = "10/minute"' in content
+        assert 'REGISTER_LIMIT = "5/hour"' in content
+        assert 'FORGOT_LIMIT = "2/hour"' in content
+
+    def test_uses_redis_default_uri_when_backend_redis(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_rate_limit
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "X",
+                "rate_limit": {"backend": "redis"},
+            },
+        }
+        result = generate_rate_limit(config, env, project_root)
+        content = result["content"]
+        assert (
+            'os.environ.get("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")'
+            in content
+        )
+        # Memory default is replaced, not just appended.
+        assert 'os.environ.get("RATELIMIT_STORAGE_URI", "memory://")' not in content
+
+    def test_returns_none_when_file_exists(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_rate_limit
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+        rl_file = project_root / "backend/src/auth/rate_limit.py"
+        rl_file.parent.mkdir(parents=True, exist_ok=True)
+        rl_file.write_text("# adopter customized\n")
+
+        assert generate_rate_limit(config, env, project_root) is None
+
+    def test_module_path_follows_custom_auth_path(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_rate_limit
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "X",
+                "path": "src/api/auth.py",
+            },
+        }
+        result = generate_rate_limit(config, env, project_root)
+        # rate_limit.py is sibling of auth.path
+        assert result["path"] == project_root / "src/api/rate_limit.py"

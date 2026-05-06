@@ -29,6 +29,12 @@ from {{ auth_router_import }} import router as auth_router
 {% if csrf_module_import %}
 from {{ csrf_module_import }} import CsrfMiddleware
 {% endif %}
+{% if rate_limit_module_import %}
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+from {{ rate_limit_module_import }} import limiter
+{% endif %}
 from {{ db_import }}.engine import engine
 
 
@@ -46,6 +52,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+{% if rate_limit_module_import %}
+# Rate limiting (slowapi) — wire the shared limiter onto app.state and
+# register the 429 exception handler. Per-endpoint @limiter.limit(...)
+# decorators in the auth router enforce login / register / forgot quotas.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+{% endif %}
 {% if csrf_module_import %}
 # CSRF middleware — added BEFORE CORS so CORS remains the outermost
 # middleware (last-added is outermost in Starlette) and preflight

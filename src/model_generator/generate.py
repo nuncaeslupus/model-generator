@@ -760,16 +760,17 @@ def main() -> None:
     _validate_auth_strategy(loaded_models, config)
 
     if config.get("auth", {}).get("strategy"):
-        extra_deps = sorted(
-            set(
-                extra_deps
-                + [
-                    "passlib[bcrypt]>=1.7.4",
-                    "itsdangerous>=2.0",
-                    "email-validator>=2.0",
-                ]
-            )
-        )
+        auth_extra = [
+            "passlib[bcrypt]>=1.7.4",
+            "itsdangerous>=2.0",
+            "email-validator>=2.0",
+        ]
+        rate_limit = config.get("auth", {}).get("rate_limit") or {}
+        if rate_limit.get("enabled") is not False:
+            auth_extra.append("slowapi>=0.1.9")
+            if rate_limit.get("backend") == "redis":
+                auth_extra.append("redis>=4.0")
+        extra_deps = sorted(set(extra_deps + auth_extra))
 
     if layout != "per-entity":
         route_modules = list(domains)

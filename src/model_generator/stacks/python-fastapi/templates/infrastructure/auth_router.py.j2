@@ -49,6 +49,9 @@ from {{ db_models_import }}.user import User
 from {{ db_models_import }}.user_session import UserSession
 
 from .csrf import clear_csrf_cookie, set_csrf_cookie
+{% if rate_limit_enabled %}
+from .rate_limit import FORGOT_LIMIT, LOGIN_LIMIT, REGISTER_LIMIT, limiter
+{% endif %}
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -229,8 +232,12 @@ router = APIRouter(tags=["auth"])
     response_model=RegisterResponse,
     status_code=status.HTTP_201_CREATED,
 )
+{% if rate_limit_enabled %}
+@limiter.limit(REGISTER_LIMIT)
+{% endif %}
 async def register(
-    payload: RegisterRequest,
+    {% if rate_limit_enabled %}request: Request,
+    {% endif %}payload: RegisterRequest,
     session: AsyncSession = Depends(get_session),
 ) -> RegisterResponse:
     existing = await session.execute(
@@ -258,6 +265,9 @@ async def register(
 
 
 @router.post("/login", response_model=LoginResponse)
+{% if rate_limit_enabled %}
+@limiter.limit(LOGIN_LIMIT)
+{% endif %}
 async def login(
     payload: LoginRequest,
     request: Request,
@@ -332,8 +342,12 @@ async def logout(
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
+{% if rate_limit_enabled %}
+@limiter.limit(FORGOT_LIMIT)
+{% endif %}
 async def forgot_password(
-    payload: ForgotPasswordRequest,
+    {% if rate_limit_enabled %}request: Request,
+    {% endif %}payload: ForgotPasswordRequest,
     session: AsyncSession = Depends(get_session),
 ) -> MessageResponse:
     """Generate a signed reset token and dispatch it via email.
