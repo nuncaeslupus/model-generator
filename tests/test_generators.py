@@ -1021,6 +1021,20 @@ class TestValidateAuthStrategy:
         out = capsys.readouterr().out
         assert "password_hash" in out
 
+    def test_per_domain_layout_with_strategy_exits(self, capsys):
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+            "generation": {"layout": "per-domain"},
+        }
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_strategy([self._user_model()], config)
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "per-entity" in out
+        assert "per-domain" in out
+
 
 class TestValidateGenerationConfig:
     """Test the _validate_generation_config helper."""
@@ -2223,3 +2237,92 @@ class TestImmutableEntityGeneration:
         # POST and DELETE should still exist
         assert "@router.post" in result["content"]
         assert "@router.delete" in result["content"]
+
+
+class TestAuthRouterGenerator:
+    """Smoke-test the §12 auth_router emission helper."""
+
+    def _project_config(self):
+        return {"project": {"name": "Test"}}
+
+    def test_returns_none_when_strategy_unset(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        assert result is None
+
+    def test_emits_router_when_strategy_set(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
+        }
+
+        result = generate_auth_router(config, env, project_root, self._project_config())
+
+        assert result is not None
+        assert result["path"] == project_root / "backend/src/auth/router.py"
+        content = result["content"]
+        # All six endpoints emitted
+        assert '@router.post(\n    "/register"' in content
+        assert '@router.post("/login"' in content
+        assert '@router.post("/logout"' in content
+        assert '@router.post("/forgot-password"' in content
+        assert '@router.post("/reset-password"' in content
+        assert '@router.post("/change-password"' in content
+        # Bcrypt + HMAC pepper present
+        assert 'CryptContext(schemes=["bcrypt"]' in content
+        assert "hmac.new(pepper.encode(), password.encode(), hashlib.sha256)" in content
+        # Pepper env name baked in from config
+        assert '_PEPPER_ENV = "PEPPER"' in content
+
+    def test_emits_per_entity_imports(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        content = result["content"]
+        assert "from src.database.models.user import User" in content
+        assert "from src.database.models.user_session import UserSession" in content
+        assert "from src.database.engine import get_session" in content
+
+    def test_returns_none_when_file_exists(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+        # Adopter has customized the router; bootstrap helper must skip.
+        auth_file = project_root / "backend/src/auth/router.py"
+        auth_file.parent.mkdir(parents=True, exist_ok=True)
+        auth_file.write_text("# adopter has customized this\n")
+
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        assert result is None
+
+    def test_honors_custom_auth_path(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "X",
+                "path": "src/auth/api.py",
+            },
+        }
+
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        assert result is not None
+        assert result["path"] == project_root / "src/auth/api.py"

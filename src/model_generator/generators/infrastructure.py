@@ -239,6 +239,49 @@ def generate_main(
     return {"path": output_path, "content": content}
 
 
+def generate_auth_router(
+    config: dict,
+    env: Environment,
+    project_root: Path,
+    project_config: dict,
+) -> dict | None:
+    """Generate the auth router (register / login / logout / etc.).
+
+    Emitted only when ``config.auth.strategy`` is set. Bootstrap-only:
+    returns None when the file already exists at the configured
+    ``auth.path`` so adopters who customize the router are not overwritten
+    on regeneration.
+    """
+    if not config.get("auth", {}).get("strategy"):
+        return None
+
+    auth_path = config.get("auth", {}).get("path", "backend/src/auth/router.py")
+    output_path = project_root / auth_path
+
+    if output_path.exists():
+        return None
+
+    python_root = config.get("python_root", "")
+
+    db_models_path = config["paths"].get(
+        "database_models", "backend/src/database/models"
+    )
+    db_models_import = path_to_import(db_models_path, python_root=python_root)
+    db_import = path_to_import(
+        str(Path(db_models_path).parent), python_root=python_root
+    )
+
+    template = env.get_template("infrastructure/auth_router.py.j2")
+    content = template.render(
+        config=config,
+        db_models_import=db_models_import,
+        db_import=db_import,
+        project=project_config.get("project", {}),
+    )
+
+    return {"path": output_path, "content": content}
+
+
 def generate_test_conftest_root(
     config: dict,
     env: Environment,
@@ -383,6 +426,7 @@ def generate_infrastructure(
             project_config,
             route_modules=route_modules,
         ),
+        generate_auth_router(config, env, project_root, project_config),
         generate_test_conftest_root(
             config, env, project_root, domains, factory_modules=factory_modules
         ),

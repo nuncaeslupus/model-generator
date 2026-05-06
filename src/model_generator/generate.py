@@ -492,6 +492,18 @@ def _validate_auth_strategy(models: list[dict], config: dict) -> None:
         )
         sys.exit(1)
 
+    layout = get_layout(config)
+    if layout != "per-entity":
+        print(
+            f'Error: auth.strategy "{strategy}" currently requires '
+            f'generation.layout: per-entity (got "{layout}").\n\n'
+            "Set in .model-generator.yaml:\n\n"
+            "  generation:\n"
+            '    layout: "per-entity"\n\n'
+            "Per-domain auth scaffolding may be added in a future version."
+        )
+        sys.exit(1)
+
     user_entity = None
     for model in models:
         entities = model.get("entities", {}) or {}
@@ -746,6 +758,18 @@ def main() -> None:
     extra_deps = sorted(set(extra_deps))
 
     _validate_auth_strategy(loaded_models, config)
+
+    if config.get("auth", {}).get("strategy"):
+        extra_deps = sorted(
+            set(
+                extra_deps
+                + [
+                    "passlib[bcrypt]>=1.7.4",
+                    "itsdangerous>=2.0",
+                    "email-validator>=2.0",
+                ]
+            )
+        )
 
     if layout != "per-entity":
         route_modules = list(domains)
