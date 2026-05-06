@@ -48,6 +48,8 @@ from {{ db_import }}.engine import get_session
 from {{ db_models_import }}.user import User
 from {{ db_models_import }}.user_session import UserSession
 
+from .csrf import clear_csrf_cookie, set_csrf_cookie
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -300,6 +302,7 @@ async def login(
         samesite="lax",
         secure=_is_secure_cookie(),
     )
+    set_csrf_cookie(response)
     return LoginResponse(id=user.id, username=user.username, email=user.email)
 
 
@@ -324,6 +327,7 @@ async def logout(
             # Cookie signature is bad — nothing to revoke server-side.
             pass
     response.delete_cookie(_COOKIE_NAME)
+    clear_csrf_cookie(response)
     return MessageResponse(message="logged out")
 
 

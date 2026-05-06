@@ -234,6 +234,12 @@ def generate_main(
         auth_module_path = auth_path[:-3] if auth_path.endswith(".py") else auth_path
         auth_router_import = path_to_import(auth_module_path, python_root=python_root)
 
+    csrf_module_import = None
+    if auth.get("strategy"):
+        auth_path = auth.get("path", "backend/src/auth/router.py")
+        csrf_module_path = str(Path(auth_path).parent / "csrf")
+        csrf_module_import = path_to_import(csrf_module_path, python_root=python_root)
+
     template = env.get_template("infrastructure/main.py.j2")
     content = template.render(
         domains=route_modules if route_modules is not None else domains,
@@ -242,6 +248,7 @@ def generate_main(
         main_module=main_module,
         project=project_config.get("project", {}),
         auth_router_import=auth_router_import,
+        csrf_module_import=csrf_module_import,
     )
 
     return {"path": output_path, "content": content}
@@ -286,6 +293,34 @@ def generate_auth_router(
         db_import=db_import,
         project=project_config.get("project", {}),
     )
+
+    return {"path": output_path, "content": content}
+
+
+def generate_csrf(
+    config: dict,
+    env: Environment,
+    project_root: Path,
+) -> dict | None:
+    """Generate the CSRF middleware (double-submit cookie pattern).
+
+    Emitted only when ``config.auth.strategy`` is set. The file lives next
+    to the auth router (sibling in the same package) so the router can
+    import it via ``from .csrf import set_csrf_cookie``. Bootstrap-only:
+    returns None when the file already exists.
+    """
+    if not config.get("auth", {}).get("strategy"):
+        return None
+
+    auth_path = config.get("auth", {}).get("path", "backend/src/auth/router.py")
+    csrf_path = str(Path(auth_path).parent / "csrf.py")
+    output_path = project_root / csrf_path
+
+    if output_path.exists():
+        return None
+
+    template = env.get_template("infrastructure/csrf.py.j2")
+    content = template.render()
 
     return {"path": output_path, "content": content}
 
@@ -376,6 +411,12 @@ def generate_package_init_files(config: dict, project_root: Path) -> list[dict]:
     api_routes = paths_config.get("api_routes", "backend/src/api/routes")
     paths_to_init.append(api_routes)
 
+    # Auth package (when auth.strategy is set, the auth router and CSRF
+    # middleware live in the same package and use relative imports).
+    if config.get("auth", {}).get("strategy"):
+        auth_path = config.get("auth", {}).get("path", "backend/src/auth/router.py")
+        paths_to_init.append(str(Path(auth_path).parent))
+
     # Test paths (including parent directories)
     api_tests = paths_config.get("api_tests", "tests/contract/api")
     paths_to_init.append(api_tests)
@@ -435,6 +476,7 @@ def generate_infrastructure(
             route_modules=route_modules,
         ),
         generate_auth_router(config, env, project_root, project_config),
+        generate_csrf(config, env, project_root),
         generate_test_conftest_root(
             config, env, project_root, domains, factory_modules=factory_modules
         ),

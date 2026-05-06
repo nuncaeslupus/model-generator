@@ -2155,6 +2155,30 @@ class TestInfrastructureGenerators:
         )
         assert "from src.api.auth import router as auth_router" in result["content"]
 
+    def test_generate_main_includes_csrf_when_auth_set(self, project_env_per_entity):
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        # CSRF middleware imported from sibling of auth.path
+        assert "from backend.src.auth.csrf import CsrfMiddleware" in result["content"]
+        # Registered before CORS so CORS stays outermost
+        assert "app.add_middleware(CsrfMiddleware)" in result["content"]
+        csrf_idx = result["content"].index("app.add_middleware(CsrfMiddleware)")
+        cors_idx = result["content"].index("app.add_middleware(\n    CORSMiddleware")
+        assert csrf_idx < cors_idx, "CSRF must be added before CORS"
+
+    def test_generate_main_no_csrf_when_strategy_unset(self, project_env):
+        project_root, config, env = project_env
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        assert "CsrfMiddleware" not in result["content"]
+
     def test_generate_test_conftest_root(self, project_env):
         project_root, config, env = project_env
         result = generate_test_conftest_root(
@@ -2369,3 +2393,92 @@ class TestAuthRouterGenerator:
         result = generate_auth_router(config, env, project_root, self._project_config())
         assert result is not None
         assert result["path"] == project_root / "src/auth/api.py"
+
+    def test_wires_csrf_cookies_in_login_logout(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        content = result["content"]
+        # Relative import keeps router and csrf in the same package
+        assert "from .csrf import clear_csrf_cookie, set_csrf_cookie" in content
+        # Login mints the CSRF cookie alongside the session cookie
+        assert "set_csrf_cookie(response)" in content
+        # Logout clears it alongside the session cookie
+        assert "clear_csrf_cookie(response)" in content
+
+
+class TestCsrfGenerator:
+    """Smoke-test the §12.4 CSRF middleware emission helper."""
+
+    def test_returns_none_when_strategy_unset(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_csrf
+
+        project_root, config, env = project_env_per_entity
+        assert generate_csrf(config, env, project_root) is None
+
+    def test_emits_csrf_when_strategy_set(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_csrf
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+
+        result = generate_csrf(config, env, project_root)
+
+        assert result is not None
+        assert result["path"] == project_root / "backend/src/auth/csrf.py"
+        content = result["content"]
+        # Core API surface
+        assert "class CsrfMiddleware(BaseHTTPMiddleware)" in content
+        assert "def set_csrf_cookie(" in content
+        assert "def clear_csrf_cookie(" in content
+        assert 'CSRF_COOKIE_NAME = "csrf_token"' in content
+        assert 'CSRF_HEADER_NAME = "X-CSRF-Token"' in content
+        # Mutating-method gating + constant-time compare
+        assert '"POST", "PUT", "PATCH", "DELETE"' in content
+        assert "secrets.compare_digest" in content
+        # Exempt paths cover unauthenticated mutating endpoints + token-auth reset
+        assert "/api/v1/auth/register" in content
+        assert "/api/v1/auth/login" in content
+        assert "/api/v1/auth/forgot-password" in content
+        assert "/api/v1/auth/reset-password" in content
+
+    def test_returns_none_when_file_exists(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_csrf
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+        # Adopter has customized csrf.py; bootstrap helper must skip.
+        csrf_file = project_root / "backend/src/auth/csrf.py"
+        csrf_file.parent.mkdir(parents=True, exist_ok=True)
+        csrf_file.write_text("# adopter has customized this\n")
+
+        assert generate_csrf(config, env, project_root) is None
+
+    def test_csrf_path_follows_custom_auth_path(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_csrf
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "X",
+                "path": "src/api/auth.py",
+            },
+        }
+
+        result = generate_csrf(config, env, project_root)
+        # csrf.py is sibling of auth.path
+        assert result["path"] == project_root / "src/api/csrf.py"

@@ -26,6 +26,9 @@ from {{ api_routes_import }}.{{ domain }} import router as {{ domain }}_router
 {% if auth_router_import %}
 from {{ auth_router_import }} import router as auth_router
 {% endif %}
+{% if csrf_module_import %}
+from {{ csrf_module_import }} import CsrfMiddleware
+{% endif %}
 from {{ db_import }}.engine import engine
 
 
@@ -43,6 +46,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+{% if csrf_module_import %}
+# CSRF middleware — added BEFORE CORS so CORS remains the outermost
+# middleware (last-added is outermost in Starlette) and preflight
+# OPTIONS requests don't traverse CSRF first.
+app.add_middleware(CsrfMiddleware)
+
+{% endif %}
 # CORS middleware - set CORS_ORIGINS env var for production (comma-separated)
 cors_origins = os.getenv("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
