@@ -1,18 +1,14 @@
 # Next Session Plan
 
-## Current State (2026-05-10, §12 ready for PR on `feat/12-auth-scaffolding`)
+## Current State (2026-05-10, §13 emission gap on `fix/encrypted-bytes-emission-gap`)
 
-All 6 §12 sub-steps committed; example test suite is green (130 passed / 0 failed / 0 errors with `APP_PASSWORD_PEPPER=test-pepper`); 388 model-generator unit tests pass; lint clean.
+§12 (auth scaffolding) merged to `main` as **`baff572`** via PR #13 — see "Recently Completed Fixes" below. 408 model-generator unit tests pass (was 388), example test suite is green (130 passed / 0 failed / 0 errors with `APP_PASSWORD_PEPPER=test-pepper`), lint clean.
 
-**Branch:** `feat/12-auth-scaffolding`. Ready to open PR `feat: §12 — auth scaffolding` (squash-merge 12.1–12.6, mirroring §15 PR shape).
+**Branch:** `fix/encrypted-bytes-emission-gap`. PR #14 open, awaiting Gemini-bot review. Closes the latent §13 `encrypted_bytes.py` emission gap that the §12 status doc had flagged as future work. One commit so far (`6128eef fix(generator): emit encrypted_bytes.py module (§13 latent gap)`): adds `generate_encrypted_bytes` mirroring the `generate_csrf` gating pattern, a project-wide `_has_encrypted_binary_field` scanner threaded through both CLI and wizard orchestrators, plus two pre-existing template bugs that surface on emission (`{-#` → `{#-` comment opener; `config.paths.utils` → `config.paths.database_models` docstring path). 11 new tests.
 
 ---
 
 ## Future Work
-
-### §13 — `encrypted_bytes.py.j2` emission gap (latent)
-
-Whole-repo grep finds no `generate_encrypted_bytes()` helper. The template ships in `SOURCES.txt` and `database/model.py.j2:148` imports it, but no infrastructure generator emits it. The user-auth example doesn't use `binary + encrypt` so the gap is invisible. Belongs in a separate fix commit (a few-line `generate_encrypted_bytes` mirror of `generate_csrf` + registration in `generate_infrastructure`'s aggregator list).
 
 ### Composite-FK `__table_args__` emission
 
@@ -32,6 +28,14 @@ Whole-repo grep finds no `generate_encrypted_bytes()` helper. The template ships
 ---
 
 ## Recently Completed Fixes
+
+### §12 — Auth scaffolding (2026-05-10, PR #13)
+
+Merged to `main` as **`baff572`** (squash of 7 commits on `feat/12-auth-scaffolding`). End-to-end auth opt-in: setting `auth.strategy: bcrypt-session` in `.model-generator.yaml` produces a session-cookie auth router (register / login / logout / forgot-password / reset-password), CSRF middleware (double-submit cookie with `SESSION_COOKIE_NAME`-gated check), per-endpoint rate limiting (slowapi, default-on at 5/min login + 3/hour register/forgot, configurable to redis backend), bcrypt password hashing with HMAC pepper, and an auto-wired `current_user` FastAPI dependency that flows through `api.scope` to enforce owner-scoped endpoints.
+
+Gemini-bot review feedback addressed inline in `401fb3b` before merge — folded into the squash.
+
+See §12.1–§12.6 entries below for per-step technical detail. The largest mid-epic landmark is §12.6 (example rewire + endpoint gates + rate-limit reset + bcrypt swap, surfaced once the example test suite first ran end-to-end with auth on).
 
 ### §12.6 — auto-wire + bcrypt swap + endpoint gates + rate-limit reset (2026-05-10)
 
