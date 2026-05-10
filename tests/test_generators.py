@@ -965,7 +965,18 @@ class TestValidateAuthStrategy:
     """Test the _validate_auth_strategy helper."""
 
     def _user_model(self):
-        return {"entities": {"User": {"fields": {"password_hash": {"type": "text"}}}}}
+        return {
+            "entities": {
+                "User": {
+                    "fields": {
+                        "password_hash": {"type": "text"},
+                        "username": {"type": "text"},
+                        "email": {"type": "text"},
+                        "last_login_at": {"type": "datetime"},
+                    }
+                }
+            }
+        }
 
     def test_no_strategy_passes(self):
         from model_generator.generate import _validate_auth_strategy
@@ -1034,6 +1045,20 @@ class TestValidateAuthStrategy:
         out = capsys.readouterr().out
         assert "per-entity" in out
         assert "per-domain" in out
+
+    @pytest.mark.parametrize("missing", ["username", "email", "last_login_at"])
+    def test_user_missing_router_field_exits(self, capsys, missing):
+        """Router uses username/email/last_login_at; validator must require each."""
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
+        model = self._user_model()
+        del model["entities"]["User"]["fields"][missing]
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_strategy([model], config)
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert missing in out
 
 
 class TestValidateGenerationConfig:
@@ -2513,6 +2538,40 @@ class TestAuthRouterGenerator:
         forgot_block = content.split("async def forgot_password(")[1].split(") ->")[0]
         assert "request: Request" not in forgot_block
 
+    def test_resolves_session_secret_via_helper(self, project_env_per_entity):
+        """Production must fail-closed when SESSION_SECRET_KEY is missing."""
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
+        }
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        content = result["content"]
+        assert "def _resolve_session_secret() -> str:" in content
+        assert 'os.environ.get("APP_ENV") == "production"' in content
+        assert "SESSION_SECRET_KEY environment variable must be set" in content
+        # The dev fallback string still exists for non-production use.
+        assert '"DEV-ONLY-CHANGE-ME-IN-PRODUCTION"' in content
+        # Serializer is initialized via the helper, not the inline get-with-default.
+        assert "URLSafeTimedSerializer(\n    _resolve_session_secret()\n)" in content
+
+    def test_password_reset_email_is_async(self, project_env_per_entity):
+        """Email send must be async to avoid blocking the event loop."""
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
+        }
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        content = result["content"]
+        assert "async def _send_password_reset_email(" in content
+        # forgot_password must await it
+        assert "await _send_password_reset_email(user.email, token)" in content
+
 
 class TestCsrfGenerator:
     """Smoke-test the §12.4 CSRF middleware emission helper."""
@@ -2898,3 +2957,57 @@ class TestConftestGeneratorRateLimitReset:
         assert "@pytest.fixture(autouse=True)" in content
         assert "def _reset_rate_limiter() -> None:" in content
         assert "limiter.reset()" in content
+
+
+class TestComputeAuthExtra:
+    """Test the _compute_auth_extra helper (§12 review #2)."""
+
+    def test_no_strategy_returns_empty(self):
+        from model_generator.generate import _compute_auth_extra
+
+        assert _compute_auth_extra({}) == []
+        assert _compute_auth_extra({"auth": {}}) == []
+
+    def test_strategy_set_includes_bcrypt_itsdangerous_email_validator(self):
+        from model_generator.generate import _compute_auth_extra
+
+        extra = _compute_auth_extra(
+            {"auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
+        )
+        # bcrypt is required — the auth router imports bcrypt directly.
+        assert "bcrypt>=4.0.0" in extra
+        assert "itsdangerous>=2.0" in extra
+        assert "email-validator>=2.0" in extra
+        # slowapi is default-on
+        assert "slowapi>=0.1.9" in extra
+        # redis is opt-in
+        assert not any(dep.startswith("redis") for dep in extra)
+
+    def test_rate_limit_disabled_omits_slowapi(self):
+        from model_generator.generate import _compute_auth_extra
+
+        extra = _compute_auth_extra(
+            {
+                "auth": {
+                    "strategy": "bcrypt-session",
+                    "rate_limit": {"enabled": False},
+                }
+            }
+        )
+        assert "bcrypt>=4.0.0" in extra
+        assert not any(dep.startswith("slowapi") for dep in extra)
+        assert not any(dep.startswith("redis") for dep in extra)
+
+    def test_redis_backend_adds_redis_dep(self):
+        from model_generator.generate import _compute_auth_extra
+
+        extra = _compute_auth_extra(
+            {
+                "auth": {
+                    "strategy": "bcrypt-session",
+                    "rate_limit": {"backend": "redis"},
+                }
+            }
+        )
+        assert "slowapi>=0.1.9" in extra
+        assert "redis>=4.0" in extra

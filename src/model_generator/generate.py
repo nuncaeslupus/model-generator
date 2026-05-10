@@ -327,6 +327,26 @@ def _compute_rate_limiter_import(config: dict) -> str | None:
     return path_to_import(rate_limit_module_path, python_root=python_root)
 
 
+def _compute_auth_extra(config: dict) -> list[str]:
+    """Runtime deps the auth scaffolding pulls in. Empty when auth is off.
+
+    The auth router uses bcrypt for password hashing and itsdangerous for
+    cookie/token signing. email-validator backs Pydantic's EmailStr. slowapi
+    is added when rate limiting is enabled (default-on); redis is added when
+    its storage backend is selected.
+    """
+    auth = config.get("auth") or {}
+    if not auth.get("strategy"):
+        return []
+    extra = ["bcrypt>=4.0.0", "itsdangerous>=2.0", "email-validator>=2.0"]
+    rate_limit = auth.get("rate_limit") or {}
+    if rate_limit.get("enabled") is not False:
+        extra.append("slowapi>=0.1.9")
+        if rate_limit.get("backend") == "redis":
+            extra.append("redis>=4.0")
+    return extra
+
+
 def generate(
     model_path: Path,
     target: str = "all",
@@ -562,6 +582,16 @@ def _validate_auth_strategy(models: list[dict], config: dict) -> None:
         )
         sys.exit(1)
 
+    for required_field in ("username", "email", "last_login_at"):
+        if required_field not in fields:
+            print(
+                f'Error: auth.strategy "{strategy}" requires the "User" entity '
+                f'to have a "{required_field}" field, but none was found.\n\n'
+                "The generated auth router uses this field to register, "
+                "authenticate, or track user sessions."
+            )
+            sys.exit(1)
+
 
 def _generate_target(
     target: str,
@@ -784,16 +814,8 @@ def main() -> None:
 
     _validate_auth_strategy(loaded_models, config)
 
-    if config.get("auth", {}).get("strategy"):
-        auth_extra = [
-            "itsdangerous>=2.0",
-            "email-validator>=2.0",
-        ]
-        rate_limit = config.get("auth", {}).get("rate_limit") or {}
-        if rate_limit.get("enabled") is not False:
-            auth_extra.append("slowapi>=0.1.9")
-            if rate_limit.get("backend") == "redis":
-                auth_extra.append("redis>=4.0")
+    auth_extra = _compute_auth_extra(config)
+    if auth_extra:
         extra_deps = sorted(set(extra_deps + auth_extra))
 
     if layout != "per-entity":
