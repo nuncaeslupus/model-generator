@@ -342,6 +342,35 @@ def generate_csrf(
     return {"path": output_path, "content": content}
 
 
+def generate_encrypted_bytes(
+    config: dict,
+    env: Environment,
+    project_root: Path,
+    has_encrypted_binary: bool = False,
+) -> dict | None:
+    """Generate the EncryptedBytes TypeDecorator next to the model files.
+
+    Emitted only when at least one entity in the project has a ``binary``
+    field with an ``encrypt`` block — mirrors the ``ns.has_encrypted_binary``
+    gate that ``model.py.j2`` uses to conditionally emit
+    ``from .encrypted_bytes import EncryptedBytes``. Bootstrap-only:
+    returns None when the file already exists at the target path.
+    """
+    if not has_encrypted_binary:
+        return None
+
+    db_models = config["paths"].get("database_models", "backend/src/database/models")
+    output_path = project_root / db_models / "encrypted_bytes.py"
+
+    if output_path.exists():
+        return None
+
+    template = env.get_template("infrastructure/encrypted_bytes.py.j2")
+    content = template.render(config=config)
+
+    return {"path": output_path, "content": content}
+
+
 def generate_rate_limit(
     config: dict,
     env: Environment,
@@ -508,6 +537,7 @@ def generate_infrastructure(
     dry_run: bool = False,
     route_modules: list[str] | None = None,
     factory_modules: list[str] | None = None,
+    has_encrypted_binary: bool = False,
 ) -> list[Path]:
     """
     Generate all infrastructure files.
@@ -539,6 +569,9 @@ def generate_infrastructure(
         ),
         generate_auth_router(config, env, project_root, project_config),
         generate_csrf(config, env, project_root),
+        generate_encrypted_bytes(
+            config, env, project_root, has_encrypted_binary=has_encrypted_binary
+        ),
         generate_rate_limit(config, env, project_root),
         generate_test_conftest_root(
             config, env, project_root, domains, factory_modules=factory_modules
