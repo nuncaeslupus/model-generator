@@ -1,4 +1,4 @@
-{-#
+{#-
   Encrypted Bytes TypeDecorator
   Encrypts data at rest using Fernet symmetric encryption
 -#}
@@ -9,7 +9,7 @@
 Encrypted Bytes — Field-level encryption for binary data.
 
 Usage:
-    from {{ config.paths.utils | path_to_import }}.encrypted_bytes import EncryptedBytes
+    from {{ config.paths.database_models | path_to_import }}.encrypted_bytes import EncryptedBytes
 
     class MyModel(Base):
         encrypted_field: Mapped[bytes] = mapped_column(EncryptedBytes())

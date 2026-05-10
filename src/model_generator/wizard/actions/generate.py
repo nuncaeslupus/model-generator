@@ -95,6 +95,7 @@ def run_generate() -> None:
 
     # Generate infrastructure if needed (same logic as main())
     if target in INFRASTRUCTURE_TARGETS:
+        from ...generate import _has_encrypted_binary_field
         from ...generators.infrastructure import generate_infrastructure
         from ...utils import (
             get_layout,
@@ -113,8 +114,10 @@ def run_generate() -> None:
         domains: list[str] = []
         route_modules: list[str] = []
         factory_modules: list[str] = []
+        loaded_models: list[dict] = []
         for model_file in selected_files:
             model = load_model(model_file)
+            loaded_models.append(model)
             domain = model.get("domain", "unknown")
             has_api = any(
                 e.get("api", {}).get("enabled", True)
@@ -144,6 +147,7 @@ def run_generate() -> None:
             route_modules=route_modules,
             factory_modules=factory_modules,
             project_config=config,
+            has_encrypted_binary=_has_encrypted_binary_field(loaded_models),
         )
         if infra_files:
             run_quality_tools(config, project_root, infra_files)

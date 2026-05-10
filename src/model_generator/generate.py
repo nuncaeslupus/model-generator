@@ -347,6 +347,20 @@ def _compute_auth_extra(config: dict) -> list[str]:
     return extra
 
 
+def _has_encrypted_binary_field(models: list[dict]) -> bool:
+    """True when any loaded model has a ``binary`` field with an ``encrypt`` block.
+
+    Mirrors the ``ns.has_encrypted_binary`` template flag in ``model.py.j2``
+    and gates the project-wide emission of ``encrypted_bytes.py``.
+    """
+    for model in models:
+        for entity in model.get("entities", {}).values():
+            for field in entity.get("fields", {}).values():
+                if field.get("type") == "binary" and "encrypt" in field:
+                    return True
+    return False
+
+
 def generate(
     model_path: Path,
     target: str = "all",
@@ -822,6 +836,8 @@ def main() -> None:
         route_modules = list(domains)
         factory_modules = list(domains)
 
+    has_encrypted_binary = _has_encrypted_binary_field(loaded_models)
+
     # Generate infrastructure
     if (
         args.target in ("all", "infrastructure")
@@ -838,6 +854,7 @@ def main() -> None:
             extra_deps=extra_deps,
             diff=args.diff,
             dry_run=args.dry_run,
+            has_encrypted_binary=has_encrypted_binary,
         )
         if infra_files and not args.dry_run and not args.diff:
             run_quality_tools(config, project_root, infra_files)
