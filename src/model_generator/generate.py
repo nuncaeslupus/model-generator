@@ -353,12 +353,12 @@ def _has_encrypted_binary_field(models: list[dict]) -> bool:
     Mirrors the ``ns.has_encrypted_binary`` template flag in ``model.py.j2``
     and gates the project-wide emission of ``encrypted_bytes.py``.
     """
-    for model in models:
-        for entity in model.get("entities", {}).values():
-            for field in entity.get("fields", {}).values():
-                if field.get("type") == "binary" and "encrypt" in field:
-                    return True
-    return False
+    return any(
+        field.get("type") == "binary" and "encrypt" in field
+        for model in models
+        for entity in model.get("entities", {}).values()
+        for field in entity.get("fields", {}).values()
+    )
 
 
 def generate(
