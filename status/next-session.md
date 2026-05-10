@@ -1,41 +1,22 @@
 # Next Session Plan
 
-## Current State (2026-05-03, post-§15 + skills subtree refreshed)
+## Current State (2026-05-10, §12 ready for PR on `feat/12-auth-scaffolding`)
 
-§15 (one-file-per-entity layout) merged to `main` on 2026-05-01 as squash `28b787e` (PR #11); `feat/15-per-entity-layout` deleted locally and on origin. Upstream fix in `nuncaeslupus/my-skills` (mutmut-report `run_cmd` raises `CalledProcessError` instead of `sys.exit`) merged 2026-05-03 as upstream squash `ebf2ba3` (PR #1) and pulled here via `git subtree pull` on this branch.
+All 6 §12 sub-steps committed; example test suite is green (130 passed / 0 failed / 0 errors with `APP_PASSWORD_PEPPER=test-pepper`); 388 model-generator unit tests pass; lint clean.
 
----
-
-## Next Session — Start §12 (Auth Scaffolding)
-
-User chose §12 as the next epic during the previous session. See "Future Work" below for the full feature shape.
-
-**Recommended kickoff:**
-
-1. Enter plan mode. Read existing §9 auth-dependency wiring (`auth.dependency_path` config thread → FastAPI `Depends()` in `route.py.j2`) and the user-auth example's `User` entity (already has `password` field). Read the existing `pyproject.toml.j2` to understand the deps surface.
-2. Surface design decisions before any code:
-   - Hash algorithm: bcrypt vs argon2 default
-   - Cookie layer: `itsdangerous` vs `fastapi-sessions` vs Starlette's `SessionMiddleware`
-   - Rate-limit storage: in-memory only, or redis-optional?
-   - Composition with §9: how does `auth: {...}` interact with per-entity `api.scope`?
-3. Break work into per-step commits, mirroring the §15.x pattern (e.g. §12.1 — spec schema extension; §12.2 — auth_router template; §12.3 — session middleware + main.py hook; §12.4 — CSRF middleware; §12.5 — rate limiting; §12.6 — example wiring).
-
-**Branch:** `feat/12-auth-scaffolding`. Cut from `main` after the skills-subtree refresh PR merges.
+**Branch:** `feat/12-auth-scaffolding`. Ready to open PR `feat: §12 — auth scaffolding` (squash-merge 12.1–12.6, mirroring §15 PR shape).
 
 ---
 
 ## Future Work
 
-### §12 — Auth scaffolding
+### §13 — `encrypted_bytes.py.j2` emission gap (latent)
 
-**What:** `auth: {strategy: "bcrypt-session", pepper_env: "APP_PASSWORD_PEPPER"}` → generates a starter auth router (register / login / logout / forgot / reset / change-password) with bcrypt+pepper hashing, itsdangerous session cookies, CSRF middleware, and rate limiting on login/register.
-**Depends on:** User entity with `password` field (already present in the user-auth example).
-**Surface:** new `templates/infrastructure/auth_router.py.j2` + session middleware hook into `main.py.j2`.
-**Estimated scope:** 2–3 days. Should be broken into its own multi-commit plan.
+Whole-repo grep finds no `generate_encrypted_bytes()` helper. The template ships in `SOURCES.txt` and `database/model.py.j2:148` imports it, but no infrastructure generator emits it. The user-auth example doesn't use `binary + encrypt` so the gap is invisible. Belongs in a separate fix commit (a few-line `generate_encrypted_bytes` mirror of `generate_csrf` + registration in `generate_infrastructure`'s aggregator list).
 
-### Incidental follow-ups still open
+### Composite-FK `__table_args__` emission
 
-- **Composite-FK `__table_args__` emission.** `model.py.j2` emits N separate `ForeignKey(...)` columns for a multi-column FK instead of a single `ForeignKeyConstraint` in `__table_args__`. SQLAlchemy's `configure_mappers()` raises `AmbiguousForeignKeysError` when two entities (or one entity, as in self-ref) share multiple FK paths — even when both sides specify `foreign_keys`. Affects any composite-FK relationship. Scope: new spec shape (`relationships[].composite_fk: true`?) + `__table_args__` emission change. Not blocking any current adopter.
+`model.py.j2` emits N separate `ForeignKey(...)` columns for a multi-column FK instead of a single `ForeignKeyConstraint` in `__table_args__`. SQLAlchemy's `configure_mappers()` raises `AmbiguousForeignKeysError` when two entities (or one entity, as in self-ref) share multiple FK paths — even when both sides specify `foreign_keys`. Affects any composite-FK relationship. Scope: new spec shape (`relationships[].composite_fk: true`?) + `__table_args__` emission change. Not blocking any current adopter.
 
 ---
 
@@ -51,6 +32,20 @@ User chose §12 as the next epic during the previous session. See "Future Work" 
 ---
 
 ## Recently Completed Fixes
+
+### §12.6 — auto-wire + bcrypt swap + endpoint gates + rate-limit reset (2026-05-10)
+
+Branch tip on `feat/12-auth-scaffolding`. Closes §12. Bundles four logically distinct pieces that surfaced once the example test suite was first run end-to-end with auth on:
+
+**1. Drop `passlib`, use `bcrypt` directly.** passlib 1.7.4's internal wrap-bug-detection probe (75-byte password during `set_backend()`) raises against bcrypt 5.0.0's strict 72-byte cap. passlib's last release was 2020-10 — no fix coming. Native `bcrypt.hashpw / checkpw / gensalt` has identical semantics for HMAC-peppered input. Touches `auth_router.py.j2` (4 lines), `generate.py` (drop `passlib[bcrypt]>=1.7.4` from `auth_extra`), `tests/test_generators.py` (flip assertion to `import bcrypt` / `bcrypt.hashpw(`).
+
+**2. Auto-wire + example rewiring** (carried from prior session's working tree). `loaders.py` moves auth.dependency_path inference into `load_config()` so per-model reload picks it up; `csrf.py.j2` skips the CSRF check when `SESSION_COOKIE_NAME not in request.cookies` (standard double-submit semantics — unauthenticated requests have nothing to forge); `conftest_generator.py` reroutes `user_id` / `user_id_alt` fixtures to POST `/api/v1/auth/register` when `config.auth.strategy` is set; example `users.model.json` drops `create` from `User.api.endpoints` (auth router owns user creation now); example `.model-generator.yaml` activates `auth.strategy: bcrypt-session` + `pepper_env: APP_PASSWORD_PEPPER`.
+
+**3. Contract-test endpoint gating expansion.** `4987fa8` (§15) only gated UPDATE/DELETE/`_immutable_fields`. With User dropping `create`, the remaining sections still emitted POST seeding inside list/get/update/delete tests → 405 cascade. Now `contract.py.j2` gates Section 1 (READ list) on `'list' in endpoints`, Section 2 (CREATE) on `'create' in endpoints` (was already partial), Section 3 (INDIVIDUAL READ) on `'get' in endpoints`, Section 6 (FIELD VALIDATION) on `'create' in endpoints`. Plus, every test that internally seeds via POST is gated on `'create' in endpoints` independently of its section gate: `test_get_..._list_filtering`, `test_get_..._by_id_success`, `test_put_..._success`, `test_put_..._partial_update`, `test_delete_..._success`, `test_..._immutable_fields`. The `_not_found` variants stay (negative-path; no seeding).
+
+**4. Rate-limit test isolation.** §12.5's slowapi limiter caps `/auth/register` at 3/hour. Every test using the `user_id` fixture goes through register → after 3 tests the entire suite cascades to 429. Fix: when `auth.strategy` is set and rate-limit is enabled, the api-conftest emits an autouse `_reset_rate_limiter()` fixture that calls `limiter.reset()` before each test. New `_compute_rate_limiter_import` helper in `generate.py` builds the import path via `path_to_import` (mirroring `infrastructure.py:244-250`'s pattern; small duplication accepted to keep blast radius narrow).
+
+New tests: `TestApiTestsEndpointGates` (3 tests covering the create / list / get gates) and `TestConftestGeneratorRateLimitReset` (2 tests: no-emit when import is None, emits autouse fixture + import line when set). Total: 388 unit tests, 130 example tests, 0 fail / 0 error, lint clean.
 
 ### Upstream `analyze_mutmut.py` fix → subtree pull (2026-05-03)
 

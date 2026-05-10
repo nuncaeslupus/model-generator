@@ -334,8 +334,10 @@ def generate_csrf(
     if output_path.exists():
         return None
 
+    cookie_name = config.get("auth", {}).get("cookie_name", "session_id")
+
     template = env.get_template("infrastructure/csrf.py.j2")
-    content = template.render()
+    content = template.render(cookie_name=cookie_name)
 
     return {"path": output_path, "content": content}
 

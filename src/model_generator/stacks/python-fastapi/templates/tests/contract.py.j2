@@ -86,6 +86,7 @@ class Test{{ entity_name }}sAPI:
     """Contract tests validating {{ entity_name }} API against generated models."""
 {% set endpoints = entity.api.endpoints if (entity.api is defined and entity.api.endpoints is defined) else ["list", "create", "get", "update", "delete"] %}
 
+{% if 'list' in endpoints %}
 {{ section_banner('SECTION 1: READ OPERATIONS') }}
 
     def test_get_{{ entity.table }}_list_success(self, client: TestClient) -> None:
@@ -146,7 +147,7 @@ class Test{{ entity_name }}sAPI:
 {% endif %}
 {% endif %}
 {% endfor %}
-{% if has_filterable_fields %}
+{% if has_filterable_fields and 'create' in endpoints %}
     def test_get_{{ entity.table }}_list_filtering(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
         """Test filtering capabilities for GET /api/v1/{{ entity_table_kebab }}."""
 {% if 'true' in needs_unique_suffix(entity) %}
@@ -229,7 +230,8 @@ class Test{{ entity_name }}sAPI:
         response = client.get("/api/v1/{{ entity_table_kebab }}?sort_by=created_at&order=invalid")
         assert response.status_code in (400, 422)  # FastAPI validation error
 
-{%if 'true' in should_generate_test(entity, ['post_', 'create']) %}
+{% endif %}
+{%if 'true' in should_generate_test(entity, ['post_', 'create']) and 'create' in endpoints %}
 {{ section_banner('SECTION 2: CREATE OPERATIONS') }}
 
     def test_post_{{ entity_name.lower() }}_success(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
@@ -575,8 +577,10 @@ class Test{{ entity_name }}sAPI:
 {% endif %}
 
 {%endif %}
+{% if 'get' in endpoints %}
 {{ section_banner('SECTION 3: INDIVIDUAL READ OPERATIONS') }}
 
+{% if 'create' in endpoints %}
     def test_get_{{ entity_name.lower() }}_by_id_success(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
         """Test GET /api/v1/{{ entity_table_kebab }}/{id} success."""
         # Create a {{ entity_name.lower() }} first
@@ -598,6 +602,7 @@ class Test{{ entity_name }}sAPI:
         {{ entity_name.lower() }} = response.json()
         assert {{ entity_name.lower() }}["{{ get_primary_key_field(entity) }}"] == {{ entity_name.lower() }}_id
 
+{% endif %}
     def test_get_{{ entity_name.lower() }}_by_id_not_found(self, client: TestClient) -> None:
         """Test GET /api/v1/{{ entity_table_kebab }}/{id} not found."""
         nonexistent_id = "123e4567-e89b-12d3-a456-999999999999"
@@ -609,6 +614,7 @@ class Test{{ entity_name }}sAPI:
         assert "error" in error  # Structured error format
         assert "message" in error
 
+{% endif %}
 {%if 'true' in should_generate_test(entity, ['put_', 'update']) and 'update' in endpoints %}
 {{ section_banner('SECTION 4: UPDATE OPERATIONS') }}
 
@@ -621,6 +627,7 @@ class Test{{ entity_name }}sAPI:
 {% endif %}
 {% endfor %}
 {% if updatable_fields and entity.mutability | default('mutable') != 'immutable' %}
+{% if 'create' in endpoints %}
     def test_put_{{ entity_name.lower() }}_success(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
         """
         Test PUT /api/v1/{{ entity_table_kebab }}/{id} updates {{ entity_name.lower() }}.
@@ -1066,6 +1073,7 @@ class Test{{ entity_name }}sAPI:
 {% endif %}
 {% endif %}
 
+{% endif %}
     def test_put_{{ entity_name.lower() }}_not_found(self, client: TestClient) -> None:
         """Test PUT /api/v1/{{ entity_table_kebab }}/{id} not found."""
         nonexistent_id = "123e4567-e89b-12d3-a456-999999999999"
@@ -1112,6 +1120,7 @@ class Test{{ entity_name }}sAPI:
 {%if 'true' in should_generate_test(entity, ['delete']) and 'delete' in endpoints %}
 {{ section_banner('SECTION 5: DELETE OPERATIONS') }}
 
+{% if 'create' in endpoints %}
     def test_delete_{{ entity_name.lower() }}_success(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
         """Test DELETE /api/v1/{{ entity_table_kebab }}/{id} success."""
 {% if 'true' in needs_unique_suffix(entity) %}
@@ -1130,6 +1139,7 @@ class Test{{ entity_name }}sAPI:
 
         assert response.status_code == 204
 
+{% endif %}
     def test_delete_{{ entity_name.lower() }}_not_found(self, client: TestClient) -> None:
         """Test DELETE /api/v1/{{ entity_table_kebab }}/{id} not found."""
         nonexistent_id = "123e4567-e89b-12d3-a456-999999999999"
@@ -1142,6 +1152,7 @@ class Test{{ entity_name }}sAPI:
         assert "message" in error
 
 {%endif %}
+{% if 'create' in endpoints %}
 {{ section_banner('SECTION 6: FIELD VALIDATION') }}
 
     def test_{{ entity_name.lower() }}_response_format_validation(
@@ -1572,6 +1583,7 @@ class Test{{ entity_name }}sAPI:
         assert created <= updated, f"created_at ({created}) must be <= updated_at ({updated})"
 {% endif %}
 
+{% endif %}
 {{ section_banner('SECTION 7: RELATIONSHIP VALIDATION') }}
 {% if entity.relationships is defined and entity.relationships | length > 0 %}
     # {{ entity_name }} has relationships: {{ entity.relationships.keys() | list | join(', ') }}
@@ -1588,7 +1600,7 @@ class Test{{ entity_name }}sAPI:
 {% set _ = immutable_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'type': field.type}) %}
 {% endif %}
 {% endfor %}
-{% if immutable_fields and 'update' in endpoints %}
+{% if immutable_fields and 'update' in endpoints and 'create' in endpoints %}
     def test_{{ entity_name.lower() }}_immutable_fields(self, client: TestClient{% if required_fk_fields %}, {% for fk in required_fk_fields %}{{ fk.fixture_name }}: str{{ ', ' if not loop.last else '' }}{% endfor %}{% endif %}) -> None:
         """Test immutable fields cannot be changed via update endpoint."""
 {% if 'true' in needs_unique_suffix(entity) %}

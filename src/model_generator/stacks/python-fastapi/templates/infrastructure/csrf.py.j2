@@ -20,10 +20,18 @@ Frontend contract:
     header on every POST / PUT / PATCH / DELETE request. The middleware
     compares cookie ↔ header and rejects mismatches with 403.
 
+Gating:
+    CSRF only protects endpoints reached *with* a session cookie. If
+    the request carries no session cookie, there is nothing to forge,
+    so the middleware lets it pass without inspection. This is the
+    standard double-submit-cookie semantics — and it lets unauthenticated
+    public mutations (e.g., register / login) work without a CSRF token.
+
 Exempt paths:
-    Unauthenticated mutating endpoints (no session cookie to abuse) and
-    token-authenticated endpoints (no cookie to attack) are listed in
-    `EXEMPT_PATHS`. Edit that set if you add or rename auth routes.
+    Even when a session cookie *is* present, a few auth endpoints
+    (logout, change-password, reset-password) are listed below as
+    redundant documentation and a safety net for adopters who later
+    flip the gating policy.
 """
 
 import os
@@ -36,13 +44,15 @@ from starlette.responses import JSONResponse, Response
 
 CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "X-CSRF-Token"
+SESSION_COOKIE_NAME = "{{ cookie_name | default('session_id') }}"
 
 _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
-# Paths exempt from CSRF protection. Either unauthenticated mutating
-# endpoints (register / login / forgot-password) or token-authenticated
-# endpoints (reset-password, which validates an itsdangerous-signed
-# token from the request body, not a session cookie).
+# Paths exempt from CSRF protection regardless of session-cookie
+# presence. Kept narrow on purpose — register / login / forgot-password
+# are already exempt-by-default because they're hit before the session
+# cookie exists. Reset-password validates an itsdangerous-signed token
+# from the request body, so it can be hit with or without a session.
 EXEMPT_PATHS: frozenset[str] = frozenset(
     {
         "/api/v1/auth/register",
@@ -80,7 +90,12 @@ def clear_csrf_cookie(response: Response) -> None:
 
 
 class CsrfMiddleware(BaseHTTPMiddleware):
-    """Reject mutating requests whose CSRF cookie ≠ X-CSRF-Token header."""
+    """Reject mutating requests whose CSRF cookie ≠ X-CSRF-Token header.
+
+    Only enforced when a session cookie is present. Unauthenticated
+    requests carry nothing to forge, so they're allowed through
+    unconditionally. See module docstring for the full gating policy.
+    """
 
     async def dispatch(
         self,
@@ -89,6 +104,7 @@ class CsrfMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         if (
             request.method in _MUTATING_METHODS
+            and SESSION_COOKIE_NAME in request.cookies
             and request.url.path not in EXEMPT_PATHS
         ):
             cookie_token = request.cookies.get(CSRF_COOKIE_NAME)

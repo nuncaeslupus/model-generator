@@ -48,7 +48,7 @@ from .utils import (
     run_quality_tools,
 )
 from .utils.conftest_generator import generate_conftest_content
-from .utils.templates import snake_case
+from .utils.templates import path_to_import, snake_case
 
 # TDD-ordered generation targets
 INFRASTRUCTURE_TARGETS = [
@@ -295,11 +295,36 @@ def generate_conftest(
     else:
         models_dir = model_path
 
-    content, count = generate_conftest_content(models_dir)
+    auth_strategy = config.get("auth", {}).get("strategy")
+    rate_limiter_import = _compute_rate_limiter_import(config)
+    content, count = generate_conftest_content(
+        models_dir,
+        auth_strategy=auth_strategy,
+        rate_limiter_import=rate_limiter_import,
+    )
     output_dir = project_root / config["paths"]["api_tests"]
     output_file = output_dir / "conftest.py"
 
     return {"path": output_file, "content": content, "mode": "write"}
+
+
+def _compute_rate_limiter_import(config: dict) -> str | None:
+    """Return the import path to the auth rate_limit module, or None.
+
+    Mirrors the import-path logic in ``generators/infrastructure.py``: emits
+    a value only when ``auth.strategy`` is set and rate limiting is enabled
+    (the slowapi default-on behavior).
+    """
+    auth = config.get("auth") or {}
+    if not auth.get("strategy"):
+        return None
+    rate_limit = auth.get("rate_limit") or {}
+    if rate_limit.get("enabled") is False:
+        return None
+    auth_path = auth.get("path", "backend/src/auth/router.py")
+    rate_limit_module_path = str(Path(auth_path).parent / "rate_limit")
+    python_root = config.get("python_root", "")
+    return path_to_import(rate_limit_module_path, python_root=python_root)
 
 
 def generate(
@@ -761,7 +786,6 @@ def main() -> None:
 
     if config.get("auth", {}).get("strategy"):
         auth_extra = [
-            "passlib[bcrypt]>=1.7.4",
             "itsdangerous>=2.0",
             "email-validator>=2.0",
         ]

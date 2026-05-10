@@ -2390,7 +2390,8 @@ class TestAuthRouterGenerator:
         assert '@router.post("/reset-password"' in content
         assert '@router.post("/change-password"' in content
         # Bcrypt + HMAC pepper present
-        assert 'CryptContext(schemes=["bcrypt"]' in content
+        assert "import bcrypt" in content
+        assert "bcrypt.hashpw(" in content
         assert "hmac.new(pepper.encode(), password.encode(), hashlib.sha256)" in content
         # Pepper env name baked in from config
         assert '_PEPPER_ENV = "PEPPER"' in content
@@ -2542,6 +2543,11 @@ class TestCsrfGenerator:
         assert "def clear_csrf_cookie(" in content
         assert 'CSRF_COOKIE_NAME = "csrf_token"' in content
         assert 'CSRF_HEADER_NAME = "X-CSRF-Token"' in content
+        # Session-cookie gating: middleware skips CSRF when no session cookie
+        # is present (standard double-submit-cookie semantics — there is
+        # nothing to forge for unauthenticated requests).
+        assert 'SESSION_COOKIE_NAME = "session_id"' in content
+        assert "SESSION_COOKIE_NAME in request.cookies" in content
         # Mutating-method gating + constant-time compare
         assert '"POST", "PUT", "PATCH", "DELETE"' in content
         assert "secrets.compare_digest" in content
@@ -2550,6 +2556,25 @@ class TestCsrfGenerator:
         assert "/api/v1/auth/login" in content
         assert "/api/v1/auth/forgot-password" in content
         assert "/api/v1/auth/reset-password" in content
+
+    def test_session_cookie_name_follows_auth_cookie_name(self, project_env_per_entity):
+        from model_generator.generators.infrastructure import generate_csrf
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "X",
+                "cookie_name": "sid",
+            },
+        }
+
+        result = generate_csrf(config, env, project_root)
+        assert result is not None
+        # Custom cookie_name flows from config into SESSION_COOKIE_NAME so the
+        # gating check matches what the auth router actually sets.
+        assert 'SESSION_COOKIE_NAME = "sid"' in result["content"]
 
     def test_returns_none_when_file_exists(self, project_env_per_entity):
         from model_generator.generators.infrastructure import generate_csrf
@@ -2704,3 +2729,172 @@ class TestRateLimitGenerator:
         result = generate_rate_limit(config, env, project_root)
         # rate_limit.py is sibling of auth.path
         assert result["path"] == project_root / "src/api/rate_limit.py"
+
+
+class TestApiTestsEndpointGates:
+    """Test endpoint-aware gating in contract.py.j2 (§12.6).
+
+    When `entity.api.endpoints` drops one of {list, create, get}, the
+    contract test template should suppress the matching test sections —
+    plus all tests that internally seed via POST (which require `create`).
+    """
+
+    @staticmethod
+    def _model(endpoints: list[str]) -> dict:
+        return {
+            "domain": "items",
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "name": {
+                            "type": "text",
+                            "max_length": 100,
+                            "required": True,
+                            "unique": True,
+                        },
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                    "api": {"enabled": True, "endpoints": endpoints},
+                }
+            },
+        }
+
+    def test_skips_create_tests_when_create_endpoint_excluded(self, project_env):
+        """Dropping `create` suppresses POST tests AND every seeding-required test."""
+        project_root, config, env = project_env
+        result = generate_api_tests(
+            self._model(["list", "get", "update", "delete"]),
+            config,
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        content = result["content"]
+
+        # Section 2 (CREATE) tests gone
+        assert "def test_post_item_success" not in content
+        assert "def test_post_item_with_minimal_data" not in content
+        assert "def test_post_item_missing_required_fields" not in content
+        assert "def test_post_item_duplicate_unique_constraint" not in content
+
+        # Section 6 (FIELD VALIDATION) tests gone — they POST first
+        assert "def test_item_response_format_validation" not in content
+        assert "def test_item_field_constraints" not in content
+        assert "def test_timestamps_valid" not in content
+
+        # Seeding-required tests inside kept sections are also gone
+        assert "def test_get_item_by_id_success" not in content
+        assert "def test_put_item_success" not in content
+        assert "def test_put_item_partial_update" not in content
+        assert "def test_delete_item_success" not in content
+        assert "def test_item_immutable_fields" not in content
+        assert "def test_get_items_list_filtering" not in content
+
+        # _not_found variants don't seed → still emitted
+        assert "def test_get_item_by_id_not_found" in content
+        assert "def test_put_item_not_found" in content
+        assert "def test_delete_item_not_found" in content
+
+    def test_skips_list_tests_when_list_endpoint_excluded(self, project_env):
+        """Dropping `list` suppresses Section 1 (READ list) tests."""
+        project_root, config, env = project_env
+        result = generate_api_tests(
+            self._model(["create", "get", "update", "delete"]),
+            config,
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        content = result["content"]
+        assert "def test_get_items_list_success" not in content
+        assert "def test_get_items_list_pagination" not in content
+        assert "def test_get_items_list_invalid_pagination" not in content
+        assert "def test_get_items_list_sorting" not in content
+        # Other sections unaffected
+        assert "def test_post_item_success" in content
+        assert "def test_get_item_by_id_success" in content
+
+    def test_skips_get_by_id_tests_when_get_endpoint_excluded(self, project_env):
+        """Dropping `get` suppresses Section 3 (INDIVIDUAL READ) tests."""
+        project_root, config, env = project_env
+        result = generate_api_tests(
+            self._model(["list", "create", "update", "delete"]),
+            config,
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        content = result["content"]
+        assert "def test_get_item_by_id_success" not in content
+        assert "def test_get_item_by_id_not_found" not in content
+        # Other sections unaffected
+        assert "def test_post_item_success" in content
+        assert "def test_delete_item_success" in content
+
+
+class TestConftestGeneratorRateLimitReset:
+    """Test the autouse rate-limiter reset fixture emission (§12.6)."""
+
+    @staticmethod
+    def _models_dir(tmp_path: Path) -> Path:
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        (models_dir / "items.model.json").write_text(
+            json.dumps(
+                {
+                    "domain": "items",
+                    "entities": {
+                        "Item": {
+                            "table": "items",
+                            "fields": {
+                                "id": {
+                                    "type": "uuid",
+                                    "primary_key": True,
+                                    "auto_generate": True,
+                                },
+                                "name": {
+                                    "type": "text",
+                                    "max_length": 100,
+                                    "required": True,
+                                },
+                            },
+                            "api": {"enabled": True},
+                        }
+                    },
+                }
+            )
+        )
+        return models_dir
+
+    def test_no_reset_fixture_when_rate_limiter_import_none(self, tmp_path):
+        from model_generator.utils.conftest_generator import (
+            generate_conftest_content,
+        )
+
+        content, _ = generate_conftest_content(self._models_dir(tmp_path))
+        assert "rate_limit" not in content
+        assert "_reset_rate_limiter" not in content
+        assert "limiter.reset()" not in content
+
+    def test_emits_reset_fixture_when_rate_limiter_import_set(self, tmp_path):
+        from model_generator.utils.conftest_generator import (
+            generate_conftest_content,
+        )
+
+        content, _ = generate_conftest_content(
+            self._models_dir(tmp_path),
+            rate_limiter_import="backend.src.auth.rate_limit",
+        )
+        assert "from backend.src.auth.rate_limit import limiter" in content
+        assert "@pytest.fixture(autouse=True)" in content
+        assert "def _reset_rate_limiter() -> None:" in content
+        assert "limiter.reset()" in content

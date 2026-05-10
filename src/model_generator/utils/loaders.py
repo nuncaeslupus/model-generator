@@ -11,6 +11,8 @@ from typing import Any, cast
 import jsonschema
 import yaml
 
+from .templates import path_to_import
+
 
 def load_model(model_path: Path) -> dict:
     """
@@ -195,6 +197,22 @@ def load_config(stack: str = "python-fastapi") -> dict:
     # ("per-entity", default).
     merged_config.setdefault("generation", {})
     merged_config["generation"].setdefault("layout", "per-entity")
+
+    # Auto-wire auth.dependency_path to the emitted get_current_user
+    # when the adopter has set auth.strategy but not dependency_path.
+    # The §9 owner-scoped routes/tests read the dotted path at render
+    # time; wiring it here means every load_config() caller sees the
+    # same processed config (including generate() which re-loads from
+    # disk per-model). Explicit dependency_path values are preserved.
+    auth = merged_config.get("auth") or {}
+    if auth.get("strategy") and not auth.get("dependency_path"):
+        auth_path = auth.get("path", "backend/src/auth/router.py")
+        module_path = auth_path[:-3] if auth_path.endswith(".py") else auth_path
+        module_import = path_to_import(
+            module_path, python_root=merged_config.get("python_root", "")
+        )
+        merged_config.setdefault("auth", {})
+        merged_config["auth"]["dependency_path"] = f"{module_import}.get_current_user"
 
     return merged_config
 

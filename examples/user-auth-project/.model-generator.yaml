@@ -41,7 +41,16 @@ paths:
 
 # Required when any entity declares api.scope (owner-scoped endpoints).
 # The generator imports this dependency and threads it into list/get/update/delete
-# handlers via FastAPI's Depends(). The adopter is responsible for writing the
-# function — the generator does not emit it.
-# auth:
-#   dependency_path: "backend.src.auth.get_current_user"
+# handlers via FastAPI's Depends(). When auth.strategy is also set (below), the
+# generator emits get_current_user itself and auto-wires dependency_path — so
+# adopters can leave dependency_path unset.
+auth:
+  # §12 — auth scaffolding (bcrypt + HMAC-SHA256 pepper, itsdangerous-signed
+  # session cookies + DB-backed UserSession rows, double-submit-cookie CSRF
+  # middleware, slowapi rate limiting on register/login/forgot-password).
+  # Setting `strategy` opts the project into the full stack; the generator
+  # emits the auth router, csrf middleware, and rate-limit module next to
+  # each other under `auth.path`'s directory (default backend/src/auth/).
+  strategy: bcrypt-session
+  pepper_env: APP_PASSWORD_PEPPER
+  # dependency_path: auto-wired to backend.src.auth.router.get_current_user
