@@ -77,8 +77,15 @@ def test_generate_from_examples(example_project):
         assert "username: Mapped[str] = mapped_column(String" in user_model
 
         api_route = (project_dir / "backend/src/api/routes/user.py").read_text()
-        assert "@router.post" in api_route
-        assert "async def create_user" in api_route
+        # User CRUD now emits list/get/update/delete only — auth.strategy
+        # is set, so create is replaced by /api/v1/auth/register (emitted
+        # by the infrastructure generator, not exercised by this per-domain
+        # entry point).
+        assert "@router.get" in api_route
+        assert "@router.put" in api_route
+        assert "@router.delete" in api_route
+        assert "@router.post" not in api_route
+        assert "async def create_user" not in api_route
 
     finally:
         os.chdir(original_cwd)

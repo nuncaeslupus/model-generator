@@ -313,8 +313,15 @@ def generate_fixture(
     all_entities: dict[str, dict],
     enums: dict[str, str],
     constraints: dict[str, dict] | None = None,
+    auth_strategy: str | None = None,
 ) -> list[str]:
-    """Generate fixture code for an entity."""
+    """Generate fixture code for an entity.
+
+    When ``auth_strategy`` is set, the User fixture POSTs to
+    ``/api/v1/auth/register`` instead of ``/api/v1/users`` — the latter
+    drops its create endpoint when auth is on (the auth router owns
+    user creation).
+    """
     lines = []
 
     # Build fixture parameters
@@ -341,9 +348,16 @@ def generate_fixture(
     # Docstring
     pk_field = get_primary_key_field(entity_data)
     return_desc = f"its {pk_field}" if pk_field != "id" else "its ID"
-    lines.append(
-        f'    """Create a test {entity_name.lower()} and return {return_desc}."""'
-    )
+    use_register = bool(auth_strategy) and entity_name == "User"
+    if use_register:
+        lines.append(
+            f'    """Create a test {entity_name.lower()} via /auth/register '
+            f'and return {return_desc}."""'
+        )
+    else:
+        lines.append(
+            f'    """Create a test {entity_name.lower()} and return {return_desc}."""'
+        )
 
     # Only generate unique_suffix if needed
     if needs_unique_suffix(entity_data, dep_mapping):
@@ -352,8 +366,11 @@ def generate_fixture(
 
     # Build create request
     lines.append("    response = client.post(")
-    api_prefix = entity_data["api_prefix"]
-    lines.append(f'        "/api/v1/{api_prefix}",')
+    if use_register:
+        lines.append('        "/api/v1/auth/register",')
+    else:
+        api_prefix = entity_data["api_prefix"]
+        lines.append(f'        "/api/v1/{api_prefix}",')
     lines.append("        json={")
 
     # Generate minimal create data
@@ -413,6 +430,7 @@ def generate_alt_fixture(
     entity_data: dict,
     enums: dict[str, str],
     constraints: dict[str, dict] | None = None,
+    auth_strategy: str | None = None,
 ) -> list[str]:
     """Generate an _alt fixture that creates a second instance of the same entity."""
     alt_fixture_name = f"{base_fixture_name}_alt"
@@ -427,18 +445,28 @@ def generate_alt_fixture(
 
     pk_field = get_primary_key_field(entity_data)
     return_desc = f"its {pk_field}" if pk_field != "id" else "its ID"
-    lines.append(
-        f'    """Create an alternate test {entity_name.lower()} '
-        f'and return {return_desc}."""'
-    )
+    use_register = bool(auth_strategy) and entity_name == "User"
+    if use_register:
+        lines.append(
+            f'    """Create an alternate test {entity_name.lower()} '
+            f'via /auth/register and return {return_desc}."""'
+        )
+    else:
+        lines.append(
+            f'    """Create an alternate test {entity_name.lower()} '
+            f'and return {return_desc}."""'
+        )
 
     if needs_unique_suffix(entity_data, dep_mapping):
         lines.append("    unique_suffix = str(uuid.uuid4())[:8]")
     lines.append("")
 
     lines.append("    response = client.post(")
-    api_prefix = entity_data["api_prefix"]
-    lines.append(f'        "/api/v1/{api_prefix}",')
+    if use_register:
+        lines.append('        "/api/v1/auth/register",')
+    else:
+        api_prefix = entity_data["api_prefix"]
+        lines.append(f'        "/api/v1/{api_prefix}",')
     lines.append("        json={")
 
     create_lines = generate_minimal_create_data(
@@ -461,6 +489,8 @@ def generate_conftest(
     dependencies: dict[str, set[str]],
     enums: dict[str, str],
     constraints: dict[str, dict] | None = None,
+    auth_strategy: str | None = None,
+    rate_limiter_import: str | None = None,
 ) -> str:
     """Generate complete conftest.py content."""
     lines = []
@@ -483,7 +513,21 @@ def generate_conftest(
     lines.append("")
     lines.append("import pytest")
     lines.append("from fastapi.testclient import TestClient")
+    if rate_limiter_import:
+        lines.append("")
+        lines.append(f"from {rate_limiter_import} import limiter")
     lines.append("")
+
+    if rate_limiter_import:
+        lines.append("")
+        lines.append("@pytest.fixture(autouse=True)")
+        lines.append("def _reset_rate_limiter() -> None:")
+        lines.append(
+            '    """Reset slowapi rate-limit counters before each test '
+            '(test isolation)."""'
+        )
+        lines.append("    limiter.reset()")
+        lines.append("")
 
     # Sort entities by dependency
     entity_names = set(entities.keys())
@@ -529,6 +573,7 @@ def generate_conftest(
                 entities,
                 enums,
                 constraints,
+                auth_strategy=auth_strategy,
             )
             lines.extend(fixture_lines)
 
@@ -546,14 +591,23 @@ def generate_conftest(
             fixture_name = get_fixture_name(entity_name, entity_data)
             if fixture_name in alt_needed:
                 alt_lines = generate_alt_fixture(
-                    fixture_name, entity_name, entity_data, enums, constraints
+                    fixture_name,
+                    entity_name,
+                    entity_data,
+                    enums,
+                    constraints,
+                    auth_strategy=auth_strategy,
                 )
                 lines.extend(alt_lines)
 
     return "\n".join(lines)
 
 
-def generate_conftest_content(models_dir: Path) -> tuple[str, int]:
+def generate_conftest_content(
+    models_dir: Path,
+    auth_strategy: str | None = None,
+    rate_limiter_import: str | None = None,
+) -> tuple[str, int]:
     """
     Generate content for conftest.py based on all models in the directory.
 
@@ -576,6 +630,13 @@ def generate_conftest_content(models_dir: Path) -> tuple[str, int]:
     dependencies = find_foreign_key_dependencies(entities)
 
     # Generate content
-    content = generate_conftest(entities, dependencies, enums, constraints)
+    content = generate_conftest(
+        entities,
+        dependencies,
+        enums,
+        constraints,
+        auth_strategy=auth_strategy,
+        rate_limiter_import=rate_limiter_import,
+    )
 
     return content, len(entities)

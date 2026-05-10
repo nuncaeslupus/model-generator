@@ -227,6 +227,29 @@ def generate_main(
     main_dir = str(Path(main_path).parent)
     main_module = path_to_import(main_dir, "main", python_root=python_root)
 
+    auth_router_import = None
+    auth = config.get("auth") or {}
+    if auth.get("strategy"):
+        auth_path = auth.get("path", "backend/src/auth/router.py")
+        auth_module_path = auth_path[:-3] if auth_path.endswith(".py") else auth_path
+        auth_router_import = path_to_import(auth_module_path, python_root=python_root)
+
+    csrf_module_import = None
+    if auth.get("strategy"):
+        auth_path = auth.get("path", "backend/src/auth/router.py")
+        csrf_module_path = str(Path(auth_path).parent / "csrf")
+        csrf_module_import = path_to_import(csrf_module_path, python_root=python_root)
+
+    rate_limit_module_import = None
+    if auth.get("strategy"):
+        rate_limit = auth.get("rate_limit") or {}
+        if rate_limit.get("enabled") is not False:
+            auth_path = auth.get("path", "backend/src/auth/router.py")
+            rate_limit_module_path = str(Path(auth_path).parent / "rate_limit")
+            rate_limit_module_import = path_to_import(
+                rate_limit_module_path, python_root=python_root
+            )
+
     template = env.get_template("infrastructure/main.py.j2")
     content = template.render(
         domains=route_modules if route_modules is not None else domains,
@@ -234,6 +257,131 @@ def generate_main(
         db_import=db_import,
         main_module=main_module,
         project=project_config.get("project", {}),
+        auth_router_import=auth_router_import,
+        csrf_module_import=csrf_module_import,
+        rate_limit_module_import=rate_limit_module_import,
+    )
+
+    return {"path": output_path, "content": content}
+
+
+def generate_auth_router(
+    config: dict,
+    env: Environment,
+    project_root: Path,
+    project_config: dict,
+) -> dict | None:
+    """Generate the auth router (register / login / logout / etc.).
+
+    Emitted only when ``config.auth.strategy`` is set. Bootstrap-only:
+    returns None when the file already exists at the configured
+    ``auth.path`` so adopters who customize the router are not overwritten
+    on regeneration.
+    """
+    if not config.get("auth", {}).get("strategy"):
+        return None
+
+    auth_path = config.get("auth", {}).get("path", "backend/src/auth/router.py")
+    output_path = project_root / auth_path
+
+    if output_path.exists():
+        return None
+
+    python_root = config.get("python_root", "")
+
+    db_models_path = config["paths"].get(
+        "database_models", "backend/src/database/models"
+    )
+    db_models_import = path_to_import(db_models_path, python_root=python_root)
+    db_import = path_to_import(
+        str(Path(db_models_path).parent), python_root=python_root
+    )
+
+    template = env.get_template("infrastructure/auth_router.py.j2")
+    content = template.render(
+        config=config,
+        db_models_import=db_models_import,
+        db_import=db_import,
+        project=project_config.get("project", {}),
+        rate_limit_enabled=(config.get("auth", {}).get("rate_limit") or {}).get(
+            "enabled"
+        )
+        is not False,
+    )
+
+    return {"path": output_path, "content": content}
+
+
+def generate_csrf(
+    config: dict,
+    env: Environment,
+    project_root: Path,
+) -> dict | None:
+    """Generate the CSRF middleware (double-submit cookie pattern).
+
+    Emitted only when ``config.auth.strategy`` is set. The file lives next
+    to the auth router (sibling in the same package) so the router can
+    import it via ``from .csrf import set_csrf_cookie``. Bootstrap-only:
+    returns None when the file already exists.
+    """
+    if not config.get("auth", {}).get("strategy"):
+        return None
+
+    auth_path = config.get("auth", {}).get("path", "backend/src/auth/router.py")
+    csrf_path = str(Path(auth_path).parent / "csrf.py")
+    output_path = project_root / csrf_path
+
+    if output_path.exists():
+        return None
+
+    cookie_name = config.get("auth", {}).get("cookie_name", "session_id")
+
+    template = env.get_template("infrastructure/csrf.py.j2")
+    content = template.render(cookie_name=cookie_name)
+
+    return {"path": output_path, "content": content}
+
+
+def generate_rate_limit(
+    config: dict,
+    env: Environment,
+    project_root: Path,
+) -> dict | None:
+    """Generate the rate-limit module (shared slowapi Limiter instance).
+
+    Emitted only when ``config.auth.strategy`` is set AND
+    ``config.auth.rate_limit.enabled`` is not False (rate limiting is on
+    by default for auth-enabled projects). The file lives next to the
+    auth router so the router can import it via
+    ``from .rate_limit import limiter``. Bootstrap-only: returns None
+    when the file already exists.
+    """
+    auth = config.get("auth") or {}
+    if not auth.get("strategy"):
+        return None
+
+    rate_limit = auth.get("rate_limit") or {}
+    if rate_limit.get("enabled") is False:
+        return None
+
+    auth_path = auth.get("path", "backend/src/auth/router.py")
+    rate_limit_path = str(Path(auth_path).parent / "rate_limit.py")
+    output_path = project_root / rate_limit_path
+
+    if output_path.exists():
+        return None
+
+    backend = rate_limit.get("backend", "memory")
+    default_storage_uri = (
+        "redis://localhost:6379/0" if backend == "redis" else "memory://"
+    )
+
+    template = env.get_template("infrastructure/rate_limit.py.j2")
+    content = template.render(
+        login_limit=rate_limit.get("login", "5/minute"),
+        register_limit=rate_limit.get("register", "3/hour"),
+        forgot_limit=rate_limit.get("forgot", "3/hour"),
+        default_storage_uri=default_storage_uri,
     )
 
     return {"path": output_path, "content": content}
@@ -325,6 +473,12 @@ def generate_package_init_files(config: dict, project_root: Path) -> list[dict]:
     api_routes = paths_config.get("api_routes", "backend/src/api/routes")
     paths_to_init.append(api_routes)
 
+    # Auth package (when auth.strategy is set, the auth router and CSRF
+    # middleware live in the same package and use relative imports).
+    if config.get("auth", {}).get("strategy"):
+        auth_path = config.get("auth", {}).get("path", "backend/src/auth/router.py")
+        paths_to_init.append(str(Path(auth_path).parent))
+
     # Test paths (including parent directories)
     api_tests = paths_config.get("api_tests", "tests/contract/api")
     paths_to_init.append(api_tests)
@@ -383,6 +537,9 @@ def generate_infrastructure(
             project_config,
             route_modules=route_modules,
         ),
+        generate_auth_router(config, env, project_root, project_config),
+        generate_csrf(config, env, project_root),
+        generate_rate_limit(config, env, project_root),
         generate_test_conftest_root(
             config, env, project_root, domains, factory_modules=factory_modules
         ),

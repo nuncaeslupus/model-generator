@@ -48,7 +48,7 @@ from .utils import (
     run_quality_tools,
 )
 from .utils.conftest_generator import generate_conftest_content
-from .utils.templates import snake_case
+from .utils.templates import path_to_import, snake_case
 
 # TDD-ordered generation targets
 INFRASTRUCTURE_TARGETS = [
@@ -295,11 +295,56 @@ def generate_conftest(
     else:
         models_dir = model_path
 
-    content, count = generate_conftest_content(models_dir)
+    auth_strategy = config.get("auth", {}).get("strategy")
+    rate_limiter_import = _compute_rate_limiter_import(config)
+    content, count = generate_conftest_content(
+        models_dir,
+        auth_strategy=auth_strategy,
+        rate_limiter_import=rate_limiter_import,
+    )
     output_dir = project_root / config["paths"]["api_tests"]
     output_file = output_dir / "conftest.py"
 
     return {"path": output_file, "content": content, "mode": "write"}
+
+
+def _compute_rate_limiter_import(config: dict) -> str | None:
+    """Return the import path to the auth rate_limit module, or None.
+
+    Mirrors the import-path logic in ``generators/infrastructure.py``: emits
+    a value only when ``auth.strategy`` is set and rate limiting is enabled
+    (the slowapi default-on behavior).
+    """
+    auth = config.get("auth") or {}
+    if not auth.get("strategy"):
+        return None
+    rate_limit = auth.get("rate_limit") or {}
+    if rate_limit.get("enabled") is False:
+        return None
+    auth_path = auth.get("path", "backend/src/auth/router.py")
+    rate_limit_module_path = str(Path(auth_path).parent / "rate_limit")
+    python_root = config.get("python_root", "")
+    return path_to_import(rate_limit_module_path, python_root=python_root)
+
+
+def _compute_auth_extra(config: dict) -> list[str]:
+    """Runtime deps the auth scaffolding pulls in. Empty when auth is off.
+
+    The auth router uses bcrypt for password hashing and itsdangerous for
+    cookie/token signing. email-validator backs Pydantic's EmailStr. slowapi
+    is added when rate limiting is enabled (default-on); redis is added when
+    its storage backend is selected.
+    """
+    auth = config.get("auth") or {}
+    if not auth.get("strategy"):
+        return []
+    extra = ["bcrypt>=4.0.0", "itsdangerous>=2.0", "email-validator>=2.0"]
+    rate_limit = auth.get("rate_limit") or {}
+    if rate_limit.get("enabled") is not False:
+        extra.append("slowapi>=0.1.9")
+        if rate_limit.get("backend") == "redis":
+            extra.append("redis>=4.0")
+    return extra
 
 
 def generate(
@@ -453,6 +498,99 @@ def _validate_generation_config(config: dict) -> None:
             '    layout: "per-domain"  # legacy; one file per domain'
         )
         sys.exit(1)
+
+
+def _validate_auth_strategy(models: list[dict], config: dict) -> None:
+    """Abort if auth.strategy is set but its prerequisites are missing.
+
+    Cross-model validation: takes the full list of loaded models so it can
+    check that *some* spec contains a User entity with a password_hash field.
+    Called once from main() after the aggregation loop, not per-model.
+    """
+    auth = config.get("auth") or {}
+    strategy = auth.get("strategy")
+    if not strategy:
+        return
+
+    valid_strategies = {"bcrypt-session"}
+    if strategy not in valid_strategies:
+        choices = ", ".join(repr(v) for v in sorted(valid_strategies))
+        print(
+            f'Error: auth.strategy "{strategy}" is not supported.\n'
+            f"Allowed strategies: [{choices}].\n\n"
+            "Set in .model-generator.yaml:\n\n"
+            "  auth:\n"
+            '    strategy: "bcrypt-session"\n'
+            '    pepper_env: "APP_PASSWORD_PEPPER"'
+        )
+        sys.exit(1)
+
+    pepper_env = auth.get("pepper_env")
+    if not isinstance(pepper_env, str) or not pepper_env.strip():
+        print(
+            f'Error: auth.strategy "{strategy}" requires auth.pepper_env to '
+            "name a non-empty environment variable.\n\n"
+            "Set in .model-generator.yaml:\n\n"
+            "  auth:\n"
+            f'    strategy: "{strategy}"\n'
+            '    pepper_env: "APP_PASSWORD_PEPPER"'
+        )
+        sys.exit(1)
+
+    layout = get_layout(config)
+    if layout != "per-entity":
+        print(
+            f'Error: auth.strategy "{strategy}" currently requires '
+            f'generation.layout: per-entity (got "{layout}").\n\n'
+            "Set in .model-generator.yaml:\n\n"
+            "  generation:\n"
+            '    layout: "per-entity"\n\n'
+            "Per-domain auth scaffolding may be added in a future version."
+        )
+        sys.exit(1)
+
+    user_entity = None
+    for model in models:
+        entities = model.get("entities", {}) or {}
+        if "User" in entities:
+            user_entity = entities["User"]
+            break
+
+    if user_entity is None:
+        print(
+            f'Error: auth.strategy "{strategy}" requires a "User" entity in '
+            "your model specifications, but none was found.\n\n"
+            'Define a User entity with a "password_hash" field in one of your '
+            "*.model.json files."
+        )
+        sys.exit(1)
+
+    fields = user_entity.get("fields", {}) or {}
+    if "password_hash" not in fields:
+        print(
+            f'Error: auth.strategy "{strategy}" requires the "User" entity to '
+            'have a "password_hash" field, but none was found.\n\n'
+            "Add to your User entity:\n\n"
+            '  "password_hash": {\n'
+            '    "type": "text",\n'
+            '    "max_length": 255,\n'
+            '    "required": true,\n'
+            '    "api_field_name": "password",\n'
+            '    "api_exclude_response": true,\n'
+            '    "api_exclude_update": true\n'
+            "  }"
+        )
+        sys.exit(1)
+
+    for required_field in ("username", "email", "last_login_at"):
+        if required_field not in fields:
+            print(
+                f'Error: auth.strategy "{strategy}" requires the "User" entity '
+                f'to have a "{required_field}" field, but none was found.\n\n'
+                "The generated auth router uses this field to register, "
+                "authenticate, or track user sessions."
+            )
+            sys.exit(1)
 
 
 def _generate_target(
@@ -648,8 +786,10 @@ def main() -> None:
     route_modules: list[str] = []
     factory_modules: list[str] = []
     extra_deps: list[str] = []
+    loaded_models: list[dict] = []
     for model_file in model_files:
         model = load_model(model_file)
+        loaded_models.append(model)
         domain = model.get("domain", "unknown")
         has_api = any(
             e.get("api", {}).get("enabled", True)
@@ -671,6 +811,12 @@ def main() -> None:
 
         extra_deps.extend(model.get("dependencies", []))
     extra_deps = sorted(set(extra_deps))
+
+    _validate_auth_strategy(loaded_models, config)
+
+    auth_extra = _compute_auth_extra(config)
+    if auth_extra:
+        extra_deps = sorted(set(extra_deps + auth_extra))
 
     if layout != "per-entity":
         route_modules = list(domains)

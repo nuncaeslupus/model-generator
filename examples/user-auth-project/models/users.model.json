@@ -140,7 +140,6 @@
                 "prefix": "users",
                 "endpoints": [
                     "list",
-                    "create",
                     "get",
                     "update",
                     "delete"
