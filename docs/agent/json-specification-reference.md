@@ -542,6 +542,49 @@ Legacy shapes `{"type": "single"\|"composite"\|"unique", "field"\|"fields": ...}
 
 ---
 
+## Composite Foreign Keys
+
+Use `foreign_keys` (entity-level array) when the target table has a composite primary key. Single-column FKs continue to use field-level `type: "reference"`.
+
+```json
+"OrderItem": {
+  "fields": {
+    "tenant_id": {"type": "uuid", "required": true},
+    "order_id":  {"type": "uuid", "required": true},
+    "sku":       {"type": "text", "max_length": 64}
+  },
+  "foreign_keys": [
+    {
+      "fields": ["tenant_id", "order_id"],
+      "references_table": "orders",
+      "references_columns": ["tenant_id", "id"],
+      "on_delete": "CASCADE"
+    }
+  ],
+  "relationships": {
+    "order": {
+      "type": "many_to_one",
+      "target": "Order",
+      "back_populates": "items",
+      "foreign_keys": ["tenant_id", "order_id"]
+    }
+  }
+}
+```
+
+The generator emits a single `ForeignKeyConstraint` inside `__table_args__`. Member columns (`tenant_id`, `order_id`) are typed as their underlying type (here `uuid`), not `reference` — declaring a member field as `reference` is rejected at validation time because it would emit a duplicate single-column FK alongside the composite one.
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `fields` | `string[]` (min 2) | yes | Source columns on this entity (must be declared in `fields`) |
+| `references_table` | `string` | yes | Target table name (must match an entity's `table` in this model) |
+| `references_columns` | `string[]` (min 2) | yes | Target columns; length must equal `fields` |
+| `on_delete` | `string` | no | `CASCADE` \| `SET NULL` \| `RESTRICT` \| `NO ACTION` (default `CASCADE`) |
+
+The relationship's existing `foreign_keys` array disambiguates the ORM mapping (which Python-side columns wire up the `relationship()` call); the entity-level `foreign_keys` array declares the schema-level constraint. Both are needed when the target has a composite PK — without the entity-level array, SQLAlchemy emits N independent single-column FKs and `configure_mappers()` raises `AmbiguousForeignKeysError`.
+
+---
+
 ## Shared Resources
 
 ### `_shared/enums.json`

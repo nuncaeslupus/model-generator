@@ -30,6 +30,7 @@ This module contains:
     has_enum=false,
     has_json=false,
     has_fk=false,
+    has_fk_constraint=false,
     has_index=false,
     has_check=false,
     has_unique=false,
@@ -66,6 +67,7 @@ This module contains:
 {% if entity.relationships is defined and entity.relationships | length > 0 %}{% set ns.has_relationships = true %}{% endif %}
 {% if entity.indexes is defined and entity.indexes | length > 0 %}{% set ns.has_index = true %}{% endif %}
 {% if entity.constraints is defined and entity.constraints | length > 0 %}{% set ns.has_check = true %}{% endif %}
+{% if entity.foreign_keys is defined and entity.foreign_keys | length > 0 %}{% set ns.has_fk_constraint = true %}{% endif %}
 {% for idx in entity.indexes | default([]) %}{% if idx.unique | default(false) %}{% set ns.has_unique = true %}{% endif %}{% endfor %}
 {% endfor %}
 
@@ -116,6 +118,9 @@ from sqlalchemy import (
 {% endif %}
 {% if ns.has_fk %}
     ForeignKey,
+{% endif %}
+{% if ns.has_fk_constraint %}
+    ForeignKeyConstraint,
 {% endif %}
 {% if ns.has_index %}
     Index,
@@ -223,6 +228,8 @@ class {{ entity_name }}(Base):
     {{ field_name }}: Mapped[str{{ optional }}] = mapped_column(String({{ field.max_length }}){% if field.unique | default(false) %}, unique=True{% endif %}{% if field.default is defined %}, default="{{ field.default }}"{% endif %})
 {% elif field.type == 'longtext' %}
     {{ field_name }}: Mapped[str{{ optional }}] = mapped_column(Text)
+{% elif field.type == 'uuid' %}
+    {{ field_name }}: Mapped[uuid.UUID{{ optional }}] = mapped_column(PortableUuid{% if field.unique | default(false) %}, unique=True{% endif %})
 {% elif field.type == 'counter' %}
     {{ field_name }}: Mapped[int{{ optional }}] = mapped_column(Integer{% if field.default is defined %}, default={{ field.default }}{% endif %})
 {% elif field.type == 'financial' %}
@@ -318,7 +325,7 @@ class {{ entity_name }}(Base):
 {% endfor %}
 
 {% endif %}
-{% set has_table_args = (entity.constraints | default([]) | length > 0) or (entity.indexes | default([]) | length > 0) %}
+{% set has_table_args = (entity.constraints | default([]) | length > 0) or (entity.indexes | default([]) | length > 0) or (entity.foreign_keys | default([]) | length > 0) %}
 {% set field_constraints = [] %}
 {% for field_name, field in entity.fields.items() %}
 {% if field.constraints is defined %}
@@ -444,6 +451,13 @@ class {{ entity_name }}(Base):
 {% elif tc.type == 'unique' %}
         UniqueConstraint({{ tc.fields | map('tojson') | join(', ') }}, name="uq_{{ entity.table }}_{{ tc.fields | join('_') }}"),
 {% endif %}
+{% endfor %}
+{% for fk in entity.foreign_keys | default([]) %}
+        ForeignKeyConstraint(
+            [{{ fk.fields | map('tojson') | join(', ') }}],
+            [{% for col in fk.references_columns %}"{{ fk.references_table }}.{{ col }}"{% if not loop.last %}, {% endif %}{% endfor %}],
+            ondelete="{{ fk.on_delete | default('CASCADE') }}",
+        ),
 {% endfor %}
     )
 {% endif %}

@@ -376,6 +376,7 @@ def generate(
     config = load_config(stack)
     _validate_auth_config(model, config)
     _validate_generation_config(config)
+    _validate_composite_foreign_keys(model)
     env = get_template_env(stack, config)
 
     domain = model.get("domain", "unknown")
@@ -510,6 +511,70 @@ def _validate_generation_config(config: dict) -> None:
             "  # or\n"
             "  generation:\n"
             '    layout: "per-domain"  # legacy; one file per domain'
+        )
+        sys.exit(1)
+
+
+def _validate_composite_foreign_keys(model: dict) -> None:
+    """Abort if any entity declares a composite foreign_key with invalid structure.
+
+    Per composite FK, checks:
+    - len(fk.fields) == len(fk.references_columns)
+    - All names in fk.fields exist in entity.fields
+    - No fk.fields member is typed "reference" (mutex with single-column FK)
+    - fk.references_table matches an entity table in this model
+
+    Cross-model composite FKs (target entity in another model file) are
+    rejected for v1; the underlying template emission works mechanically,
+    but cross-model validation is deferred.
+    """
+    entities = model.get("entities", {}) or {}
+    known_tables = {entity.get("table") for entity in entities.values()}
+
+    errors: list[str] = []
+    for entity_name, entity in entities.items():
+        entity_fields = entity.get("fields", {}) or {}
+        for fk_idx, fk in enumerate(entity.get("foreign_keys", []) or []):
+            label = f"{entity_name}.foreign_keys[{fk_idx}]"
+            fields = fk.get("fields") or []
+            ref_cols = fk.get("references_columns") or []
+            ref_table = fk.get("references_table")
+
+            if len(fields) != len(ref_cols):
+                errors.append(
+                    f"  - {label}: fields has {len(fields)} entries but "
+                    f"references_columns has {len(ref_cols)} (must match)"
+                )
+
+            for f in fields:
+                if f not in entity_fields:
+                    errors.append(
+                        f'  - {label}: field "{f}" not declared in {entity_name}.fields'
+                    )
+                elif entity_fields[f].get("type") == "reference":
+                    errors.append(
+                        f'  - {label}: field "{f}" has type "reference" '
+                        "(mutex with composite FK — declare as the underlying "
+                        'type like "uuid" instead)'
+                    )
+
+            if ref_table not in known_tables:
+                known = ", ".join(sorted(t for t in known_tables if t))
+                errors.append(
+                    f'  - {label}: references_table "{ref_table}" not found '
+                    f"in this model (known tables: {known})"
+                )
+
+    if errors:
+        joined = "\n".join(errors)
+        print(
+            "Error: Invalid composite foreign_keys declarations:\n\n"
+            f"{joined}\n\n"
+            "Composite FKs require:\n"
+            "  - All listed fields declared in entity.fields\n"
+            '  - Fields typed as their underlying type (not "reference")\n'
+            "  - references_columns count equal to fields count\n"
+            "  - references_table matching an entity table in this model"
         )
         sys.exit(1)
 

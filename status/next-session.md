@@ -1,18 +1,16 @@
 # Next Session Plan
 
-## Current State (2026-05-10, §13 emission gap on `fix/encrypted-bytes-emission-gap`)
+## Current State (2026-05-11, composite-FK `__table_args__` in flight on `feat/composite-fk-table-args`)
 
-§12 (auth scaffolding) merged to `main` as **`baff572`** via PR #13 — see "Recently Completed Fixes" below. 408 model-generator unit tests pass (was 388), example test suite is green (130 passed / 0 failed / 0 errors with `APP_PASSWORD_PEPPER=test-pepper`), lint clean.
+§13 emission gap merged to `main` as **`5563731`** via PR #14 — see "Recently Completed Fixes" below. The latent `encrypted_bytes.py` emission gap that the §12 status doc had flagged is now closed.
 
-**Branch:** `fix/encrypted-bytes-emission-gap`. PR #14 open, awaiting Gemini-bot review. Closes the latent §13 `encrypted_bytes.py` emission gap that the §12 status doc had flagged as future work. One commit so far (`6128eef fix(generator): emit encrypted_bytes.py module (§13 latent gap)`): adds `generate_encrypted_bytes` mirroring the `generate_csrf` gating pattern, a project-wide `_has_encrypted_binary_field` scanner threaded through both CLI and wizard orchestrators, plus two pre-existing template bugs that surface on emission (`{-#` → `{#-` comment opener; `config.paths.utils` → `config.paths.database_models` docstring path). 11 new tests.
+**Branch:** `feat/composite-fk-table-args`. Composite foreign keys now express via a new entity-level `foreign_keys` array, emit as a single `ForeignKeyConstraint(...)` inside `__table_args__`, and pass a live `Base.registry.configure()` probe. Member columns stay typed (`uuid`, `text`, …) and a new template `uuid` case fills the non-PK, non-`reference` gap. Eager validator rejects length mismatches, unknown fields, `reference`-typed members, and unknown `references_table`. 423 unit tests (was 408; +15: 6 emission, 6 validator, 3 schema), example suite green (130 passed), lint clean.
 
 ---
 
 ## Future Work
 
-### Composite-FK `__table_args__` emission
-
-`model.py.j2` emits N separate `ForeignKey(...)` columns for a multi-column FK instead of a single `ForeignKeyConstraint` in `__table_args__`. SQLAlchemy's `configure_mappers()` raises `AmbiguousForeignKeysError` when two entities (or one entity, as in self-ref) share multiple FK paths — even when both sides specify `foreign_keys`. Affects any composite-FK relationship. Scope: new spec shape (`relationships[].composite_fk: true`?) + `__table_args__` emission change. Not blocking any current adopter.
+(No concrete known gaps remain. Composite-FK `__table_args__` emission — the only entry that used to live here — is in flight on `feat/composite-fk-table-args`.)
 
 ---
 
@@ -28,6 +26,10 @@
 ---
 
 ## Recently Completed Fixes
+
+### §13.1 — Encrypted-bytes emission gap (2026-05-10, PR #14)
+
+Merged to `main` as **`5563731`** (squash of 3 commits on `fix/encrypted-bytes-emission-gap`). Closes the latent §13 `encrypted_bytes.py` emission gap that the §12 status doc had flagged: `generate_encrypted_bytes` mirrors the `generate_csrf` gating pattern, a project-wide `_has_encrypted_binary_field` scanner is threaded through both CLI and wizard orchestrators, and two pre-existing template bugs surface on emission (`{-#` → `{#-` comment opener; `config.paths.utils` → `config.paths.database_models` docstring path). Gemini-bot review folded in via `01af120` (collapsed `_has_encrypted_binary_field` into an `any()` expression). 11 new tests.
 
 ### §12 — Auth scaffolding (2026-05-10, PR #13)
 
