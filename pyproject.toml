@@ -41,6 +41,7 @@ dev = [
     "types-PyYAML>=6.0.0",
     "types-jsonschema>=4.0.0",
     "mutmut>=2.4.0",
+    "sqlalchemy>=2.0",
 ]
 
 [project.scripts]
