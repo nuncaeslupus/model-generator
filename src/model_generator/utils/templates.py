@@ -5,6 +5,7 @@ Jinja2 template utilities.
 import textwrap
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -94,7 +95,7 @@ def snake_case(name: str) -> str:
 
 
 def get_template_env(
-    stack: str = "python-fastapi", config: dict | None = None
+    stack: str = "python-fastapi", config: dict[str, Any] | None = None
 ) -> Environment:
     """Create Jinja2 environment for templates.
 

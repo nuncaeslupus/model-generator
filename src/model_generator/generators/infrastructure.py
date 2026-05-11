@@ -3,6 +3,7 @@ Infrastructure file generation (base, engine, main, errors, validators, etc.).
 """
 
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment
 
@@ -10,7 +11,9 @@ from ..utils.constants import GENERATED_MARKER
 from ..utils.templates import path_to_import
 
 
-def generate_base(config: dict, env: Environment, project_root: Path) -> dict | None:
+def generate_base(
+    config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
     """Generate SQLAlchemy Base class."""
     base_path = config["paths"].get("base", "backend/src/database/models/base.py")
     output_path = project_root / base_path
@@ -24,7 +27,9 @@ def generate_base(config: dict, env: Environment, project_root: Path) -> dict | 
     return {"path": output_path, "content": content}
 
 
-def generate_engine(config: dict, env: Environment, project_root: Path) -> dict | None:
+def generate_engine(
+    config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
     """Generate database engine and session management."""
     engine_path = config["paths"].get("engine", "backend/src/database/engine.py")
     output_path = project_root / engine_path
@@ -38,7 +43,9 @@ def generate_engine(config: dict, env: Environment, project_root: Path) -> dict 
     return {"path": output_path, "content": content}
 
 
-def generate_types(config: dict, env: Environment, project_root: Path) -> dict | None:
+def generate_types(
+    config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
     """Generate custom SQLAlchemy types (SqliteNumeric for financial/percentage)."""
     db_models = config["paths"].get("database_models", "backend/src/database/models")
     db_dir = str(Path(db_models).parent)
@@ -54,8 +61,8 @@ def generate_types(config: dict, env: Environment, project_root: Path) -> dict |
 
 
 def generate_database_init(
-    config: dict, env: Environment, project_root: Path
-) -> dict | None:
+    config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
     """Generate database package __init__.py with get_session export."""
     db_models = config["paths"].get("database_models", "backend/src/database/models")
     db_dir = str(Path(db_models).parent)
@@ -70,7 +77,9 @@ def generate_database_init(
     return {"path": output_path, "content": content}
 
 
-def generate_errors(config: dict, env: Environment, project_root: Path) -> dict | None:
+def generate_errors(
+    config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
     """Generate API error formatting utilities."""
     errors_path = config["paths"].get("errors", "backend/src/api/errors.py")
     output_path = project_root / errors_path
@@ -85,8 +94,8 @@ def generate_errors(config: dict, env: Environment, project_root: Path) -> dict 
 
 
 def generate_validators(
-    config: dict, env: Environment, project_root: Path
-) -> dict | None:
+    config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
     """Generate API validation utilities."""
     validators_path = config["paths"].get("validators", "backend/src/api/validators.py")
     output_path = project_root / validators_path
@@ -97,7 +106,9 @@ def generate_validators(
     return {"path": output_path, "content": content}
 
 
-def generate_utils(config: dict, env: Environment, project_root: Path) -> dict | None:
+def generate_utils(
+    config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
     """Generate API utility functions (normalize_decimal)."""
     api_models_path = config["paths"].get("api_models", "backend/src/api/models")
     api_dir = str(Path(api_models_path).parent)
@@ -110,8 +121,8 @@ def generate_utils(config: dict, env: Environment, project_root: Path) -> dict |
 
 
 def generate_gitignore(
-    config: dict, env: Environment, project_root: Path
-) -> dict | None:
+    config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
     """Generate .gitignore for new projects (only if none exists)."""
     output_path = project_root / ".gitignore"
 
@@ -125,12 +136,12 @@ def generate_gitignore(
 
 
 def generate_pyproject(
-    config: dict,
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    project_config: dict,
+    project_config: dict[str, Any],
     extra_deps: list[str] | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Generate pyproject.toml for new projects (only if none exists)."""
     output_path = project_root / "pyproject.toml"
 
@@ -195,13 +206,13 @@ def generate_pyproject(
 
 
 def generate_main(
-    config: dict,
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
     domains: list[str],
-    project_config: dict,
+    project_config: dict[str, Any],
     route_modules: list[str] | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Generate FastAPI main application.
 
     ``domains`` is kept for backward compatibility. ``route_modules`` is the
@@ -266,11 +277,11 @@ def generate_main(
 
 
 def generate_auth_router(
-    config: dict,
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    project_config: dict,
-) -> dict | None:
+    project_config: dict[str, Any],
+) -> dict[str, Any] | None:
     """Generate the auth router (register / login / logout / etc.).
 
     Emitted only when ``config.auth.strategy`` is set. Bootstrap-only:
@@ -313,10 +324,10 @@ def generate_auth_router(
 
 
 def generate_csrf(
-    config: dict,
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Generate the CSRF middleware (double-submit cookie pattern).
 
     Emitted only when ``config.auth.strategy`` is set. The file lives next
@@ -343,11 +354,11 @@ def generate_csrf(
 
 
 def generate_encrypted_bytes(
-    config: dict,
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
     has_encrypted_binary: bool = False,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Generate the EncryptedBytes TypeDecorator next to the model files.
 
     Emitted only when at least one entity in the project has a ``binary``
@@ -372,10 +383,10 @@ def generate_encrypted_bytes(
 
 
 def generate_rate_limit(
-    config: dict,
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Generate the rate-limit module (shared slowapi Limiter instance).
 
     Emitted only when ``config.auth.strategy`` is set AND
@@ -417,12 +428,12 @@ def generate_rate_limit(
 
 
 def generate_test_conftest_root(
-    config: dict,
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
     domains: list[str],
     factory_modules: list[str] | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Generate root test conftest with database and client fixtures.
 
     ``domains`` is kept for backward compatibility. ``factory_modules`` is the
@@ -467,7 +478,9 @@ def generate_test_conftest_root(
     return {"path": output_path, "content": content}
 
 
-def generate_package_init_files(config: dict, project_root: Path) -> list[dict]:
+def generate_package_init_files(
+    config: dict[str, Any], project_root: Path
+) -> list[dict[str, Any]]:
     """
     Generate __init__.py files for all package directories.
 
@@ -527,11 +540,11 @@ def generate_package_init_files(config: dict, project_root: Path) -> list[dict]:
 
 
 def generate_infrastructure(
-    config: dict,
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
     domains: list[str],
-    project_config: dict,
+    project_config: dict[str, Any],
     extra_deps: list[str] | None = None,
     diff: bool = False,
     dry_run: bool = False,

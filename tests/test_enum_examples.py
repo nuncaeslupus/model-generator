@@ -10,6 +10,7 @@ examples for any enum that didn't happen to include that value.
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -19,7 +20,7 @@ from model_generator.utils import get_template_env, load_config
 
 
 @pytest.fixture
-def stack_env(tmp_path):
+def stack_env(tmp_path: Path) -> tuple[Path, dict[str, Any], Any]:
     """Minimal project config + Jinja2 env for the python-fastapi stack."""
     config_data = {
         "project": {"name": "Test Project", "version": "0.1.0"},
@@ -54,7 +55,7 @@ def stack_env(tmp_path):
     return tmp_path, config, env
 
 
-def _write_shared_enums(models_dir: Path, enums: dict) -> Path:
+def _write_shared_enums(models_dir: Path, enums: dict[str, Any]) -> Path:
     """Write a _shared/enums.json alongside a models directory."""
     shared_dir = models_dir / "_shared"
     shared_dir.mkdir(parents=True, exist_ok=True)
@@ -63,7 +64,7 @@ def _write_shared_enums(models_dir: Path, enums: dict) -> Path:
     return enums_file
 
 
-def _priority_enum() -> dict:
+def _priority_enum() -> dict[str, Any]:
     """A generic enum that does NOT contain the value 'active'.
 
     Using an enum without 'active' tightly verifies the fix — a broken
@@ -87,7 +88,9 @@ class TestResponseExampleUsesFirstEnumValue:
     enum, not hardcode a fallback string.
     """
 
-    def test_first_enum_value_used_when_no_default(self, stack_env, tmp_path):
+    def test_first_enum_value_used_when_no_default(
+        self, stack_env: Any, tmp_path: Path
+    ) -> None:
         project_root, config, env = stack_env
 
         models_dir = tmp_path / "models"
@@ -138,7 +141,9 @@ class TestResponseExampleUsesFirstEnumValue:
             "response example should use the first enum value ('HIGH')"
         )
 
-    def test_explicit_default_wins_over_enum_lookup(self, stack_env, tmp_path):
+    def test_explicit_default_wins_over_enum_lookup(
+        self, stack_env: Any, tmp_path: Path
+    ) -> None:
         """If `field.default` is set, the template uses it verbatim (upper-cased)
         instead of looking up the first enum value.
         """
@@ -170,10 +175,13 @@ class TestResponseExampleUsesFirstEnumValue:
         results = generate_api_models(
             model, config, env, project_root, model_path=model_file
         )
+        assert isinstance(results, list)
         response = next(r for r in results if "response" in r["path"].name)
         assert '"LOW"' in response["content"]
 
-    def test_missing_enums_file_falls_back_to_unknown(self, stack_env, tmp_path):
+    def test_missing_enums_file_falls_back_to_unknown(
+        self, stack_env: Any, tmp_path: Path
+    ) -> None:
         """When no _shared/enums.json exists and no default is set, the
         template emits 'UNKNOWN' rather than crashing — consistent with the
         request template's behavior.
@@ -205,6 +213,7 @@ class TestResponseExampleUsesFirstEnumValue:
         results = generate_api_models(
             model, config, env, project_root, model_path=model_file
         )
+        assert isinstance(results, list)
         response = next(r for r in results if "response" in r["path"].name)
         assert '"UNKNOWN"' in response["content"]
         assert "'active'" not in response["content"]

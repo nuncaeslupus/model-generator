@@ -32,7 +32,7 @@ def load_schema() -> dict[str, Any]:
         return cast(dict[str, Any], json.load(f))
 
 
-def validate_model(model_path: Path, schema: dict) -> list[str]:
+def validate_model(model_path: Path, schema: dict[str, Any]) -> list[str]:
     """
     Validate a model JSON file against the schema.
 
@@ -62,7 +62,7 @@ def validate_model(model_path: Path, schema: dict) -> list[str]:
     return errors
 
 
-def validate_semantics(model: dict) -> list[str]:
+def validate_semantics(model: dict[str, Any]) -> list[str]:
     """
     Perform semantic validations beyond schema.
 

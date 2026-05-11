@@ -4,6 +4,7 @@ Code quality tools runner.
 
 import subprocess
 from pathlib import Path
+from typing import Any
 
 
 def _find_ruff(project_root: Path) -> str:
@@ -15,7 +16,9 @@ def _find_ruff(project_root: Path) -> str:
     return "ruff"
 
 
-def run_quality_tools(config: dict, project_root: Path, files: list[Path]) -> None:
+def run_quality_tools(
+    config: dict[str, Any], project_root: Path, files: list[Path]
+) -> None:
     """Run linter and formatter on generated files."""
     if not files:
         return

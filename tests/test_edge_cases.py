@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -22,7 +23,7 @@ from model_generator.utils.quality import _find_ruff, run_quality_tools
 class TestLoadModelEdgeCases:
     """Test model loading edge cases."""
 
-    def test_json_with_comments(self, tmp_path):
+    def test_json_with_comments(self, tmp_path: Path) -> None:
         """Model files with // comments should parse correctly."""
         model_content = """{
     // This is a comment
@@ -44,7 +45,7 @@ class TestLoadModelEdgeCases:
         assert data["domain"] == "test"
         assert "TestEntity" in data["entities"]
 
-    def test_invalid_json_exits(self, tmp_path):
+    def test_invalid_json_exits(self, tmp_path: Path) -> None:
         """Malformed JSON should cause sys.exit."""
         model_path = tmp_path / "bad.model.json"
         model_path.write_text("{invalid json content")
@@ -52,7 +53,9 @@ class TestLoadModelEdgeCases:
         with pytest.raises(SystemExit):
             load_model(model_path)
 
-    def test_empty_entities(self, tmp_path, capsys):
+    def test_empty_entities(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Model with empty entities dict should load (with validation warning)."""
         model = {
             "domain": "empty",
@@ -66,7 +69,7 @@ class TestLoadModelEdgeCases:
         assert data["domain"] == "empty"
         assert data["entities"] == {}
 
-    def test_invalid_json_exits_with_code_1(self, tmp_path):
+    def test_invalid_json_exits_with_code_1(self, tmp_path: Path) -> None:
         """sys.exit is called with exit code 1 on malformed JSON."""
         model_path = tmp_path / "bad.model.json"
         model_path.write_text("{invalid json content")
@@ -75,7 +78,9 @@ class TestLoadModelEdgeCases:
             load_model(model_path)
         assert exc_info.value.code == 1
 
-    def test_error_on_last_line_is_printed(self, tmp_path, capsys):
+    def test_error_on_last_line_is_printed(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Error on the last line (lineno == len(lines)) still prints the line."""
         model_path = tmp_path / "bad.model.json"
         # Single-line JSON with trailing comma: error is at lineno=1, len(lines)=1
@@ -86,7 +91,9 @@ class TestLoadModelEdgeCases:
         captured = capsys.readouterr()
         assert "Line 1:" in captured.out
 
-    def test_error_line_content_is_correct_line(self, tmp_path, capsys):
+    def test_error_line_content_is_correct_line(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Prints e.lineno-1 index (correct line), not e.lineno-2 (previous line)."""
         model_path = tmp_path / "bad.model.json"
         # Error is on line 2; line 1 is "{", line 2 is '  "bad": ,'
@@ -101,7 +108,7 @@ class TestLoadModelEdgeCases:
 class TestLoadConfigEdgeCases:
     """Test config loading edge cases."""
 
-    def test_missing_project_config_uses_defaults(self, tmp_path):
+    def test_missing_project_config_uses_defaults(self, tmp_path: Path) -> None:
         """When no .model-generator.yaml exists, stack defaults are used."""
         original_cwd = os.getcwd()
         os.chdir(tmp_path)
@@ -113,7 +120,7 @@ class TestLoadConfigEdgeCases:
         finally:
             os.chdir(original_cwd)
 
-    def test_default_stack_arg_is_python_fastapi(self, tmp_path):
+    def test_default_stack_arg_is_python_fastapi(self, tmp_path: Path) -> None:
         """Calling load_config() with no args uses 'python-fastapi' as default."""
         original_cwd = os.getcwd()
         os.chdir(tmp_path)
@@ -123,7 +130,7 @@ class TestLoadConfigEdgeCases:
         finally:
             os.chdir(original_cwd)
 
-    def test_project_config_stack_key_is_used(self, tmp_path):
+    def test_project_config_stack_key_is_used(self, tmp_path: Path) -> None:
         """'stack' key in .model-generator.yaml overrides the function default."""
         (tmp_path / ".model-generator.yaml").write_text(
             yaml.dump({"stack": "python-fastapi"})
@@ -137,7 +144,7 @@ class TestLoadConfigEdgeCases:
         finally:
             os.chdir(original_cwd)
 
-    def test_default_project_keys_inserted(self, tmp_path):
+    def test_default_project_keys_inserted(self, tmp_path: Path) -> None:
         """When stack config has no 'project' key, sensible defaults are inserted."""
         original_cwd = os.getcwd()
         os.chdir(tmp_path)
@@ -151,7 +158,7 @@ class TestLoadConfigEdgeCases:
         finally:
             os.chdir(original_cwd)
 
-    def test_default_generation_layout_inserted(self, tmp_path):
+    def test_default_generation_layout_inserted(self, tmp_path: Path) -> None:
         """When project config does not pin generation.layout, default is per-entity."""
         original_cwd = os.getcwd()
         os.chdir(tmp_path)
@@ -161,7 +168,7 @@ class TestLoadConfigEdgeCases:
         finally:
             os.chdir(original_cwd)
 
-    def test_project_config_can_pin_generation_layout(self, tmp_path):
+    def test_project_config_can_pin_generation_layout(self, tmp_path: Path) -> None:
         """generation.layout in .model-generator.yaml overrides the default."""
         (tmp_path / ".model-generator.yaml").write_text(
             yaml.dump({"generation": {"layout": "per-domain"}})
@@ -174,7 +181,7 @@ class TestLoadConfigEdgeCases:
         finally:
             os.chdir(original_cwd)
 
-    def test_project_config_overrides_stack(self, tmp_path):
+    def test_project_config_overrides_stack(self, tmp_path: Path) -> None:
         """Project config overrides stack defaults."""
         project_config = {
             "stack": "python-fastapi",
@@ -190,7 +197,7 @@ class TestLoadConfigEdgeCases:
         finally:
             os.chdir(original_cwd)
 
-    def test_invalid_stack_exits_with_code_1(self, tmp_path):
+    def test_invalid_stack_exits_with_code_1(self, tmp_path: Path) -> None:
         """load_config with non-existent stack exits with code 1."""
         original_cwd = os.getcwd()
         os.chdir(tmp_path)
@@ -205,34 +212,36 @@ class TestLoadConfigEdgeCases:
 class TestDeepMerge:
     """Test deep merge utility."""
 
-    def test_override_wins(self):
+    def test_override_wins(self) -> None:
         assert deep_merge({"a": 1}, {"a": 2}) == {"a": 2}
 
-    def test_non_overlapping_keys(self):
+    def test_non_overlapping_keys(self) -> None:
         assert deep_merge({"a": 1}, {"b": 2}) == {"a": 1, "b": 2}
 
-    def test_nested_merge(self):
+    def test_nested_merge(self) -> None:
         base = {"nested": {"x": 1, "y": 2}}
         override = {"nested": {"y": 3, "z": 4}}
         result = deep_merge(base, override)
         assert result == {"nested": {"x": 1, "y": 3, "z": 4}}
 
-    def test_override_dict_with_non_dict(self):
+    def test_override_dict_with_non_dict(self) -> None:
         """Non-dict override replaces dict."""
         result = deep_merge({"a": {"b": 1}}, {"a": "flat"})
         assert result == {"a": "flat"}
 
-    def test_empty_base(self):
+    def test_empty_base(self) -> None:
         assert deep_merge({}, {"a": 1}) == {"a": 1}
 
-    def test_empty_override(self):
+    def test_empty_override(self) -> None:
         assert deep_merge({"a": 1}, {}) == {"a": 1}
 
 
 class TestValidateModelSchema:
     """Test _validate_model_schema warning output."""
 
-    def test_validation_error_path_uses_arrow_separator(self, tmp_path, capsys):
+    def test_validation_error_path_uses_arrow_separator(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Validation warning joins path components with ' -> '."""
         from collections import deque
 
@@ -256,7 +265,9 @@ class TestValidateModelSchema:
         assert " -> " in captured.out
         assert "entities -> Foo" in captured.out
 
-    def test_validation_error_path_uses_str_of_component(self, tmp_path, capsys):
+    def test_validation_error_path_uses_str_of_component(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Path components are converted with str(), not replaced with None."""
         from collections import deque
 
@@ -284,12 +295,12 @@ class TestValidateModelSchema:
 class TestLoadSharedEnums:
     """Test shared enum loading."""
 
-    def test_no_shared_dir(self, tmp_path):
+    def test_no_shared_dir(self, tmp_path: Path) -> None:
         """Returns empty dict when _shared/enums.json doesn't exist."""
         result = load_shared_enums(tmp_path / "nonexistent.json")
         assert result == {}
 
-    def test_loads_enums(self, tmp_path):
+    def test_loads_enums(self, tmp_path: Path) -> None:
         shared_dir = tmp_path / "_shared"
         shared_dir.mkdir()
         enums = {
@@ -303,7 +314,7 @@ class TestLoadSharedEnums:
         result = load_shared_enums(model_file)
         assert "Status" in result
 
-    def test_loads_from_directory(self, tmp_path):
+    def test_loads_from_directory(self, tmp_path: Path) -> None:
         shared_dir = tmp_path / "_shared"
         shared_dir.mkdir()
         enums = {"enums": {"Color": {"values": [{"name": "RED", "value": "RED"}]}}}
@@ -312,7 +323,7 @@ class TestLoadSharedEnums:
         result = load_shared_enums(tmp_path)  # Pass directory, not file
         assert "Color" in result
 
-    def test_no_enums_key_returns_empty(self, tmp_path):
+    def test_no_enums_key_returns_empty(self, tmp_path: Path) -> None:
         """JSON without 'enums' key returns {} (not None)."""
         shared_dir = tmp_path / "_shared"
         shared_dir.mkdir()
@@ -324,11 +335,11 @@ class TestLoadSharedEnums:
 class TestLoadSharedConstraints:
     """Test shared constraint loading."""
 
-    def test_no_constraints_file(self, tmp_path):
+    def test_no_constraints_file(self, tmp_path: Path) -> None:
         result = load_shared_constraints(tmp_path)
         assert result == {}
 
-    def test_loads_constraints(self, tmp_path):
+    def test_loads_constraints(self, tmp_path: Path) -> None:
         shared_dir = tmp_path / "models" / "_shared"
         shared_dir.mkdir(parents=True)
         constraints = {
@@ -355,7 +366,7 @@ class TestLoadSharedConstraints:
         assert "USERNAME_MAX_LENGTH" in result
         assert result["USERNAME_MIN_LENGTH"]["value"] == 3
 
-    def test_loads_pattern_constraint(self, tmp_path):
+    def test_loads_pattern_constraint(self, tmp_path: Path) -> None:
         """Constraints with a 'pattern' key are included in results."""
         shared_dir = tmp_path / "_shared"
         shared_dir.mkdir()
@@ -376,7 +387,7 @@ class TestLoadSharedConstraints:
         assert "EMAIL_PATTERN" in result
         assert result["EMAIL_PATTERN"]["type"] == "regex"
 
-    def test_constraint_type_and_description_from_defn(self, tmp_path):
+    def test_constraint_type_and_description_from_defn(self, tmp_path: Path) -> None:
         """Result has 'type' key and 'description' taken from defn when present."""
         shared_dir = tmp_path / "_shared"
         shared_dir.mkdir()
@@ -398,7 +409,7 @@ class TestLoadSharedConstraints:
         assert result["USERNAME_MIN"]["type"] == "length"
         assert result["USERNAME_MIN"]["description"] == "Min length for username"
 
-    def test_constraint_description_falls_back_to_group(self, tmp_path):
+    def test_constraint_description_falls_back_to_group(self, tmp_path: Path) -> None:
         """description falls back to group-level when not in defn."""
         shared_dir = tmp_path / "_shared"
         shared_dir.mkdir()
@@ -418,7 +429,7 @@ class TestLoadSharedConstraints:
         result = load_shared_constraints(tmp_path)
         assert result["USERNAME_MIN"]["description"] == "Group description"
 
-    def test_no_constraints_key_returns_empty(self, tmp_path):
+    def test_no_constraints_key_returns_empty(self, tmp_path: Path) -> None:
         """JSON without 'constraints' key returns {} (not crash)."""
         shared_dir = tmp_path / "_shared"
         shared_dir.mkdir()
@@ -426,7 +437,7 @@ class TestLoadSharedConstraints:
         result = load_shared_constraints(tmp_path)
         assert result == {}
 
-    def test_loads_constraints_when_given_file_path(self, tmp_path):
+    def test_loads_constraints_when_given_file_path(self, tmp_path: Path) -> None:
         """load_shared_constraints resolves _shared/ relative to a file's parent."""
         model_file = tmp_path / "model.json"
         model_file.write_text("{}")
@@ -449,7 +460,9 @@ class TestLoadSharedConstraints:
         result = load_shared_constraints(model_file)
         assert "NAME_MIN" in result
 
-    def test_description_empty_string_when_no_description_anywhere(self, tmp_path):
+    def test_description_empty_string_when_no_description_anywhere(
+        self, tmp_path: Path
+    ) -> None:
         """description defaults to '' when neither defn nor group has a description."""
         shared_dir = tmp_path / "_shared"
         shared_dir.mkdir()
@@ -473,15 +486,15 @@ class TestLoadSharedConstraints:
 class TestScanModelFiles:
     """Test model file scanning."""
 
-    def test_empty_directory(self, tmp_path):
+    def test_empty_directory(self, tmp_path: Path) -> None:
         result = scan_model_files(tmp_path)
         assert result == []
 
-    def test_nonexistent_directory(self, tmp_path):
+    def test_nonexistent_directory(self, tmp_path: Path) -> None:
         result = scan_model_files(tmp_path / "nonexistent")
         assert result == []
 
-    def test_skips_special_files(self, tmp_path):
+    def test_skips_special_files(self, tmp_path: Path) -> None:
         """__init__.py, base.py, constraints.py, enums.py are skipped."""
         for name in ["__init__.py", "base.py", "constraints.py", "enums.py"]:
             (tmp_path / name).write_text("# skip me")
@@ -492,13 +505,15 @@ class TestScanModelFiles:
     @pytest.mark.parametrize(
         "name", ["__init__.py", "base.py", "constraints.py", "enums.py"]
     )
-    def test_skips_each_special_file_even_with_base_class(self, tmp_path, name):
+    def test_skips_each_special_file_even_with_base_class(
+        self, tmp_path: Path, name: Any
+    ) -> None:
         """Each skip file is ignored even if it defines a Base-inheriting class."""
         (tmp_path / name).write_text("class Foo(Base):\n    pass\n")
         result = scan_model_files(tmp_path)
         assert result == []
 
-    def test_continue_on_skip_not_break(self, tmp_path):
+    def test_continue_on_skip_not_break(self, tmp_path: Path) -> None:
         """Files after a skip file must still be processed (continue, not break)."""
         (tmp_path / "base.py").write_text("class B(Base):\n    pass\n")
         (tmp_path / "items.py").write_text("class Item(Base):\n    pass\n")
@@ -506,7 +521,7 @@ class TestScanModelFiles:
         assert len(result) == 1
         assert result[0]["name"] == "items"
 
-    def test_finds_model_classes(self, tmp_path):
+    def test_finds_model_classes(self, tmp_path: Path) -> None:
         (tmp_path / "users.py").write_text(
             "from .base import Base\n\nclass User(Base):\n    __tablename__ = 'users'\n"
         )
@@ -517,19 +532,19 @@ class TestScanModelFiles:
         assert result[0]["file"] == "users"
         assert "User" in result[0]["entities"]
 
-    def test_ignores_non_base_classes(self, tmp_path):
+    def test_ignores_non_base_classes(self, tmp_path: Path) -> None:
         """Classes without a Base superclass must not be collected."""
         (tmp_path / "helpers.py").write_text("class Helper:\n    pass\n")
         result = scan_model_files(tmp_path)
         assert result == []
 
-    def test_ignores_non_base_superclass(self, tmp_path):
+    def test_ignores_non_base_superclass(self, tmp_path: Path) -> None:
         """Classes inheriting from a non-Base name must not be collected."""
         (tmp_path / "items.py").write_text("class Item(BaseModel):\n    pass\n")
         result = scan_model_files(tmp_path)
         assert result == []
 
-    def test_extracts_section_header(self, tmp_path):
+    def test_extracts_section_header(self, tmp_path: Path) -> None:
         """Section header comment is extracted and returned as section."""
         (tmp_path / "users.py").write_text(
             "# ==================================\n"
@@ -542,19 +557,19 @@ class TestScanModelFiles:
         assert result[0]["section"] == "USERS"
         assert result[0]["file"] == "users"
 
-    def test_section_none_when_no_header(self, tmp_path):
+    def test_section_none_when_no_header(self, tmp_path: Path) -> None:
         """section is None when no section comment is present."""
         (tmp_path / "items.py").write_text("class Item(Base):\n    pass\n")
         result = scan_model_files(tmp_path)
         assert len(result) == 1
         assert result[0]["section"] is None
 
-    def test_skips_syntax_errors(self, tmp_path):
+    def test_skips_syntax_errors(self, tmp_path: Path) -> None:
         (tmp_path / "broken.py").write_text("def incomplete(")
         result = scan_model_files(tmp_path)
         assert result == []
 
-    def test_continues_after_syntax_error(self, tmp_path):
+    def test_continues_after_syntax_error(self, tmp_path: Path) -> None:
         """A file with a syntax error must not stop processing of later files."""
         (tmp_path / "broken.py").write_text("def incomplete(")
         (tmp_path / "valid.py").write_text("class Item(Base):\n    pass\n")
@@ -562,7 +577,7 @@ class TestScanModelFiles:
         assert len(result) == 1
         assert result[0]["name"] == "valid"
 
-    def test_continues_after_general_exception(self, tmp_path):
+    def test_continues_after_general_exception(self, tmp_path: Path) -> None:
         """A file raising a non-SyntaxError Exception must not stop later files."""
         # Invalid UTF-8 bytes cause UnicodeDecodeError on read_text(), caught by
         # `except Exception` — "aaa_" prefix ensures it sorts before "valid.py"
@@ -578,15 +593,15 @@ class TestScanModelFiles:
 class TestScanApiModelFiles:
     """Test API model file scanning."""
 
-    def test_empty_directory(self, tmp_path):
+    def test_empty_directory(self, tmp_path: Path) -> None:
         result = scan_api_model_files(tmp_path)
         assert result == []
 
-    def test_nonexistent_directory(self, tmp_path):
+    def test_nonexistent_directory(self, tmp_path: Path) -> None:
         result = scan_api_model_files(tmp_path / "nonexistent")
         assert result == []
 
-    def test_finds_response_models(self, tmp_path):
+    def test_finds_response_models(self, tmp_path: Path) -> None:
         (tmp_path / "users_response.py").write_text(
             "from pydantic import BaseModel\n\n"
             "class UserResponse(BaseModel):\n"
@@ -598,7 +613,7 @@ class TestScanApiModelFiles:
         assert result[0]["name"] == "users"
         assert "UserResponse" in result[0]["response_models"]
 
-    def test_finds_request_models(self, tmp_path):
+    def test_finds_request_models(self, tmp_path: Path) -> None:
         (tmp_path / "users_requests.py").write_text(
             "from pydantic import BaseModel\n\n"
             "class CreateUserRequest(BaseModel):\n"
@@ -612,13 +627,13 @@ class TestScanApiModelFiles:
         assert "CreateUserRequest" in result[0]["request_models"]
         assert "UpdateUserRequest" in result[0]["request_models"]
 
-    def test_skips_init_py_even_with_response_class(self, tmp_path):
+    def test_skips_init_py_even_with_response_class(self, tmp_path: Path) -> None:
         """__init__.py is ignored even if it defines a Response class."""
         (tmp_path / "__init__.py").write_text("class InitResponse:\n    pass\n")
         result = scan_api_model_files(tmp_path)
         assert result == []
 
-    def test_section_value_format(self, tmp_path):
+    def test_section_value_format(self, tmp_path: Path) -> None:
         """section is 'DOMAIN MODELS' with underscores replaced by spaces, UPPERCASE."""
         (tmp_path / "user_types_response.py").write_text(
             "class UserTypeResponse:\n    pass\n"
@@ -627,7 +642,7 @@ class TestScanApiModelFiles:
         assert len(result) == 1
         assert result[0]["section"] == "USER TYPES MODELS"
 
-    def test_finds_response_models_section_key(self, tmp_path):
+    def test_finds_response_models_section_key(self, tmp_path: Path) -> None:
         """Result dict has 'section' key (not 'SECTION' or 'XXsectionXX')."""
         (tmp_path / "users_response.py").write_text("class UserResponse:\n    pass\n")
         result = scan_api_model_files(tmp_path)
@@ -635,14 +650,14 @@ class TestScanApiModelFiles:
         assert "section" in result[0]
         assert result[0]["section"] == "USERS MODELS"
 
-    def test_init_py_skip_does_not_stop_domain_discovery(self, tmp_path):
+    def test_init_py_skip_does_not_stop_domain_discovery(self, tmp_path: Path) -> None:
         """__init__.py being skipped uses continue, not break, so other files found."""
         (tmp_path / "__init__.py").touch()
         (tmp_path / "users_response.py").write_text("class UserResponse:\n    pass\n")
         # Force __init__.py first in the glob iteration order
         original_glob = Path.glob
 
-        def sorted_init_first(self, pattern):  # type: ignore[override]
+        def sorted_init_first(self: Any, pattern: Any) -> list[Path]:
             files = list(original_glob(self, pattern))
             return sorted(files, key=lambda f: 0 if f.name == "__init__.py" else 1)
 
@@ -656,7 +671,7 @@ class TestScanApiModelFiles:
 class TestPartialGeneration:
     """Test generating specific targets only."""
 
-    def test_database_only(self, tmp_path):
+    def test_database_only(self, tmp_path: Path) -> None:
         """Generate only database target."""
         config = {
             "project": {"name": "Test"},
@@ -713,7 +728,7 @@ class TestPartialGeneration:
         finally:
             os.chdir(original_cwd)
 
-    def test_api_tests_only(self, tmp_path):
+    def test_api_tests_only(self, tmp_path: Path) -> None:
         """Generate only api-tests target."""
         config = {
             "project": {"name": "Test"},
@@ -774,7 +789,7 @@ class TestPartialGeneration:
 class TestConstraintExtraction:
     """Test constraint reference extraction from models."""
 
-    def test_extract_refs(self):
+    def test_extract_refs(self) -> None:
         from model_generator.generators.constraints import extract_constraint_refs
 
         model = {
@@ -795,7 +810,7 @@ class TestConstraintExtraction:
         assert refs[0]["name"] == "NAME_MIN"
         assert refs[0]["value"] == 3
 
-    def test_no_duplicate_refs(self):
+    def test_no_duplicate_refs(self) -> None:
         from model_generator.generators.constraints import extract_constraint_refs
 
         model = {
@@ -818,20 +833,20 @@ class TestConstraintExtraction:
         refs = extract_constraint_refs(model, shared)
         assert len(refs) == 1  # Deduplicated
 
-    def test_no_entities_key_returns_empty(self):
+    def test_no_entities_key_returns_empty(self) -> None:
         from model_generator.generators.constraints import extract_constraint_refs
 
         refs = extract_constraint_refs({}, {})
         assert refs == []
 
-    def test_entity_without_fields_returns_empty(self):
+    def test_entity_without_fields_returns_empty(self) -> None:
         from model_generator.generators.constraints import extract_constraint_refs
 
-        model = {"entities": {"Thing": {}}}
+        model: dict[str, Any] = {"entities": {"Thing": {}}}
         refs = extract_constraint_refs(model, {})
         assert refs == []
 
-    def test_is_min_distinguishes_min_from_max(self):
+    def test_is_min_distinguishes_min_from_max(self) -> None:
         from model_generator.generators.constraints import extract_constraint_refs
 
         model = {
@@ -861,7 +876,7 @@ class TestConstraintExtraction:
         assert max_ref["is_min"] is False
         assert max_ref["field"] == "price"
 
-    def test_extract_ref_type_from_shared(self):
+    def test_extract_ref_type_from_shared(self) -> None:
         from model_generator.generators.constraints import extract_constraint_refs
 
         model = {
@@ -884,7 +899,7 @@ class TestConstraintExtraction:
         assert refs[0]["field"] == "name"
         assert refs[0]["description"] == "Min name"
 
-    def test_regex_ref_extracted_correctly(self):
+    def test_regex_ref_extracted_correctly(self) -> None:
         from model_generator.generators.constraints import extract_constraint_refs
 
         model = {
@@ -917,7 +932,7 @@ class TestConstraintExtraction:
 class TestEnumParsing:
     """Test existing enum file parsing."""
 
-    def test_get_existing_enums(self, tmp_path):
+    def test_get_existing_enums(self, tmp_path: Path) -> None:
         from model_generator.generators.enums import get_existing_enums
 
         (tmp_path / "enums.py").write_text(
@@ -931,7 +946,7 @@ class TestEnumParsing:
         result = get_existing_enums(tmp_path / "enums.py")
         assert result == {"UserStatus", "OrderType"}
 
-    def test_no_existing_file(self, tmp_path):
+    def test_no_existing_file(self, tmp_path: Path) -> None:
         from model_generator.generators.enums import get_existing_enums
 
         result = get_existing_enums(tmp_path / "nonexistent.py")
@@ -941,7 +956,7 @@ class TestEnumParsing:
 class TestConstraintParsing:
     """Test existing constraint file parsing."""
 
-    def test_get_existing_constraints(self, tmp_path):
+    def test_get_existing_constraints(self, tmp_path: Path) -> None:
         from model_generator.generators.constraints import get_existing_constraints
 
         (tmp_path / "constraints.py").write_text(
@@ -956,7 +971,7 @@ class TestConstraintParsing:
         assert "USERNAME_MAX_LENGTH" in result
         assert "some_var" not in result  # Doesn't match ALL_CAPS pattern
 
-    def test_no_existing_file(self, tmp_path):
+    def test_no_existing_file(self, tmp_path: Path) -> None:
         from model_generator.generators.constraints import get_existing_constraints
 
         result = get_existing_constraints(tmp_path / "nonexistent.py")
@@ -966,35 +981,35 @@ class TestConstraintParsing:
 class TestFindRuff:
     """Test _find_ruff venv discovery."""
 
-    def test_finds_dotenv_ruff(self, tmp_path):
+    def test_finds_dotenv_ruff(self, tmp_path: Path) -> None:
         (tmp_path / ".venv" / "bin").mkdir(parents=True)
         (tmp_path / ".venv" / "bin" / "ruff").touch()
         assert _find_ruff(tmp_path) == str(tmp_path / ".venv" / "bin" / "ruff")
 
-    def test_finds_venv_ruff(self, tmp_path):
+    def test_finds_venv_ruff(self, tmp_path: Path) -> None:
         (tmp_path / "venv" / "bin").mkdir(parents=True)
         (tmp_path / "venv" / "bin" / "ruff").touch()
         assert _find_ruff(tmp_path) == str(tmp_path / "venv" / "bin" / "ruff")
 
-    def test_prefers_dotenv_over_venv(self, tmp_path):
+    def test_prefers_dotenv_over_venv(self, tmp_path: Path) -> None:
         for venv in [".venv", "venv"]:
             (tmp_path / venv / "bin").mkdir(parents=True)
             (tmp_path / venv / "bin" / "ruff").touch()
         assert _find_ruff(tmp_path) == str(tmp_path / ".venv" / "bin" / "ruff")
 
-    def test_falls_back_to_system_ruff(self, tmp_path):
+    def test_falls_back_to_system_ruff(self, tmp_path: Path) -> None:
         assert _find_ruff(tmp_path) == "ruff"
 
 
 class TestRunQualityTools:
     """Test run_quality_tools subprocess invocations."""
 
-    def test_returns_early_for_empty_files(self):
+    def test_returns_early_for_empty_files(self) -> None:
         with patch("model_generator.utils.quality.subprocess.run") as mock_run:
             run_quality_tools({}, Path("/tmp"), [])
         mock_run.assert_not_called()
 
-    def test_runs_format_and_check(self, tmp_path):
+    def test_runs_format_and_check(self, tmp_path: Path) -> None:
         file1 = tmp_path / "a.py"
         file2 = tmp_path / "b.py"
         expected_paths = f"{file1} {file2}"
@@ -1007,7 +1022,7 @@ class TestRunQualityTools:
         assert format_cmd == f"ruff format {expected_paths}"
         assert check_cmd == f"ruff check --fix {expected_paths}"
 
-    def test_subprocess_cwd_and_capture(self, tmp_path):
+    def test_subprocess_cwd_and_capture(self, tmp_path: Path) -> None:
         file1 = tmp_path / "a.py"
         with patch("model_generator.utils.quality.subprocess.run") as mock_run:
             with patch("model_generator.utils.quality._find_ruff", return_value="ruff"):
@@ -1017,7 +1032,9 @@ class TestRunQualityTools:
             assert c.kwargs["cwd"] == tmp_path
             assert c.kwargs["capture_output"] is True
 
-    def test_prints_progress_messages(self, tmp_path, capsys):
+    def test_prints_progress_messages(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Prints exact status messages before each ruff command."""
         file1 = tmp_path / "a.py"
         with patch("model_generator.utils.quality.subprocess.run"):

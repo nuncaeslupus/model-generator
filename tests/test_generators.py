@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -41,7 +42,7 @@ from model_generator.utils import get_template_env, load_config
 
 
 @pytest.fixture
-def minimal_model():
+def minimal_model() -> dict[str, Any]:
     """Minimal model for testing individual generators."""
     return {
         "domain": "items",
@@ -74,7 +75,7 @@ def minimal_model():
 
 
 @pytest.fixture
-def scoped_model():
+def scoped_model() -> dict[str, Any]:
     """Model with an owner-scoped entity for testing api.scope generation."""
     return {
         "domain": "widgets",
@@ -106,7 +107,7 @@ def scoped_model():
 
 
 @pytest.fixture
-def project_env(tmp_path):
+def project_env(tmp_path: Path) -> tuple[Path, dict[str, Any], Any]:
     """Set up a temporary project with config and template environment.
 
     Pinned to per-domain layout so existing assertions about file shape
@@ -150,36 +151,46 @@ def project_env(tmp_path):
 class TestDatabaseGenerator:
     """Test database model generation."""
 
-    def test_generates_model_file(self, minimal_model, project_env):
+    def test_generates_model_file(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_database_model(minimal_model, config, env, project_root)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert result["path"] == project_root / "src/database/models/items.py"
         assert "class Item(Base):" in result["content"]
         assert '__tablename__ = "items"' in result["content"]
 
-    def test_contains_fields(self, minimal_model, project_env):
+    def test_contains_fields(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_database_model(minimal_model, config, env, project_root)
+        assert isinstance(result, dict)
 
         assert "name: Mapped[str] = mapped_column(String(100)" in result["content"]
         assert "mapped_column(Integer" in result["content"]
 
-    def test_contains_timestamps(self, minimal_model, project_env):
+    def test_contains_timestamps(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_database_model(minimal_model, config, env, project_root)
+        assert isinstance(result, dict)
 
         assert "created_at" in result["content"]
         assert "updated_at" in result["content"]
         assert "server_default=func.now()" in result["content"]
 
-    def test_path_uses_domain_default_when_key_absent(self, project_env):
+    def test_path_uses_domain_default_when_key_absent(self, project_env: Any) -> None:
         project_root, config, env = project_env
         model_no_domain = {"description": "test", "entities": {}}
         with patch.object(env, "get_template") as mock_get:
             mock_get.return_value.render.return_value = "# mocked"
             result = generate_database_model(model_no_domain, config, env, project_root)
+            assert isinstance(result, dict)
 
         output_dir = project_root / config["paths"]["database_models"]
         assert result["path"] == output_dir / "models.py"
@@ -198,25 +209,29 @@ class TestGenerateInit:
     ]
 
     def test_includes_current_model_when_no_files_on_disk(
-        self, minimal_model, project_env
-    ):
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         with patch(
             "model_generator.generators.database.scan_model_files", return_value=[]
         ):
             result = generate_init(minimal_model, config, env, project_root)
+            assert isinstance(result, dict)
         # Even with no files on disk, init should include the current model
         assert result is not None
         assert "from .items import" in result["content"]
         assert "Item" in result["content"]
 
-    def test_result_structure(self, minimal_model, project_env):
+    def test_result_structure(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         with patch(
             "model_generator.generators.database.scan_model_files",
             return_value=self._FAKE_DOMAINS,
         ):
             result = generate_init(minimal_model, config, env, project_root)
+            assert isinstance(result, dict)
 
         output_dir = project_root / config["paths"]["database_models"]
         assert result is not None
@@ -226,13 +241,16 @@ class TestGenerateInit:
         assert result["entity_count"] == 2
         assert "from .items import" in result["content"]
 
-    def test_content_uses_config(self, minimal_model, project_env):
+    def test_content_uses_config(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         with patch(
             "model_generator.generators.database.scan_model_files",
             return_value=self._FAKE_DOMAINS,
         ):
             result = generate_init(minimal_model, config, env, project_root)
+            assert isinstance(result, dict)
         assert result is not None
         assert "Test Project" in result["content"]
 
@@ -240,34 +258,41 @@ class TestGenerateInit:
 class TestFactoryGenerator:
     """Test factory generation."""
 
-    def test_generates_factory_file(self, minimal_model, project_env):
+    def test_generates_factory_file(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_factories(minimal_model, config, env, project_root)
+        assert isinstance(result, dict)
 
         db_models_dir = project_root / config["paths"]["database_models"]
         assert result is not None
         assert result["path"] == db_models_dir / "factories" / "items.py"
 
-    def test_factory_content(self, minimal_model, project_env):
+    def test_factory_content(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_factories(minimal_model, config, env, project_root)
+        assert isinstance(result, dict)
 
         assert "ItemFactory" in result["content"]
         assert "factory.Factory" in result["content"] or "Factory" in result["content"]
 
-    def test_path_uses_domain_default_when_key_absent(self, project_env):
+    def test_path_uses_domain_default_when_key_absent(self, project_env: Any) -> None:
         project_root, config, env = project_env
         model_no_domain = {"description": "test", "entities": {}}
         with patch.object(env, "get_template") as mock_get:
             mock_get.return_value.render.return_value = "# mocked"
             result = generate_factories(model_no_domain, config, env, project_root)
+            assert isinstance(result, dict)
 
         db_models_dir = project_root / config["paths"]["database_models"]
         assert result["path"] == db_models_dir / "factories" / "models.py"
 
 
 @pytest.fixture
-def multi_entity_model():
+def multi_entity_model() -> dict[str, Any]:
     """Two-entity model exercising both reference fields and one_to_many siblings.
 
     Post → Author via reference field (drives SubFactory imports).
@@ -336,7 +361,7 @@ def multi_entity_model():
 
 
 @pytest.fixture
-def project_env_per_entity(tmp_path):
+def project_env_per_entity(tmp_path: Path) -> tuple[Path, dict[str, Any], Any]:
     """Same as project_env but with generation.layout pinned to per-entity."""
     config_data = {
         "project": {"name": "Test Project", "version": "0.1.0"},
@@ -376,34 +401,40 @@ def project_env_per_entity(tmp_path):
 class TestDatabaseGeneratorPerEntity:
     """Per-entity database model emission."""
 
-    def test_returns_list_of_dicts(self, multi_entity_model, project_env_per_entity):
+    def test_returns_list_of_dicts(
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         result = generate_database_model(multi_entity_model, config, env, project_root)
         assert isinstance(result, list)
         assert len(result) == 2
 
     def test_one_file_per_entity_using_snake_case(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         result = generate_database_model(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
         output_dir = project_root / config["paths"]["database_models"]
         paths = {r["path"] for r in result}
         assert output_dir / "author.py" in paths
         assert output_dir / "post.py" in paths
 
     def test_each_file_contains_only_its_entity(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         result = generate_database_model(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
         by_name = {r["path"].name: r["content"] for r in result}
         assert "class Author(Base):" in by_name["author.py"]
         assert "class Post" not in by_name["author.py"]
         assert "class Post(Base):" in by_name["post.py"]
         assert "class Author" not in by_name["post.py"]
 
-    def test_section_divider_omitted(self, multi_entity_model, project_env_per_entity):
+    def test_section_divider_omitted(
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """section_divider is gated on per-domain to avoid N redundant headers.
 
         The docstring header at the top of each file still contains the
@@ -412,13 +443,14 @@ class TestDatabaseGeneratorPerEntity:
         """
         project_root, config, env = project_env_per_entity
         result = generate_database_model(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
         divider_banner = "# " + "=" * 76 + "\n# BLOG MODELS"
         for entry in result:
             assert divider_banner not in entry["content"]
 
 
 @pytest.fixture
-def composite_fk_model():
+def composite_fk_model() -> dict[str, Any]:
     """Composite FK fixture: OrderItem references Order's composite PK.
 
     Order has a composite PK (tenant_id, id). OrderItem's (tenant_id, order_id)
@@ -474,7 +506,7 @@ def composite_fk_model():
 
 
 @pytest.fixture
-def self_ref_composite_fk_model():
+def self_ref_composite_fk_model() -> dict[str, Any]:
     """Self-ref composite FK: Node points at its parent in the same tree.
 
     Composite PK (org_id, node_id); composite FK (org_id, parent_node_id) →
@@ -526,15 +558,18 @@ def self_ref_composite_fk_model():
 class TestCompositeForeignKey:
     """Composite FK emission inside __table_args__."""
 
-    def _orderitem_content(self, model, project_env_per_entity):
+    def _orderitem_content(self, model: Any, project_env_per_entity: Any) -> str:
         project_root, config, env = project_env_per_entity
         result = generate_database_model(model, config, env, project_root)
+        assert isinstance(result, list)
         by_name = {r["path"].name: r["content"] for r in result}
-        return by_name["order_item.py"]
+        content = by_name["order_item.py"]
+        assert isinstance(content, str)
+        return content
 
     def test_emits_foreign_key_constraint_in_table_args(
-        self, composite_fk_model, project_env_per_entity
-    ):
+        self, composite_fk_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         content = self._orderitem_content(composite_fk_model, project_env_per_entity)
         assert "__table_args__" in content
         assert "ForeignKeyConstraint(" in content
@@ -543,8 +578,8 @@ class TestCompositeForeignKey:
         assert 'ondelete="CASCADE"' in content
 
     def test_member_fields_emit_as_plain_columns(
-        self, composite_fk_model, project_env_per_entity
-    ):
+        self, composite_fk_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """Composite-FK member columns must NOT carry an inline ForeignKey(...)."""
         content = self._orderitem_content(composite_fk_model, project_env_per_entity)
         # Locate the OrderItem class body.
@@ -559,30 +594,32 @@ class TestCompositeForeignKey:
             assert 'ForeignKey("orders' not in tail
 
     def test_imports_foreign_key_constraint(
-        self, composite_fk_model, project_env_per_entity
-    ):
+        self, composite_fk_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         content = self._orderitem_content(composite_fk_model, project_env_per_entity)
         # Import block uses parenthesized multi-line form.
         import_section = content.split("from sqlalchemy import (")[1].split(")")[0]
         assert "ForeignKeyConstraint" in import_section
 
     def test_no_fk_constraint_import_when_unused(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """No composite FKs in fixture → ForeignKeyConstraint must not be imported."""
         project_root, config, env = project_env_per_entity
         result = generate_database_model(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
         for entry in result:
             assert "ForeignKeyConstraint" not in entry["content"]
 
     def test_self_ref_composite_fk(
-        self, self_ref_composite_fk_model, project_env_per_entity
-    ):
+        self, self_ref_composite_fk_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """Self-ref composite FK emits ForeignKeyConstraint and full remote_side."""
         project_root, config, env = project_env_per_entity
         result = generate_database_model(
             self_ref_composite_fk_model, config, env, project_root
         )
+        assert isinstance(result, list)
         content = next(r["content"] for r in result if r["path"].name == "node.py")
         assert "ForeignKeyConstraint(" in content
         assert '["org_id", "parent_node_id"]' in content
@@ -591,8 +628,8 @@ class TestCompositeForeignKey:
         assert "remote_side=[org_id, node_id]" in content
 
     def test_configure_mappers_succeeds(
-        self, composite_fk_model, project_env_per_entity
-    ):
+        self, composite_fk_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """Live SQLAlchemy probe — composite FK emission must not raise.
 
         Strips project-local imports (`.base`, `.types`) and substitutes a
@@ -608,6 +645,7 @@ class TestCompositeForeignKey:
 
         project_root, config, env = project_env_per_entity
         result = generate_database_model(composite_fk_model, config, env, project_root)
+        assert isinstance(result, list)
         # Concatenate the two rendered files so both classes share one Base.
         merged = "\n".join(r["content"] for r in result)
         # Strip relative + project-local imports — Base + PortableUuid are supplied.
@@ -616,7 +654,7 @@ class TestCompositeForeignKey:
         class Base(DeclarativeBase):
             pass
 
-        namespace: dict = {"Base": Base, "PortableUuid": String}
+        namespace: dict[str, Any] = {"Base": Base, "PortableUuid": String}
         exec(merged, namespace)
         Base.registry.configure()  # would raise AmbiguousForeignKeysError if broken
 
@@ -625,32 +663,36 @@ class TestGenerateInitPerEntity:
     """Per-entity __init__.py emission."""
 
     def test_emits_one_import_line_per_entity(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         with patch(
             "model_generator.generators.database.scan_model_files", return_value=[]
         ):
             result = generate_init(multi_entity_model, config, env, project_root)
+            assert isinstance(result, dict)
         assert result is not None
         assert "from .author import" in result["content"]
         assert "from .post import" in result["content"]
         assert result["domain_count"] == 2
         assert result["entity_count"] == 2
 
-    def test_no_none_banner_emitted(self, multi_entity_model, project_env_per_entity):
+    def test_no_none_banner_emitted(
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """section=None must suppress the banner, not render '# None'."""
         project_root, config, env = project_env_per_entity
         with patch(
             "model_generator.generators.database.scan_model_files", return_value=[]
         ):
             result = generate_init(multi_entity_model, config, env, project_root)
+            assert isinstance(result, dict)
         assert result is not None
         assert "# None" not in result["content"]
 
     def test_existing_per_entity_files_not_redeclared(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """If scan_model_files lists 'author', model contributes only Post."""
         project_root, config, env = project_env_per_entity
         existing = [
@@ -666,6 +708,7 @@ class TestGenerateInitPerEntity:
             return_value=existing,
         ):
             result = generate_init(multi_entity_model, config, env, project_root)
+            assert isinstance(result, dict)
         assert result is not None
         assert result["domain_count"] == 2  # author (existing) + post (added)
         assert "from .author import" in result["content"]
@@ -676,8 +719,8 @@ class TestFactoryGeneratorPerEntity:
     """Per-entity factory emission and cross-entity import preservation."""
 
     def test_returns_list_with_one_factory_per_entity(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         result = generate_factories(multi_entity_model, config, env, project_root)
         assert isinstance(result, list)
@@ -686,11 +729,12 @@ class TestFactoryGeneratorPerEntity:
         assert names == {"author.py", "post.py"}
 
     def test_db_model_imports_use_per_entity_paths(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """Factory imports the model from {db_models}.{entity_snake}, not {domain}."""
         project_root, config, env = project_env_per_entity
         result = generate_factories(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
         by_name = {r["path"].name: r["content"] for r in result}
         assert "from src.database.models.author import Author" in by_name["author.py"]
         assert "from src.database.models.post import Post" in by_name["post.py"]
@@ -699,22 +743,24 @@ class TestFactoryGeneratorPerEntity:
         assert "from src.database.models.blog import" not in by_name["post.py"]
 
     def test_subfactory_reference_imports_sibling_factory(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """Post has author_id reference → post.py imports AuthorFactory."""
         project_root, config, env = project_env_per_entity
         result = generate_factories(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
         post_content = next(r["content"] for r in result if r["path"].name == "post.py")
         assert "from .author import AuthorFactory" in post_content
         assert "factory.SubFactory(AuthorFactory)" in post_content
 
     def test_create_related_preserved_via_sibling_entities(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """Author has one_to_many → Post; create_related must survive the
         per-entity slicing of model.entities, and PostFactory must be imported."""
         project_root, config, env = project_env_per_entity
         result = generate_factories(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
         author_content = next(
             r["content"] for r in result if r["path"].name == "author.py"
         )
@@ -726,8 +772,8 @@ class TestApiModelsGeneratorPerEntity:
     """Per-entity api-models emission: two files per entity."""
 
     def test_returns_one_response_and_one_request_per_entity(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         result = generate_api_models(multi_entity_model, config, env, project_root)
         assert isinstance(result, list)
@@ -741,11 +787,12 @@ class TestApiModelsGeneratorPerEntity:
         }
 
     def test_response_file_contains_only_one_entity(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """author_response.py contains AuthorResponse and not PostResponse."""
         project_root, config, env = project_env_per_entity
         result = generate_api_models(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
         author_resp = next(
             r["content"] for r in result if r["path"].name == "author_response.py"
         )
@@ -753,11 +800,12 @@ class TestApiModelsGeneratorPerEntity:
         assert "class PostResponse" not in author_resp
 
     def test_request_file_contains_only_one_entity(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """author_requests.py contains Create/UpdateAuthorRequest and not Post."""
         project_root, config, env = project_env_per_entity
         result = generate_api_models(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
         author_req = next(
             r["content"] for r in result if r["path"].name == "author_requests.py"
         )
@@ -770,13 +818,14 @@ class TestGenerateApiInitPerEntity:
     """Per-entity api __init__.py emission."""
 
     def test_emits_one_import_block_per_entity(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         with patch(
             "model_generator.generators.api.scan_api_model_files", return_value=[]
         ):
             result = generate_api_init(multi_entity_model, config, env, project_root)
+            assert isinstance(result, dict)
         assert result is not None
         assert "from .author_response import" in result["content"]
         assert "from .author_requests import" in result["content"]
@@ -784,19 +833,22 @@ class TestGenerateApiInitPerEntity:
         assert "from .post_requests import" in result["content"]
         assert result["domain_count"] == 2
 
-    def test_no_none_banner_emitted(self, multi_entity_model, project_env_per_entity):
+    def test_no_none_banner_emitted(
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """section=None must suppress the banner, not render '# None'."""
         project_root, config, env = project_env_per_entity
         with patch(
             "model_generator.generators.api.scan_api_model_files", return_value=[]
         ):
             result = generate_api_init(multi_entity_model, config, env, project_root)
+            assert isinstance(result, dict)
         assert result is not None
         assert "# None" not in result["content"]
 
     def test_existing_per_entity_files_not_redeclared(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """If scan finds 'author', model contributes only Post."""
         project_root, config, env = project_env_per_entity
         existing = [
@@ -812,6 +864,7 @@ class TestGenerateApiInitPerEntity:
             return_value=existing,
         ):
             result = generate_api_init(multi_entity_model, config, env, project_root)
+            assert isinstance(result, dict)
         assert result is not None
         assert result["domain_count"] == 2  # author (existing) + post (added)
         assert "from .author_response import" in result["content"]
@@ -822,8 +875,8 @@ class TestApiRoutesGeneratorPerEntity:
     """Per-entity api routes emission."""
 
     def test_returns_list_with_one_route_per_entity(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         result = generate_api_routes(
             multi_entity_model, config, env, project_root, enums={}, constraints={}
@@ -834,13 +887,14 @@ class TestApiRoutesGeneratorPerEntity:
         assert names == {"author.py", "post.py"}
 
     def test_db_model_imports_use_per_entity_paths(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """DB model is imported from {db_models}.{entity_snake}, not {domain}."""
         project_root, config, env = project_env_per_entity
         result = generate_api_routes(
             multi_entity_model, config, env, project_root, enums={}, constraints={}
         )
+        assert isinstance(result, list)
         by_name = {r["path"].name: r["content"] for r in result}
         assert "from src.database.models.author import Author" in by_name["author.py"]
         assert "from src.database.models.post import Post" in by_name["post.py"]
@@ -849,13 +903,14 @@ class TestApiRoutesGeneratorPerEntity:
         assert "from src.database.models.blog import" not in by_name["post.py"]
 
     def test_api_model_imports_use_per_entity_paths(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """API models are imported from per-entity files, not per-domain combined."""
         project_root, config, env = project_env_per_entity
         result = generate_api_routes(
             multi_entity_model, config, env, project_root, enums={}, constraints={}
         )
+        assert isinstance(result, list)
         by_name = {r["path"].name: r["content"] for r in result}
         assert (
             "from src.api.models.author_requests import CreateAuthorRequest"
@@ -870,13 +925,14 @@ class TestApiRoutesGeneratorPerEntity:
         assert "from src.api.models.blog_response" not in by_name["author.py"]
 
     def test_content_isolated_per_entity(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """author.py only has Author handlers; post.py only has Post handlers."""
         project_root, config, env = project_env_per_entity
         result = generate_api_routes(
             multi_entity_model, config, env, project_root, enums={}, constraints={}
         )
+        assert isinstance(result, list)
         by_name = {r["path"].name: r["content"] for r in result}
         assert "async def create_author" in by_name["author.py"]
         assert "async def create_post" not in by_name["author.py"]
@@ -888,8 +944,8 @@ class TestApiTestsGeneratorPerEntity:
     """Per-entity api contract test emission."""
 
     def test_returns_list_with_one_test_file_per_entity(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         result = generate_api_tests(
             multi_entity_model, config, env, project_root, enums={}, constraints={}
@@ -900,13 +956,14 @@ class TestApiTestsGeneratorPerEntity:
         assert names == {"test_author_api.py", "test_post_api.py"}
 
     def test_content_isolated_per_entity(
-        self, multi_entity_model, project_env_per_entity
-    ):
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
         """test_author_api.py only references Author response/request models."""
         project_root, config, env = project_env_per_entity
         result = generate_api_tests(
             multi_entity_model, config, env, project_root, enums={}, constraints={}
         )
+        assert isinstance(result, list)
         by_name = {r["path"].name: r["content"] for r in result}
         assert "AuthorResponse" in by_name["test_author_api.py"]
         assert "PostResponse" not in by_name["test_author_api.py"]
@@ -917,7 +974,9 @@ class TestApiTestsGeneratorPerEntity:
 class TestApiModelsGenerator:
     """Test API models (request/response) generation."""
 
-    def test_generates_two_files(self, minimal_model, project_env):
+    def test_generates_two_files(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         results = generate_api_models(minimal_model, config, env, project_root)
 
@@ -927,22 +986,28 @@ class TestApiModelsGenerator:
         assert "items_response.py" in filenames
         assert "items_requests.py" in filenames
 
-    def test_response_model_content(self, minimal_model, project_env):
+    def test_response_model_content(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         results = generate_api_models(minimal_model, config, env, project_root)
+        assert isinstance(results, list)
         response = next(r for r in results if "response" in r["path"].name)
 
         assert "class ItemResponse(BaseModel):" in response["content"]
 
-    def test_request_model_content(self, minimal_model, project_env):
+    def test_request_model_content(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         results = generate_api_models(minimal_model, config, env, project_root)
+        assert isinstance(results, list)
         request = next(r for r in results if "request" in r["path"].name)
 
         assert "class CreateItemRequest(BaseModel):" in request["content"]
         assert "class UpdateItemRequest(BaseModel):" in request["content"]
 
-    def test_field_description_not_truncated(self, project_env):
+    def test_field_description_not_truncated(self, project_env: Any) -> None:
         """Verify field descriptions are no longer truncated in request models."""
         project_root, config, env = project_env
         long_desc = "A" * 100  # Longer than the old 65-char limit
@@ -969,6 +1034,7 @@ class TestApiModelsGenerator:
             },
         }
         results = generate_api_models(model, config, env, project_root)
+        assert isinstance(results, list)
         request = next(r for r in results if "request" in r["path"].name)
         assert long_desc in request["content"]
 
@@ -976,12 +1042,17 @@ class TestApiModelsGenerator:
 class TestApiModelsGeneratorScope:
     """Test API request model generation when entities declare api.scope."""
 
-    def _request_content(self, model, project_env):
+    def _request_content(self, model: Any, project_env: Any) -> str:
         project_root, config, env = project_env
         results = generate_api_models(model, config, env, project_root)
-        return next(r for r in results if "request" in r["path"].name)["content"]
+        assert isinstance(results, list)
+        content = next(r for r in results if "request" in r["path"].name)["content"]
+        assert isinstance(content, str)
+        return content
 
-    def test_owner_field_excluded_from_create_request(self, scoped_model, project_env):
+    def test_owner_field_excluded_from_create_request(
+        self, scoped_model: dict[str, Any], project_env: Any
+    ) -> None:
         """owner_field is set by the handler, not by the API caller."""
         content = self._request_content(scoped_model, project_env)
         create_start = content.index("class CreateWidgetRequest")
@@ -989,7 +1060,9 @@ class TestApiModelsGeneratorScope:
         create_block = content[create_start:update_start]
         assert "owner_id" not in create_block
 
-    def test_owner_field_excluded_from_update_request(self, scoped_model, project_env):
+    def test_owner_field_excluded_from_update_request(
+        self, scoped_model: dict[str, Any], project_env: Any
+    ) -> None:
         """owner_field is immutable from the API; update payloads cannot reassign it."""
         content = self._request_content(scoped_model, project_env)
         update_start = content.index("class UpdateWidgetRequest")
@@ -1000,11 +1073,14 @@ class TestApiModelsGeneratorScope:
 class TestApiRoutesGenerator:
     """Test API routes generation."""
 
-    def test_generates_route_file(self, minimal_model, project_env):
+    def test_generates_route_file(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_api_routes(
             minimal_model, config, env, project_root, enums={}, constraints={}
         )
+        assert isinstance(result, dict)
 
         assert result is not None
         assert result["path"] == project_root / "src/api/routes/items.py"
@@ -1013,11 +1089,14 @@ class TestApiRoutesGenerator:
         assert "@router.put" in result["content"]
         assert "@router.delete" in result["content"]
 
-    def test_crud_endpoints(self, minimal_model, project_env):
+    def test_crud_endpoints(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_api_routes(
             minimal_model, config, env, project_root, enums={}, constraints={}
         )
+        assert isinstance(result, dict)
 
         assert "async def create_item" in result["content"]
         assert "async def list_items" in result["content"]
@@ -1031,10 +1110,12 @@ class TestApiRoutesGeneratorScope:
 
     AUTH_PATH = "backend.src.auth.get_current_user"
 
-    def _config_with_auth(self, config):
+    def _config_with_auth(self, config: Any) -> dict[str, Any]:
         return {**config, "auth": {"dependency_path": self.AUTH_PATH}}
 
-    def test_imports_auth_dependency(self, scoped_model, project_env):
+    def test_imports_auth_dependency(
+        self, scoped_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_api_routes(
             scoped_model,
@@ -1044,9 +1125,12 @@ class TestApiRoutesGeneratorScope:
             enums={},
             constraints={},
         )
+        assert isinstance(result, dict)
         assert "from backend.src.auth import get_current_user" in result["content"]
 
-    def test_all_handlers_receive_current_user(self, scoped_model, project_env):
+    def test_all_handlers_receive_current_user(
+        self, scoped_model: dict[str, Any], project_env: Any
+    ) -> None:
         """All 5 CRUD handlers inject current_user when scope is set."""
         project_root, config, env = project_env
         result = generate_api_routes(
@@ -1057,12 +1141,15 @@ class TestApiRoutesGeneratorScope:
             enums={},
             constraints={},
         )
+        assert isinstance(result, dict)
         assert (
             result["content"].count("current_user: Any = Depends(get_current_user)")
             == 5
         )
 
-    def test_create_handler_auto_sets_owner_field(self, scoped_model, project_env):
+    def test_create_handler_auto_sets_owner_field(
+        self, scoped_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Create handler force-assigns owner_field from current_user.id."""
         project_root, config, env = project_env
         result = generate_api_routes(
@@ -1073,9 +1160,12 @@ class TestApiRoutesGeneratorScope:
             enums={},
             constraints={},
         )
+        assert isinstance(result, dict)
         assert "widget.owner_id = current_user.id" in result["content"]
 
-    def test_list_query_filters_by_owner(self, scoped_model, project_env):
+    def test_list_query_filters_by_owner(
+        self, scoped_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_api_routes(
             scoped_model,
@@ -1085,6 +1175,7 @@ class TestApiRoutesGeneratorScope:
             enums={},
             constraints={},
         )
+        assert isinstance(result, dict)
         assert (
             "stmt = stmt.where(Widget.owner_id == current_user.id)" in result["content"]
         )
@@ -1093,7 +1184,9 @@ class TestApiRoutesGeneratorScope:
             in result["content"]
         )
 
-    def test_default_miss_status_uses_not_found(self, scoped_model, project_env):
+    def test_default_miss_status_uses_not_found(
+        self, scoped_model: dict[str, Any], project_env: Any
+    ) -> None:
         """404 falls through to format_not_found_error; HTTPException not imported."""
         project_root, config, env = project_env
         result = generate_api_routes(
@@ -1104,10 +1197,13 @@ class TestApiRoutesGeneratorScope:
             enums={},
             constraints={},
         )
+        assert isinstance(result, dict)
         assert "if widget.owner_id != current_user.id:" in result["content"]
         assert "from fastapi import HTTPException" not in result["content"]
 
-    def test_custom_miss_status_uses_http_exception(self, scoped_model, project_env):
+    def test_custom_miss_status_uses_http_exception(
+        self, scoped_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Non-404 miss_status emits HTTPException with the custom code."""
         project_root, config, env = project_env
         scoped_model["entities"]["Widget"]["api"]["scope"]["miss_status"] = 403
@@ -1119,6 +1215,7 @@ class TestApiRoutesGeneratorScope:
             enums={},
             constraints={},
         )
+        assert isinstance(result, dict)
         assert "from fastapi import HTTPException" in result["content"]
         assert "status_code=403" in result["content"]
 
@@ -1126,20 +1223,22 @@ class TestApiRoutesGeneratorScope:
 class TestValidateAuthConfig:
     """Test the _validate_auth_config helper."""
 
-    def test_no_scope_passes_without_auth_config(self):
+    def test_no_scope_passes_without_auth_config(self) -> None:
         from model_generator.generate import _validate_auth_config
 
         model = {"entities": {"Item": {"api": {"enabled": True}}}}
         _validate_auth_config(model, config={})  # Should not exit
 
-    def test_scope_with_auth_config_passes(self):
+    def test_scope_with_auth_config_passes(self) -> None:
         from model_generator.generate import _validate_auth_config
 
         model = {"entities": {"Widget": {"api": {"scope": {"owner_field": "user_id"}}}}}
         config = {"auth": {"dependency_path": "x.y.z"}}
         _validate_auth_config(model, config)  # Should not exit
 
-    def test_scope_without_auth_config_exits(self, capsys):
+    def test_scope_without_auth_config_exits(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         from model_generator.generate import _validate_auth_config
 
         model = {"entities": {"Widget": {"api": {"scope": {"owner_field": "user_id"}}}}}
@@ -1151,7 +1250,9 @@ class TestValidateAuthConfig:
         assert "auth.dependency_path" in out
         assert "api.scope" in out
 
-    def test_scope_with_dotless_auth_path_exits(self, capsys):
+    def test_scope_with_dotless_auth_path_exits(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """auth.dependency_path must include a module separator."""
         from model_generator.generate import _validate_auth_config
 
@@ -1168,7 +1269,7 @@ class TestValidateAuthConfig:
 class TestValidateCompositeForeignKeys:
     """Test the _validate_composite_foreign_keys helper."""
 
-    def _model_with_fk(self, fk: dict) -> dict:
+    def _model_with_fk(self, fk: dict[str, Any]) -> dict[str, Any]:
         return {
             "entities": {
                 "Order": {
@@ -1190,7 +1291,7 @@ class TestValidateCompositeForeignKeys:
             }
         }
 
-    def _valid_fk(self) -> dict:
+    def _valid_fk(self) -> dict[str, Any]:
         return {
             "fields": ["tenant_id", "order_id"],
             "references_table": "orders",
@@ -1198,17 +1299,17 @@ class TestValidateCompositeForeignKeys:
             "on_delete": "CASCADE",
         }
 
-    def test_no_foreign_keys_passes(self):
+    def test_no_foreign_keys_passes(self) -> None:
         from model_generator.generate import _validate_composite_foreign_keys
 
         _validate_composite_foreign_keys({"entities": {}})  # no entities, no FKs
 
-    def test_valid_composite_fk_passes(self):
+    def test_valid_composite_fk_passes(self) -> None:
         from model_generator.generate import _validate_composite_foreign_keys
 
         _validate_composite_foreign_keys(self._model_with_fk(self._valid_fk()))
 
-    def test_length_mismatch_exits(self, capsys):
+    def test_length_mismatch_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
         from model_generator.generate import _validate_composite_foreign_keys
 
         bad = {**self._valid_fk(), "references_columns": ["tenant_id"]}
@@ -1219,7 +1320,7 @@ class TestValidateCompositeForeignKeys:
         assert "must match" in out
         assert "OrderItem.foreign_keys[0]" in out
 
-    def test_unknown_field_exits(self, capsys):
+    def test_unknown_field_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
         from model_generator.generate import _validate_composite_foreign_keys
 
         bad = {**self._valid_fk(), "fields": ["tenant_id", "ghost_col"]}
@@ -1230,7 +1331,9 @@ class TestValidateCompositeForeignKeys:
         assert "ghost_col" in out
         assert "not declared" in out
 
-    def test_reference_typed_member_exits(self, capsys):
+    def test_reference_typed_member_exits(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Composite-FK members must use the underlying type, not 'reference'."""
         from model_generator.generate import _validate_composite_foreign_keys
 
@@ -1246,7 +1349,9 @@ class TestValidateCompositeForeignKeys:
         assert 'type "reference"' in out
         assert "mutex" in out
 
-    def test_unknown_references_table_exits(self, capsys):
+    def test_unknown_references_table_exits(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         from model_generator.generate import _validate_composite_foreign_keys
 
         bad = {**self._valid_fk(), "references_table": "ghost_table"}
@@ -1261,7 +1366,7 @@ class TestValidateCompositeForeignKeys:
 class TestValidateAuthStrategy:
     """Test the _validate_auth_strategy helper."""
 
-    def _user_model(self):
+    def _user_model(self) -> dict[str, Any]:
         return {
             "entities": {
                 "User": {
@@ -1275,18 +1380,18 @@ class TestValidateAuthStrategy:
             }
         }
 
-    def test_no_strategy_passes(self):
+    def test_no_strategy_passes(self) -> None:
         from model_generator.generate import _validate_auth_strategy
 
         _validate_auth_strategy([self._user_model()], config={})
 
-    def test_bcrypt_session_with_user_and_pepper_passes(self):
+    def test_bcrypt_session_with_user_and_pepper_passes(self) -> None:
         from model_generator.generate import _validate_auth_strategy
 
         config = {"auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
         _validate_auth_strategy([self._user_model()], config)
 
-    def test_unknown_strategy_exits(self, capsys):
+    def test_unknown_strategy_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
         from model_generator.generate import _validate_auth_strategy
 
         config = {"auth": {"strategy": "magic-jwt", "pepper_env": "X"}}
@@ -1297,7 +1402,7 @@ class TestValidateAuthStrategy:
         assert "magic-jwt" in out
         assert "bcrypt-session" in out
 
-    def test_missing_pepper_env_exits(self, capsys):
+    def test_missing_pepper_env_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
         from model_generator.generate import _validate_auth_strategy
 
         config = {"auth": {"strategy": "bcrypt-session"}}
@@ -1307,18 +1412,22 @@ class TestValidateAuthStrategy:
         out = capsys.readouterr().out
         assert "pepper_env" in out
 
-    def test_missing_user_entity_exits(self, capsys):
+    def test_missing_user_entity_exits(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         from model_generator.generate import _validate_auth_strategy
 
         config = {"auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
-        models = [{"entities": {"Item": {"fields": {}}}}]
+        models: list[dict[str, Any]] = [{"entities": {"Item": {"fields": {}}}}]
         with pytest.raises(SystemExit) as excinfo:
             _validate_auth_strategy(models, config)
         assert excinfo.value.code == 1
         out = capsys.readouterr().out
         assert "User" in out
 
-    def test_user_without_password_hash_exits(self, capsys):
+    def test_user_without_password_hash_exits(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         from model_generator.generate import _validate_auth_strategy
 
         config = {"auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
@@ -1329,7 +1438,9 @@ class TestValidateAuthStrategy:
         out = capsys.readouterr().out
         assert "password_hash" in out
 
-    def test_per_domain_layout_with_strategy_exits(self, capsys):
+    def test_per_domain_layout_with_strategy_exits(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         from model_generator.generate import _validate_auth_strategy
 
         config = {
@@ -1344,7 +1455,9 @@ class TestValidateAuthStrategy:
         assert "per-domain" in out
 
     @pytest.mark.parametrize("missing", ["username", "email", "last_login_at"])
-    def test_user_missing_router_field_exits(self, capsys, missing):
+    def test_user_missing_router_field_exits(
+        self, capsys: pytest.CaptureFixture[str], missing: Any
+    ) -> None:
         """Router uses username/email/last_login_at; validator must require each."""
         from model_generator.generate import _validate_auth_strategy
 
@@ -1361,22 +1474,22 @@ class TestValidateAuthStrategy:
 class TestValidateGenerationConfig:
     """Test the _validate_generation_config helper."""
 
-    def test_default_layout_passes(self):
+    def test_default_layout_passes(self) -> None:
         from model_generator.generate import _validate_generation_config
 
         _validate_generation_config(config={})
 
-    def test_per_entity_passes(self):
+    def test_per_entity_passes(self) -> None:
         from model_generator.generate import _validate_generation_config
 
         _validate_generation_config({"generation": {"layout": "per-entity"}})
 
-    def test_per_domain_passes(self):
+    def test_per_domain_passes(self) -> None:
         from model_generator.generate import _validate_generation_config
 
         _validate_generation_config({"generation": {"layout": "per-domain"}})
 
-    def test_unknown_layout_exits(self, capsys):
+    def test_unknown_layout_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
         from model_generator.generate import _validate_generation_config
 
         with pytest.raises(SystemExit) as excinfo:
@@ -1390,20 +1503,26 @@ class TestValidateGenerationConfig:
 class TestApiTestsGenerator:
     """Test contract test generation."""
 
-    def test_generates_test_file(self, minimal_model, project_env):
+    def test_generates_test_file(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_api_tests(
             minimal_model, config, env, project_root, enums={}, constraints={}
         )
+        assert isinstance(result, dict)
 
         assert result is not None
         assert result["path"] == project_root / "tests/api/test_items_api.py"
 
-    def test_test_content(self, minimal_model, project_env):
+    def test_test_content(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_api_tests(
             minimal_model, config, env, project_root, enums={}, constraints={}
         )
+        assert isinstance(result, dict)
 
         assert "class TestItemsAPI:" in result["content"]
         assert "def test_get_items_list_success" in result["content"]
@@ -1411,7 +1530,9 @@ class TestApiTestsGenerator:
         assert "def test_get_item_by_id_success" in result["content"]
         assert "def test_delete_item_success" in result["content"]
 
-    def test_skips_put_tests_when_update_endpoint_excluded(self, project_env):
+    def test_skips_put_tests_when_update_endpoint_excluded(
+        self, project_env: Any
+    ) -> None:
         """If api.endpoints omits 'update', no test_put_* tests should be emitted."""
         project_root, config, env = project_env
         model = {
@@ -1438,13 +1559,16 @@ class TestApiTestsGenerator:
         result = generate_api_tests(
             model, config, env, project_root, enums={}, constraints={}
         )
+        assert isinstance(result, dict)
         assert "def test_put_item" not in result["content"]
         assert "def test_item_immutable_fields" not in result["content"]
         # Sections that ARE in endpoints should still emit
         assert "def test_delete_item" in result["content"]
         assert "def test_post_item" in result["content"]
 
-    def test_skips_delete_tests_when_delete_endpoint_excluded(self, project_env):
+    def test_skips_delete_tests_when_delete_endpoint_excluded(
+        self, project_env: Any
+    ) -> None:
         """If api.endpoints omits 'delete', no test_delete_* tests should be emitted."""
         project_root, config, env = project_env
         model = {
@@ -1471,6 +1595,7 @@ class TestApiTestsGenerator:
         result = generate_api_tests(
             model, config, env, project_root, enums={}, constraints={}
         )
+        assert isinstance(result, dict)
         assert "def test_delete_item" not in result["content"]
         assert "def test_put_item" not in result["content"]
         # READ + CREATE still emitted
@@ -1483,7 +1608,9 @@ class TestApiTestsGeneratorScope:
 
     AUTH_PATH = "backend.src.auth.get_current_user"
 
-    def test_main_import_module_derived_from_paths(self, scoped_model, project_env):
+    def test_main_import_module_derived_from_paths(
+        self, scoped_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Import path follows config.paths.main filename, not a hard-coded `main`."""
         project_root, config, env = project_env
         config_with_auth = {
@@ -1499,6 +1626,7 @@ class TestApiTestsGeneratorScope:
             enums={},
             constraints={},
         )
+        assert isinstance(result, dict)
         assert "from src.app import app" in result["content"]
         assert "from src.main import app" not in result["content"]
 
@@ -1507,7 +1635,7 @@ class TestApiEnabledFiltering:
     """Test that api.enabled: false skips API generation."""
 
     @pytest.fixture
-    def api_disabled_model(self):
+    def api_disabled_model(self) -> dict[str, Any]:
         """Model with all entities having api.enabled: false."""
         return {
             "domain": "internal",
@@ -1529,7 +1657,7 @@ class TestApiEnabledFiltering:
         }
 
     @pytest.fixture
-    def mixed_model(self):
+    def mixed_model(self) -> dict[str, Any]:
         """Model with one api-enabled and one api-disabled entity."""
         return {
             "domain": "mixed",
@@ -1563,7 +1691,7 @@ class TestApiEnabledFiltering:
         }
 
     @pytest.fixture
-    def tests_disabled_model(self):
+    def tests_disabled_model(self) -> dict[str, Any]:
         """Model with tests.enabled: false."""
         return {
             "domain": "notested",
@@ -1584,26 +1712,34 @@ class TestApiEnabledFiltering:
             },
         }
 
-    def test_api_models_skipped_when_disabled(self, api_disabled_model, project_env):
+    def test_api_models_skipped_when_disabled(
+        self, api_disabled_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_api_models(api_disabled_model, config, env, project_root)
         assert result is None
 
-    def test_api_routes_skipped_when_disabled(self, api_disabled_model, project_env):
+    def test_api_routes_skipped_when_disabled(
+        self, api_disabled_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_api_routes(
             api_disabled_model, config, env, project_root, enums={}, constraints={}
         )
         assert result is None
 
-    def test_api_tests_skipped_when_disabled(self, api_disabled_model, project_env):
+    def test_api_tests_skipped_when_disabled(
+        self, api_disabled_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_api_tests(
             api_disabled_model, config, env, project_root, enums={}, constraints={}
         )
         assert result is None
 
-    def test_mixed_model_only_generates_enabled(self, mixed_model, project_env):
+    def test_mixed_model_only_generates_enabled(
+        self, mixed_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         results = generate_api_models(mixed_model, config, env, project_root)
 
@@ -1612,26 +1748,31 @@ class TestApiEnabledFiltering:
         assert "class PublicResponse" in response["content"]
         assert "Hidden" not in response["content"]
 
-    def test_mixed_model_routes_only_enabled(self, mixed_model, project_env):
+    def test_mixed_model_routes_only_enabled(
+        self, mixed_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_api_routes(
             mixed_model, config, env, project_root, enums={}, constraints={}
         )
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "public" in result["content"].lower()
         assert "Hidden" not in result["content"]
 
     def test_tests_disabled_skips_test_generation(
-        self, tests_disabled_model, project_env
-    ):
+        self, tests_disabled_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_api_tests(
             tests_disabled_model, config, env, project_root, enums={}, constraints={}
         )
         assert result is None
 
-    def test_api_enabled_by_default(self, minimal_model, project_env):
+    def test_api_enabled_by_default(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Entities without explicit api config default to enabled."""
         project_root, config, env = project_env
         result = generate_api_routes(
@@ -1643,7 +1784,9 @@ class TestApiEnabledFiltering:
 class TestEnumsGenerator:
     """Test enum generation."""
 
-    def test_creates_enums_file(self, minimal_model, project_env):
+    def test_creates_enums_file(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Generate enums when _shared/enums.json exists."""
         project_root, config, env = project_env
 
@@ -1668,6 +1811,7 @@ class TestEnumsGenerator:
         (shared_dir / "enums.json").write_text(json.dumps(enums_data))
 
         result = generate_enums(minimal_model, config, env, project_root, model_file)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert result["mode"] == "write"
@@ -1678,7 +1822,9 @@ class TestEnumsGenerator:
         assert "class ItemType(StrEnum):" in result["content"]
         assert "STANDARD" in result["content"]
 
-    def test_append_mode_adds_new_enums(self, minimal_model, project_env):
+    def test_append_mode_adds_new_enums(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Append mode: existing enums skipped, new ones included in result."""
         project_root, config, env = project_env
 
@@ -1712,6 +1858,7 @@ class TestEnumsGenerator:
         )
 
         result = generate_enums(minimal_model, config, env, project_root, model_file)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert result["mode"] == "append"
@@ -1721,7 +1868,9 @@ class TestEnumsGenerator:
         assert "class OrderStatus(StrEnum):" in result["content"]
         assert "ItemType" not in result["content"]
 
-    def test_no_enums_returns_none(self, minimal_model, project_env):
+    def test_no_enums_returns_none(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Generate enums when no _shared/enums.json exists."""
         project_root, config, env = project_env
 
@@ -1733,7 +1882,9 @@ class TestEnumsGenerator:
         result = generate_enums(minimal_model, config, env, project_root, model_file)
         assert result is None
 
-    def test_append_mode_skips_existing(self, minimal_model, project_env):
+    def test_append_mode_skips_existing(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Enums that already exist in file are skipped."""
         project_root, config, env = project_env
 
@@ -1765,7 +1916,13 @@ class TestEnumsGenerator:
         result = generate_enums(minimal_model, config, env, project_root, model_file)
         assert result is None  # All enums already exist
 
-    def _setup_enums(self, project_root, config, minimal_model, enums_data):
+    def _setup_enums(
+        self,
+        project_root: Any,
+        config: Any,
+        minimal_model: dict[str, Any],
+        enums_data: Any,
+    ) -> Path:
         """Helper: create model file and shared enums.json, return model_file path."""
         models_dir = project_root / "models"
         shared_dir = models_dir / "_shared"
@@ -1773,9 +1930,12 @@ class TestEnumsGenerator:
         model_file = models_dir / "items.model.json"
         model_file.write_text(json.dumps(minimal_model))
         (shared_dir / "enums.json").write_text(json.dumps(enums_data))
+        assert isinstance(model_file, Path)
         return model_file
 
-    def test_create_mode_includes_imports(self, minimal_model, project_env):
+    def test_create_mode_includes_imports(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Create mode output includes StrEnum import."""
         project_root, config, env = project_env
         enums_data = {
@@ -1788,10 +1948,13 @@ class TestEnumsGenerator:
         }
         model_file = self._setup_enums(project_root, config, minimal_model, enums_data)
         result = generate_enums(minimal_model, config, env, project_root, model_file)
+        assert isinstance(result, dict)
         assert result is not None
         assert "from enum import StrEnum" in result["content"]
 
-    def test_create_mode_includes_section_header(self, minimal_model, project_env):
+    def test_create_mode_includes_section_header(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Create mode output includes ENUMS section divider."""
         project_root, config, env = project_env
         enums_data = {
@@ -1804,10 +1967,13 @@ class TestEnumsGenerator:
         }
         model_file = self._setup_enums(project_root, config, minimal_model, enums_data)
         result = generate_enums(minimal_model, config, env, project_root, model_file)
+        assert isinstance(result, dict)
         assert result is not None
         assert "# ENUMS" in result["content"]
 
-    def test_append_content_starts_with_newline(self, minimal_model, project_env):
+    def test_append_content_starts_with_newline(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Append mode content starts with newline separator."""
         project_root, config, env = project_env
         enums_data = {
@@ -1829,10 +1995,13 @@ class TestEnumsGenerator:
             "from enum import StrEnum\nclass ItemType(StrEnum):\n    A = 'A'\n"
         )
         result = generate_enums(minimal_model, config, env, project_root, model_file)
+        assert isinstance(result, dict)
         assert result is not None
         assert result["content"].startswith("\n")
 
-    def test_append_includes_enums_section_header(self, minimal_model, project_env):
+    def test_append_includes_enums_section_header(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Append mode content includes ENUMS section divider."""
         project_root, config, env = project_env
         enums_data = {
@@ -1854,10 +2023,16 @@ class TestEnumsGenerator:
             "from enum import StrEnum\nclass ItemType(StrEnum):\n    A = 'A'\n"
         )
         result = generate_enums(minimal_model, config, env, project_root, model_file)
+        assert isinstance(result, dict)
         assert result is not None
         assert "# ENUMS" in result["content"]
 
-    def test_no_enums_prints_message(self, minimal_model, project_env, capsys):
+    def test_no_enums_prints_message(
+        self,
+        minimal_model: dict[str, Any],
+        project_env: Any,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
         """When no enums file exists, prints informational message."""
         project_root, config, env = project_env
         models_dir = project_root / "models"
@@ -1876,14 +2051,16 @@ class TestEnumsGenerator:
 class TestConstraintsGenerator:
     """Test constraint generation."""
 
-    def test_no_constraints_returns_none(self, minimal_model, project_env):
+    def test_no_constraints_returns_none(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         """Model without constraints returns None."""
         project_root, config, env = project_env
         # No _shared/constraints.json and no field constraints
         result = generate_constraints(minimal_model, config, env, project_root)
         assert result is None
 
-    def test_generates_constraints(self, project_env):
+    def test_generates_constraints(self, project_env: Any) -> None:
         """Model with constraint refs generates constraints file."""
         project_root, config, env = project_env
 
@@ -1930,6 +2107,7 @@ class TestConstraintsGenerator:
         os.chdir(project_root)
         try:
             result = generate_constraints(model, config, env, project_root)
+            assert isinstance(result, dict)
         finally:
             os.chdir(original_cwd)
 
@@ -1944,7 +2122,7 @@ class TestConstraintsGenerator:
         assert "from decimal import Decimal" in result["content"]
         assert "def validate_percentage" in result["content"]
 
-    def test_append_mode_for_existing_file(self, project_env):
+    def test_append_mode_for_existing_file(self, project_env: Any) -> None:
         """When constraints.py already exists, new refs are appended, not full file."""
         project_root, config, env = project_env
 
@@ -1973,7 +2151,7 @@ class TestConstraintsGenerator:
 
         shared_dir = project_root / "models" / "_shared"
         shared_dir.mkdir(parents=True)
-        constraints_data: dict = {"constraints": {}}
+        constraints_data: dict[str, Any] = {"constraints": {}}
         (shared_dir / "constraints.json").write_text(json.dumps(constraints_data))
 
         # Create an existing constraints.py (but without the refs we need)
@@ -1986,6 +2164,7 @@ class TestConstraintsGenerator:
         os.chdir(project_root)
         try:
             result = generate_constraints(model, config, env, project_root)
+            assert isinstance(result, dict)
         finally:
             os.chdir(original_cwd)
 
@@ -2003,10 +2182,10 @@ class TestConstraintsGenerator:
 class TestConstraintExtraction:
     """Unit tests for constraint extraction helpers."""
 
-    def _make_refs(self):
+    def _make_refs(self) -> tuple[list[Any], set[Any]]:
         return [], set()
 
-    def test_extract_ref_type_from_ref_def(self):
+    def test_extract_ref_type_from_ref_def(self) -> None:
         """When ref_def has 'type', it takes priority over constraint type."""
         refs, seen = self._make_refs()
         _extract_ref(
@@ -2020,7 +2199,7 @@ class TestConstraintExtraction:
         )
         assert refs[0]["type"] == "length"
 
-    def test_extract_ref_type_from_constraint(self):
+    def test_extract_ref_type_from_constraint(self) -> None:
         """When ref_def lacks 'type', falls back to constraint type."""
         refs, seen = self._make_refs()
         _extract_ref(
@@ -2034,7 +2213,7 @@ class TestConstraintExtraction:
         )
         assert refs[0]["type"] == "range"
 
-    def test_extract_ref_type_default_decimal(self):
+    def test_extract_ref_type_default_decimal(self) -> None:
         """When neither ref_def nor constraint has 'type', defaults to 'decimal'."""
         refs, seen = self._make_refs()
         _extract_ref(
@@ -2048,7 +2227,7 @@ class TestConstraintExtraction:
         )
         assert refs[0]["type"] == "decimal"
 
-    def test_extract_regex_ref_unknown_ref_ok(self):
+    def test_extract_regex_ref_unknown_ref_ok(self) -> None:
         """When regex_ref is not in shared_constraints, falls back to empty dict."""
         refs, seen = self._make_refs()
         _extract_regex_ref(
@@ -2062,14 +2241,14 @@ class TestConstraintExtraction:
         assert refs[0]["field"] == "my_field"
         assert refs[0]["name"] == "UNKNOWN_PATTERN"
 
-    def test_extract_regex_ref_deduplication(self):
+    def test_extract_regex_ref_deduplication(self) -> None:
         """Same regex_ref is only extracted once."""
         refs, seen = self._make_refs()
         _extract_regex_ref({"regex_ref": "PAT"}, {}, "field1", refs, seen)
         _extract_regex_ref({"regex_ref": "PAT"}, {}, "field2", refs, seen)
         assert len(refs) == 1
 
-    def test_extract_constraint_refs_field_name_propagates(self):
+    def test_extract_constraint_refs_field_name_propagates(self) -> None:
         """Field name from model is correctly propagated to extracted refs."""
         model = {
             "entities": {
@@ -2090,7 +2269,9 @@ class TestConstraintExtraction:
 class TestMigrationGenerator:
     """Test Alembic migration init generation."""
 
-    def test_creates_migration_directories(self, minimal_model, project_env):
+    def test_creates_migration_directories(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         generate_migration_init(minimal_model, config, env, project_root)
 
@@ -2098,9 +2279,12 @@ class TestMigrationGenerator:
         assert migrations_dir.is_dir()
         assert (migrations_dir / "versions").is_dir()
 
-    def test_returns_all_migration_files(self, minimal_model, project_env):
+    def test_returns_all_migration_files(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_migration_init(minimal_model, config, env, project_root)
+        assert isinstance(result, list)
 
         assert isinstance(result, list)
         assert len(result) == 5
@@ -2112,16 +2296,21 @@ class TestMigrationGenerator:
         assert migrations_dir / "README.md" in paths
         assert migrations_dir / "versions" / ".gitkeep" in paths
 
-    def test_env_py_content_uses_config(self, minimal_model, project_env):
+    def test_env_py_content_uses_config(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_migration_init(minimal_model, config, env, project_root)
+        assert isinstance(result, list)
 
         migrations_dir = project_root / "alembic"
         env_py = next(r for r in result if r["path"] == migrations_dir / "env.py")
         # config.paths.database_models is used in the import path
         assert "src.database.models" in env_py["content"]
 
-    def test_custom_migrations_path(self, minimal_model, project_env):
+    def test_custom_migrations_path(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         config["paths"]["migrations"] = "custom_migrations"
         generate_migration_init(minimal_model, config, env, project_root)
@@ -2129,15 +2318,20 @@ class TestMigrationGenerator:
         assert (project_root / "custom_migrations").is_dir()
         assert (project_root / "custom_migrations" / "versions").is_dir()
 
-    def test_alembic_ini_content_uses_migrations_path(self, minimal_model, project_env):
+    def test_alembic_ini_content_uses_migrations_path(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         config["paths"]["migrations"] = "custom_migrations"
         result = generate_migration_init(minimal_model, config, env, project_root)
+        assert isinstance(result, list)
 
         ini = next(r for r in result if r["path"] == project_root / "alembic.ini")
         assert "script_location = custom_migrations" in ini["content"]
 
-    def test_default_path_when_key_absent(self, minimal_model, project_env, tmp_path):
+    def test_default_path_when_key_absent(
+        self, minimal_model: dict[str, Any], project_env: Any, tmp_path: Path
+    ) -> None:
         project_root, config, env = project_env
         del config["paths"]["migrations"]
         generate_migration_init(minimal_model, config, env, project_root)
@@ -2145,7 +2339,9 @@ class TestMigrationGenerator:
         assert (project_root / "alembic").is_dir()
         assert (project_root / "alembic" / "versions").is_dir()
 
-    def test_creates_nested_project_root(self, minimal_model, project_env):
+    def test_creates_nested_project_root(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         deep_root = project_root / "subdir"
         generate_migration_init(minimal_model, config, env, deep_root)
@@ -2153,15 +2349,20 @@ class TestMigrationGenerator:
         assert (deep_root / "alembic").is_dir()
         assert (deep_root / "alembic" / "versions").is_dir()
 
-    def test_idempotent_mkdir(self, minimal_model, project_env):
+    def test_idempotent_mkdir(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         generate_migration_init(minimal_model, config, env, project_root)
         # Second call must not raise FileExistsError
         generate_migration_init(minimal_model, config, env, project_root)
 
-    def test_gitkeep_content_is_empty(self, minimal_model, project_env):
+    def test_gitkeep_content_is_empty(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_migration_init(minimal_model, config, env, project_root)
+        assert isinstance(result, list)
 
         migrations_dir = project_root / "alembic"
         gitkeep = next(
@@ -2173,16 +2374,21 @@ class TestMigrationGenerator:
 class TestMigrationAutogen:
     """Test generate_migration_autogen."""
 
-    def test_returns_none_when_not_initialized(self, minimal_model, project_env):
+    def test_returns_none_when_not_initialized(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_migration_autogen(minimal_model, config, env, project_root)
 
         assert result is None
 
-    def test_returns_dict_when_initialized(self, minimal_model, project_env):
+    def test_returns_dict_when_initialized(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         (project_root / "alembic.ini").write_text("[alembic]\n")
         result = generate_migration_autogen(minimal_model, config, env, project_root)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "info" in result
@@ -2193,8 +2399,11 @@ class TestMigrationAutogen:
         assert "DATABASE_URL" in result["instructions"]
 
     def test_warning_message_when_not_initialized(
-        self, minimal_model, project_env, capsys
-    ):
+        self,
+        minimal_model: dict[str, Any],
+        project_env: Any,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
         project_root, config, env = project_env
         generate_migration_autogen(minimal_model, config, env, project_root)
         captured = capsys.readouterr()
@@ -2205,8 +2414,11 @@ class TestMigrationAutogen:
         )
 
     def test_progress_message_when_initialized(
-        self, minimal_model, project_env, capsys
-    ):
+        self,
+        minimal_model: dict[str, Any],
+        project_env: Any,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
         project_root, config, env = project_env
         (project_root / "alembic.ini").write_text("[alembic]\n")
         generate_migration_autogen(minimal_model, config, env, project_root)
@@ -2219,9 +2431,10 @@ class TestMigrationAutogen:
 class TestInfrastructureGenerators:
     """Test infrastructure file generators."""
 
-    def test_generate_pyproject(self, project_env):
+    def test_generate_pyproject(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_pyproject(config, env, project_root, config)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert result["path"] == project_root / "pyproject.toml"
@@ -2232,33 +2445,38 @@ class TestInfrastructureGenerators:
         assert "[tool.ruff.format]" in result["content"]
         assert "[tool.mypy]" in result["content"]
 
-    def test_generate_pyproject_skips_existing(self, project_env):
+    def test_generate_pyproject_skips_existing(self, project_env: Any) -> None:
         project_root, config, env = project_env
         (project_root / "pyproject.toml").write_text("[project]\nname = 'existing'\n")
 
         result = generate_pyproject(config, env, project_root, config)
         assert result is None
 
-    def test_generate_pyproject_contains_runtime_deps(self, project_env):
+    def test_generate_pyproject_contains_runtime_deps(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_pyproject(config, env, project_root, config)
+        assert isinstance(result, dict)
 
         assert result is not None
         for dep in config.get("dependencies", {}).get("runtime", []):
             assert dep in result["content"]
 
-    def test_generate_pyproject_mutmut_targets_logic_files(self, project_env):
+    def test_generate_pyproject_mutmut_targets_logic_files(
+        self, project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_pyproject(config, env, project_root, config)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "validators.py" in result["content"]
         assert "utils.py" in result["content"]
         assert "constraints.py" in result["content"]
 
-    def test_generate_pyproject_has_package_discovery(self, project_env):
+    def test_generate_pyproject_has_package_discovery(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_pyproject(config, env, project_root, config)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "[tool.setuptools.packages.find]" in result["content"]
@@ -2267,18 +2485,22 @@ class TestInfrastructureGenerators:
         expected_root = str(Path(main_path).parent)
         assert f'where = ["{expected_root}"]' in result["content"]
 
-    def test_generate_pyproject_no_readme_file_reference(self, project_env):
+    def test_generate_pyproject_no_readme_file_reference(
+        self, project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_pyproject(config, env, project_root, config)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert 'readme = "README.md"' not in result["content"]
         assert "readme = {text" in result["content"]
 
-    def test_generate_pyproject_merges_extra_deps(self, project_env):
+    def test_generate_pyproject_merges_extra_deps(self, project_env: Any) -> None:
         project_root, config, env = project_env
         extra = ["bcrypt>=4.0.0", "passlib>=1.7.0"]
         result = generate_pyproject(config, env, project_root, config, extra_deps=extra)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "bcrypt>=4.0.0" in result["content"]
@@ -2286,20 +2508,24 @@ class TestInfrastructureGenerators:
         # Base runtime deps still present
         assert "fastapi" in result["content"]
 
-    def test_generate_pyproject_extra_deps_deduplicated(self, project_env):
+    def test_generate_pyproject_extra_deps_deduplicated(self, project_env: Any) -> None:
         project_root, config, env = project_env
         base_dep = config["dependencies"]["runtime"][0]
         extra = [base_dep, "bcrypt>=4.0.0"]
         result = generate_pyproject(config, env, project_root, config, extra_deps=extra)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert result["content"].count(base_dep) == 1
 
-    def test_generate_pyproject_style_defaults_omit_ruff_hardcodes(self, project_env):
+    def test_generate_pyproject_style_defaults_omit_ruff_hardcodes(
+        self, project_env: Any
+    ) -> None:
         """With no overrides, ruff-default keys are absent; ruff uses its own."""
         project_root, config, env = project_env
         config.pop("style", None)
         result = generate_pyproject(config, env, project_root, config)
+        assert isinstance(result, dict)
 
         assert result is not None
         content = result["content"]
@@ -2316,7 +2542,7 @@ class TestInfrastructureGenerators:
         assert 'requires-python = ">=3.11"' in content
         assert 'python_version = "3.11"' in content
 
-    def test_generate_pyproject_style_overrides_emitted(self, project_env):
+    def test_generate_pyproject_style_overrides_emitted(self, project_env: Any) -> None:
         """All four style overrides appear verbatim in the generated pyproject.toml."""
         project_root, config, env = project_env
         config["style"] = {
@@ -2326,6 +2552,7 @@ class TestInfrastructureGenerators:
             "indent_style": "tab",
         }
         result = generate_pyproject(config, env, project_root, config)
+        assert isinstance(result, dict)
 
         assert result is not None
         content = result["content"]
@@ -2338,12 +2565,15 @@ class TestInfrastructureGenerators:
         # target-version is auto-inferred by ruff from requires-python; not emitted.
         assert "target-version = " not in content
 
-    def test_generate_pyproject_python_version_drives_both_pins(self, project_env):
+    def test_generate_pyproject_python_version_drives_both_pins(
+        self, project_env: Any
+    ) -> None:
         """Setting only python_version updates requires-python AND mypy python_version,
         without emitting any ruff-level keys."""
         project_root, config, env = project_env
         config["style"] = {"python_version": "3.12"}
         result = generate_pyproject(config, env, project_root, config)
+        assert isinstance(result, dict)
 
         assert result is not None
         content = result["content"]
@@ -2354,11 +2584,12 @@ class TestInfrastructureGenerators:
         assert "quote-style = " not in content
         assert "indent-style = " not in content
 
-    def test_generate_pyproject_handles_null_style(self, project_env):
+    def test_generate_pyproject_handles_null_style(self, project_env: Any) -> None:
         """`style: null` in YAML parses as None — must not crash the generator."""
         project_root, config, env = project_env
         config["style"] = None
         result = generate_pyproject(config, env, project_root, config)
+        assert isinstance(result, dict)
 
         assert result is not None
         # Default python_version still applied, no ruff-level overrides emitted.
@@ -2366,26 +2597,30 @@ class TestInfrastructureGenerators:
         assert 'python_version = "3.11"' in result["content"]
         assert "line-length = " not in result["content"]
 
-    def test_generate_pyproject_project_config_style_wins(self, project_env):
+    def test_generate_pyproject_project_config_style_wins(
+        self, project_env: Any
+    ) -> None:
         """project_config.style takes precedence over config.style when both are set."""
         project_root, config, env = project_env
         config["style"] = {"line_length": 88}
         project_config = {**config, "style": {"line_length": 100}}
         result = generate_pyproject(config, env, project_root, project_config)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "line-length = 100" in result["content"]
         assert "line-length = 88" not in result["content"]
 
-    def test_generate_base(self, project_env):
+    def test_generate_base(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_base(config, env, project_root)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "base.py" in str(result["path"])
         assert "Base" in result["content"]
 
-    def test_generate_base_skips_existing(self, project_env):
+    def test_generate_base_skips_existing(self, project_env: Any) -> None:
         project_root, config, env = project_env
         output_path = project_root / config["paths"]["base"]
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2394,56 +2629,64 @@ class TestInfrastructureGenerators:
         result = generate_base(config, env, project_root)
         assert result is None
 
-    def test_generate_engine(self, project_env):
+    def test_generate_engine(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_engine(config, env, project_root)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "engine.py" in str(result["path"])
 
-    def test_generate_types(self, project_env):
+    def test_generate_types(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_types(config, env, project_root)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "types.py" in str(result["path"])
         assert "SqliteNumeric" in result["content"]
 
-    def test_generate_errors(self, project_env):
+    def test_generate_errors(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_errors(config, env, project_root)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "errors.py" in str(result["path"])
 
-    def test_generate_validators(self, project_env):
+    def test_generate_validators(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_validators(config, env, project_root)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "validators.py" in str(result["path"])
 
-    def test_generate_main(self, project_env):
+    def test_generate_main(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_main(
             config, env, project_root, domains=["users"], project_config=config
         )
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "main.py" in str(result["path"])
         assert "FastAPI" in result["content"]
         assert "users" in result["content"]
 
-    def test_generate_main_no_auth_router_when_strategy_unset(self, project_env):
+    def test_generate_main_no_auth_router_when_strategy_unset(
+        self, project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_main(
             config, env, project_root, domains=["users"], project_config=config
         )
+        assert isinstance(result, dict)
         # No auth.strategy → no auth-router import or include.
         assert "auth_router" not in result["content"]
         assert "/api/v1/auth" not in result["content"]
 
-    def test_generate_main_with_auth_router(self, project_env_per_entity):
+    def test_generate_main_with_auth_router(self, project_env_per_entity: Any) -> None:
         project_root, config, env = project_env_per_entity
         config = {
             **config,
@@ -2452,6 +2695,7 @@ class TestInfrastructureGenerators:
         result = generate_main(
             config, env, project_root, domains=["users"], project_config=config
         )
+        assert isinstance(result, dict)
         # Default auth.path resolves to backend.src.auth.router.
         assert (
             "from backend.src.auth.router import router as auth_router"
@@ -2462,7 +2706,9 @@ class TestInfrastructureGenerators:
             in result["content"]
         )
 
-    def test_generate_main_honors_custom_auth_path(self, project_env_per_entity):
+    def test_generate_main_honors_custom_auth_path(
+        self, project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         config = {
             **config,
@@ -2475,9 +2721,12 @@ class TestInfrastructureGenerators:
         result = generate_main(
             config, env, project_root, domains=["users"], project_config=config
         )
+        assert isinstance(result, dict)
         assert "from src.api.auth import router as auth_router" in result["content"]
 
-    def test_generate_main_includes_csrf_when_auth_set(self, project_env_per_entity):
+    def test_generate_main_includes_csrf_when_auth_set(
+        self, project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         config = {
             **config,
@@ -2486,6 +2735,7 @@ class TestInfrastructureGenerators:
         result = generate_main(
             config, env, project_root, domains=["users"], project_config=config
         )
+        assert isinstance(result, dict)
         # CSRF middleware imported from sibling of auth.path
         assert "from backend.src.auth.csrf import CsrfMiddleware" in result["content"]
         # Registered before CORS so CORS stays outermost
@@ -2494,14 +2744,17 @@ class TestInfrastructureGenerators:
         cors_idx = result["content"].index("app.add_middleware(\n    CORSMiddleware")
         assert csrf_idx < cors_idx, "CSRF must be added before CORS"
 
-    def test_generate_main_no_csrf_when_strategy_unset(self, project_env):
+    def test_generate_main_no_csrf_when_strategy_unset(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_main(
             config, env, project_root, domains=["users"], project_config=config
         )
+        assert isinstance(result, dict)
         assert "CsrfMiddleware" not in result["content"]
 
-    def test_generate_main_includes_rate_limit_when_set(self, project_env_per_entity):
+    def test_generate_main_includes_rate_limit_when_set(
+        self, project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         config = {
             **config,
@@ -2510,6 +2763,7 @@ class TestInfrastructureGenerators:
         result = generate_main(
             config, env, project_root, domains=["users"], project_config=config
         )
+        assert isinstance(result, dict)
         content = result["content"]
         # slowapi pieces imported and limiter pulled from sibling of auth.path
         assert "from slowapi import _rate_limit_exceeded_handler" in content
@@ -2522,16 +2776,21 @@ class TestInfrastructureGenerators:
             in content
         )
 
-    def test_generate_main_no_rate_limit_when_strategy_unset(self, project_env):
+    def test_generate_main_no_rate_limit_when_strategy_unset(
+        self, project_env: Any
+    ) -> None:
         project_root, config, env = project_env
         result = generate_main(
             config, env, project_root, domains=["users"], project_config=config
         )
+        assert isinstance(result, dict)
         content = result["content"]
         assert "RateLimitExceeded" not in content
         assert "app.state.limiter" not in content
 
-    def test_generate_main_no_rate_limit_when_disabled(self, project_env_per_entity):
+    def test_generate_main_no_rate_limit_when_disabled(
+        self, project_env_per_entity: Any
+    ) -> None:
         project_root, config, env = project_env_per_entity
         config = {
             **config,
@@ -2544,23 +2803,25 @@ class TestInfrastructureGenerators:
         result = generate_main(
             config, env, project_root, domains=["users"], project_config=config
         )
+        assert isinstance(result, dict)
         content = result["content"]
         # Auth + CSRF still wired, rate-limit pieces absent
         assert "auth_router" in content
         assert "RateLimitExceeded" not in content
         assert "app.state.limiter" not in content
 
-    def test_generate_test_conftest_root(self, project_env):
+    def test_generate_test_conftest_root(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_test_conftest_root(
             config, env, project_root, domains=["users"]
         )
+        assert isinstance(result, dict)
 
         assert result is not None
         assert "conftest.py" in str(result["path"])
         assert "client" in result["content"]
 
-    def test_generate_infrastructure_creates_all(self, project_env):
+    def test_generate_infrastructure_creates_all(self, project_env: Any) -> None:
         project_root, config, env = project_env
         files = generate_infrastructure(
             config=config,
@@ -2577,7 +2838,7 @@ class TestInfrastructureGenerators:
         assert "main.py" in file_names
         assert "pyproject.toml" in file_names
 
-    def test_infrastructure_skips_existing(self, project_env):
+    def test_infrastructure_skips_existing(self, project_env: Any) -> None:
         """Infrastructure: some files skip if existing, others always regenerate."""
         project_root, config, env = project_env
 
@@ -2610,7 +2871,7 @@ class TestInfrastructureGenerators:
 class TestImmutableEntityGeneration:
     """Test generation for immutable entities (no update endpoint)."""
 
-    def test_immutable_entity_no_update_model(self, project_env):
+    def test_immutable_entity_no_update_model(self, project_env: Any) -> None:
         project_root, config, env = project_env
         model = {
             "domain": "events",
@@ -2637,12 +2898,13 @@ class TestImmutableEntityGeneration:
         }
 
         results = generate_api_models(model, config, env, project_root)
+        assert isinstance(results, list)
         request = next(r for r in results if "request" in str(r["path"]))
 
         assert "CreateEventRequest" in request["content"]
         assert "UpdateEventRequest" not in request["content"]
 
-    def test_immutable_entity_no_put_route(self, project_env):
+    def test_immutable_entity_no_put_route(self, project_env: Any) -> None:
         project_root, config, env = project_env
         model = {
             "domain": "events",
@@ -2670,6 +2932,7 @@ class TestImmutableEntityGeneration:
         result = generate_api_routes(
             model, config, env, project_root, enums={}, constraints={}
         )
+        assert isinstance(result, dict)
         assert "@router.put" not in result["content"]
         assert "async def update_event" not in result["content"]
         # POST and DELETE should still exist
@@ -2680,17 +2943,19 @@ class TestImmutableEntityGeneration:
 class TestAuthRouterGenerator:
     """Smoke-test the §12 auth_router emission helper."""
 
-    def _project_config(self):
+    def _project_config(self) -> dict[str, Any]:
         return {"project": {"name": "Test"}}
 
-    def test_returns_none_when_strategy_unset(self, project_env_per_entity):
+    def test_returns_none_when_strategy_unset(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_auth_router
 
         project_root, config, env = project_env_per_entity
         result = generate_auth_router(config, env, project_root, self._project_config())
         assert result is None
 
-    def test_emits_router_when_strategy_set(self, project_env_per_entity):
+    def test_emits_router_when_strategy_set(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_auth_router
 
         project_root, config, env = project_env_per_entity
@@ -2700,6 +2965,7 @@ class TestAuthRouterGenerator:
         }
 
         result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
 
         assert result is not None
         assert result["path"] == project_root / "backend/src/auth/router.py"
@@ -2718,7 +2984,7 @@ class TestAuthRouterGenerator:
         # Pepper env name baked in from config
         assert '_PEPPER_ENV = "PEPPER"' in content
 
-    def test_emits_per_entity_imports(self, project_env_per_entity):
+    def test_emits_per_entity_imports(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_auth_router
 
         project_root, config, env = project_env_per_entity
@@ -2728,12 +2994,13 @@ class TestAuthRouterGenerator:
         }
 
         result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
         content = result["content"]
         assert "from src.database.models.user import User" in content
         assert "from src.database.models.user_session import UserSession" in content
         assert "from src.database.engine import get_session" in content
 
-    def test_returns_none_when_file_exists(self, project_env_per_entity):
+    def test_returns_none_when_file_exists(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_auth_router
 
         project_root, config, env = project_env_per_entity
@@ -2749,7 +3016,7 @@ class TestAuthRouterGenerator:
         result = generate_auth_router(config, env, project_root, self._project_config())
         assert result is None
 
-    def test_honors_custom_auth_path(self, project_env_per_entity):
+    def test_honors_custom_auth_path(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_auth_router
 
         project_root, config, env = project_env_per_entity
@@ -2763,10 +3030,13 @@ class TestAuthRouterGenerator:
         }
 
         result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
         assert result is not None
         assert result["path"] == project_root / "src/auth/api.py"
 
-    def test_wires_csrf_cookies_in_login_logout(self, project_env_per_entity):
+    def test_wires_csrf_cookies_in_login_logout(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_auth_router
 
         project_root, config, env = project_env_per_entity
@@ -2776,6 +3046,7 @@ class TestAuthRouterGenerator:
         }
 
         result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
         content = result["content"]
         # Relative import keeps router and csrf in the same package
         assert "from .csrf import clear_csrf_cookie, set_csrf_cookie" in content
@@ -2784,7 +3055,9 @@ class TestAuthRouterGenerator:
         # Logout clears it alongside the session cookie
         assert "clear_csrf_cookie(response)" in content
 
-    def test_emits_rate_limit_decorators_by_default(self, project_env_per_entity):
+    def test_emits_rate_limit_decorators_by_default(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_auth_router
 
         project_root, config, env = project_env_per_entity
@@ -2793,6 +3066,7 @@ class TestAuthRouterGenerator:
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
         result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
         content = result["content"]
         # Sibling import for the limiter and limit constants
         assert (
@@ -2813,7 +3087,7 @@ class TestAuthRouterGenerator:
         forgot_block = content.split("async def forgot_password(")[1].split(") ->")[0]
         assert "request: Request" in forgot_block
 
-    def test_no_rate_limit_when_disabled(self, project_env_per_entity):
+    def test_no_rate_limit_when_disabled(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_auth_router
 
         project_root, config, env = project_env_per_entity
@@ -2826,6 +3100,7 @@ class TestAuthRouterGenerator:
             },
         }
         result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
         content = result["content"]
         assert "@limiter.limit" not in content
         assert "from .rate_limit" not in content
@@ -2835,7 +3110,9 @@ class TestAuthRouterGenerator:
         forgot_block = content.split("async def forgot_password(")[1].split(") ->")[0]
         assert "request: Request" not in forgot_block
 
-    def test_resolves_session_secret_via_helper(self, project_env_per_entity):
+    def test_resolves_session_secret_via_helper(
+        self, project_env_per_entity: Any
+    ) -> None:
         """Production must fail-closed when SESSION_SECRET_KEY is missing."""
         from model_generator.generators.infrastructure import generate_auth_router
 
@@ -2845,6 +3122,7 @@ class TestAuthRouterGenerator:
             "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
         }
         result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
         content = result["content"]
         assert "def _resolve_session_secret() -> str:" in content
         assert 'os.environ.get("APP_ENV") == "production"' in content
@@ -2854,7 +3132,7 @@ class TestAuthRouterGenerator:
         # Serializer is initialized via the helper, not the inline get-with-default.
         assert "URLSafeTimedSerializer(\n    _resolve_session_secret()\n)" in content
 
-    def test_password_reset_email_is_async(self, project_env_per_entity):
+    def test_password_reset_email_is_async(self, project_env_per_entity: Any) -> None:
         """Email send must be async to avoid blocking the event loop."""
         from model_generator.generators.infrastructure import generate_auth_router
 
@@ -2864,6 +3142,7 @@ class TestAuthRouterGenerator:
             "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
         }
         result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
         content = result["content"]
         assert "async def _send_password_reset_email(" in content
         # forgot_password must await it
@@ -2873,13 +3152,15 @@ class TestAuthRouterGenerator:
 class TestCsrfGenerator:
     """Smoke-test the §12.4 CSRF middleware emission helper."""
 
-    def test_returns_none_when_strategy_unset(self, project_env_per_entity):
+    def test_returns_none_when_strategy_unset(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_csrf
 
         project_root, config, env = project_env_per_entity
         assert generate_csrf(config, env, project_root) is None
 
-    def test_emits_csrf_when_strategy_set(self, project_env_per_entity):
+    def test_emits_csrf_when_strategy_set(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_csrf
 
         project_root, config, env = project_env_per_entity
@@ -2889,6 +3170,7 @@ class TestCsrfGenerator:
         }
 
         result = generate_csrf(config, env, project_root)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert result["path"] == project_root / "backend/src/auth/csrf.py"
@@ -2913,7 +3195,9 @@ class TestCsrfGenerator:
         assert "/api/v1/auth/forgot-password" in content
         assert "/api/v1/auth/reset-password" in content
 
-    def test_session_cookie_name_follows_auth_cookie_name(self, project_env_per_entity):
+    def test_session_cookie_name_follows_auth_cookie_name(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_csrf
 
         project_root, config, env = project_env_per_entity
@@ -2927,12 +3211,13 @@ class TestCsrfGenerator:
         }
 
         result = generate_csrf(config, env, project_root)
+        assert isinstance(result, dict)
         assert result is not None
         # Custom cookie_name flows from config into SESSION_COOKIE_NAME so the
         # gating check matches what the auth router actually sets.
         assert 'SESSION_COOKIE_NAME = "sid"' in result["content"]
 
-    def test_returns_none_when_file_exists(self, project_env_per_entity):
+    def test_returns_none_when_file_exists(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_csrf
 
         project_root, config, env = project_env_per_entity
@@ -2947,7 +3232,9 @@ class TestCsrfGenerator:
 
         assert generate_csrf(config, env, project_root) is None
 
-    def test_csrf_path_follows_custom_auth_path(self, project_env_per_entity):
+    def test_csrf_path_follows_custom_auth_path(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_csrf
 
         project_root, config, env = project_env_per_entity
@@ -2961,6 +3248,7 @@ class TestCsrfGenerator:
         }
 
         result = generate_csrf(config, env, project_root)
+        assert isinstance(result, dict)
         # csrf.py is sibling of auth.path
         assert result["path"] == project_root / "src/api/csrf.py"
 
@@ -2974,7 +3262,9 @@ class TestEncryptedBytesGenerator:
     no infrastructure code emitted the imported module.
     """
 
-    def test_returns_none_when_no_encrypted_binary(self, project_env_per_entity):
+    def test_returns_none_when_no_encrypted_binary(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_encrypted_bytes
 
         project_root, config, env = project_env_per_entity
@@ -2982,13 +3272,14 @@ class TestEncryptedBytesGenerator:
         # no binary+encrypt fields must not get a stray cryptography import.
         assert generate_encrypted_bytes(config, env, project_root) is None
 
-    def test_emits_when_flag_set(self, project_env_per_entity):
+    def test_emits_when_flag_set(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_encrypted_bytes
 
         project_root, config, env = project_env_per_entity
         result = generate_encrypted_bytes(
             config, env, project_root, has_encrypted_binary=True
         )
+        assert isinstance(result, dict)
 
         assert result is not None
         # Lives next to the model files so `from .encrypted_bytes import …`
@@ -3011,7 +3302,7 @@ class TestEncryptedBytesGenerator:
         assert "{-#" not in content
         assert "{#-" not in content
 
-    def test_returns_none_when_file_exists(self, project_env_per_entity):
+    def test_returns_none_when_file_exists(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_encrypted_bytes
 
         project_root, config, env = project_env_per_entity
@@ -3027,7 +3318,9 @@ class TestEncryptedBytesGenerator:
             is None
         )
 
-    def test_path_follows_custom_database_models(self, project_env_per_entity):
+    def test_path_follows_custom_database_models(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_encrypted_bytes
 
         project_root, _config, env = project_env_per_entity
@@ -3038,13 +3331,16 @@ class TestEncryptedBytesGenerator:
         result = generate_encrypted_bytes(
             custom_config, env, project_root, has_encrypted_binary=True
         )
+        assert isinstance(result, dict)
 
         assert result is not None
         assert (
             result["path"] == project_root / "backend/lib/db/models/encrypted_bytes.py"
         )
 
-    def test_emission_wired_into_generate_infrastructure(self, project_env_per_entity):
+    def test_emission_wired_into_generate_infrastructure(
+        self, project_env_per_entity: Any
+    ) -> None:
         """The aggregator must include encrypted_bytes.py when the flag is set."""
         from model_generator.generators.infrastructure import generate_infrastructure
 
@@ -3062,7 +3358,9 @@ class TestEncryptedBytesGenerator:
         emitted_names = {p.name for p in generated}
         assert "encrypted_bytes.py" in emitted_names
 
-    def test_aggregator_skips_when_flag_unset(self, project_env_per_entity):
+    def test_aggregator_skips_when_flag_unset(
+        self, project_env_per_entity: Any
+    ) -> None:
         """No binary+encrypt fields anywhere → no encrypted_bytes.py."""
         from model_generator.generators.infrastructure import generate_infrastructure
 
@@ -3084,13 +3382,17 @@ class TestEncryptedBytesGenerator:
 class TestRateLimitGenerator:
     """Smoke-test the §12.5 rate-limit module emission helper."""
 
-    def test_returns_none_when_strategy_unset(self, project_env_per_entity):
+    def test_returns_none_when_strategy_unset(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_rate_limit
 
         project_root, config, env = project_env_per_entity
         assert generate_rate_limit(config, env, project_root) is None
 
-    def test_returns_none_when_explicitly_disabled(self, project_env_per_entity):
+    def test_returns_none_when_explicitly_disabled(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_rate_limit
 
         project_root, config, env = project_env_per_entity
@@ -3104,7 +3406,9 @@ class TestRateLimitGenerator:
         }
         assert generate_rate_limit(config, env, project_root) is None
 
-    def test_emits_module_with_default_limits(self, project_env_per_entity):
+    def test_emits_module_with_default_limits(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_rate_limit
 
         project_root, config, env = project_env_per_entity
@@ -3113,6 +3417,7 @@ class TestRateLimitGenerator:
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
         result = generate_rate_limit(config, env, project_root)
+        assert isinstance(result, dict)
 
         assert result is not None
         assert result["path"] == project_root / "backend/src/auth/rate_limit.py"
@@ -3129,7 +3434,7 @@ class TestRateLimitGenerator:
         assert "limiter = Limiter(key_func=get_remote_address" in content
         assert 'os.environ.get("RATELIMIT_STORAGE_URI"' in content
 
-    def test_uses_configured_limits(self, project_env_per_entity):
+    def test_uses_configured_limits(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_rate_limit
 
         project_root, config, env = project_env_per_entity
@@ -3146,12 +3451,15 @@ class TestRateLimitGenerator:
             },
         }
         result = generate_rate_limit(config, env, project_root)
+        assert isinstance(result, dict)
         content = result["content"]
         assert 'LOGIN_LIMIT = "10/minute"' in content
         assert 'REGISTER_LIMIT = "5/hour"' in content
         assert 'FORGOT_LIMIT = "2/hour"' in content
 
-    def test_uses_redis_default_uri_when_backend_redis(self, project_env_per_entity):
+    def test_uses_redis_default_uri_when_backend_redis(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_rate_limit
 
         project_root, config, env = project_env_per_entity
@@ -3164,6 +3472,7 @@ class TestRateLimitGenerator:
             },
         }
         result = generate_rate_limit(config, env, project_root)
+        assert isinstance(result, dict)
         content = result["content"]
         assert (
             'os.environ.get("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")'
@@ -3172,7 +3481,7 @@ class TestRateLimitGenerator:
         # Memory default is replaced, not just appended.
         assert 'os.environ.get("RATELIMIT_STORAGE_URI", "memory://")' not in content
 
-    def test_returns_none_when_file_exists(self, project_env_per_entity):
+    def test_returns_none_when_file_exists(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_rate_limit
 
         project_root, config, env = project_env_per_entity
@@ -3186,7 +3495,9 @@ class TestRateLimitGenerator:
 
         assert generate_rate_limit(config, env, project_root) is None
 
-    def test_module_path_follows_custom_auth_path(self, project_env_per_entity):
+    def test_module_path_follows_custom_auth_path(
+        self, project_env_per_entity: Any
+    ) -> None:
         from model_generator.generators.infrastructure import generate_rate_limit
 
         project_root, config, env = project_env_per_entity
@@ -3199,6 +3510,7 @@ class TestRateLimitGenerator:
             },
         }
         result = generate_rate_limit(config, env, project_root)
+        assert isinstance(result, dict)
         # rate_limit.py is sibling of auth.path
         assert result["path"] == project_root / "src/api/rate_limit.py"
 
@@ -3212,7 +3524,7 @@ class TestApiTestsEndpointGates:
     """
 
     @staticmethod
-    def _model(endpoints: list[str]) -> dict:
+    def _model(endpoints: list[str]) -> dict[str, Any]:
         return {
             "domain": "items",
             "entities": {
@@ -3237,7 +3549,9 @@ class TestApiTestsEndpointGates:
             },
         }
 
-    def test_skips_create_tests_when_create_endpoint_excluded(self, project_env):
+    def test_skips_create_tests_when_create_endpoint_excluded(
+        self, project_env: Any
+    ) -> None:
         """Dropping `create` suppresses POST tests AND every seeding-required test."""
         project_root, config, env = project_env
         result = generate_api_tests(
@@ -3248,6 +3562,7 @@ class TestApiTestsEndpointGates:
             enums={},
             constraints={},
         )
+        assert isinstance(result, dict)
         content = result["content"]
 
         # Section 2 (CREATE) tests gone
@@ -3274,7 +3589,9 @@ class TestApiTestsEndpointGates:
         assert "def test_put_item_not_found" in content
         assert "def test_delete_item_not_found" in content
 
-    def test_skips_list_tests_when_list_endpoint_excluded(self, project_env):
+    def test_skips_list_tests_when_list_endpoint_excluded(
+        self, project_env: Any
+    ) -> None:
         """Dropping `list` suppresses Section 1 (READ list) tests."""
         project_root, config, env = project_env
         result = generate_api_tests(
@@ -3285,6 +3602,7 @@ class TestApiTestsEndpointGates:
             enums={},
             constraints={},
         )
+        assert isinstance(result, dict)
         content = result["content"]
         assert "def test_get_items_list_success" not in content
         assert "def test_get_items_list_pagination" not in content
@@ -3294,7 +3612,9 @@ class TestApiTestsEndpointGates:
         assert "def test_post_item_success" in content
         assert "def test_get_item_by_id_success" in content
 
-    def test_skips_get_by_id_tests_when_get_endpoint_excluded(self, project_env):
+    def test_skips_get_by_id_tests_when_get_endpoint_excluded(
+        self, project_env: Any
+    ) -> None:
         """Dropping `get` suppresses Section 3 (INDIVIDUAL READ) tests."""
         project_root, config, env = project_env
         result = generate_api_tests(
@@ -3305,6 +3625,7 @@ class TestApiTestsEndpointGates:
             enums={},
             constraints={},
         )
+        assert isinstance(result, dict)
         content = result["content"]
         assert "def test_get_item_by_id_success" not in content
         assert "def test_get_item_by_id_not_found" not in content
@@ -3347,7 +3668,9 @@ class TestConftestGeneratorRateLimitReset:
         )
         return models_dir
 
-    def test_no_reset_fixture_when_rate_limiter_import_none(self, tmp_path):
+    def test_no_reset_fixture_when_rate_limiter_import_none(
+        self, tmp_path: Path
+    ) -> None:
         from model_generator.utils.conftest_generator import (
             generate_conftest_content,
         )
@@ -3357,7 +3680,9 @@ class TestConftestGeneratorRateLimitReset:
         assert "_reset_rate_limiter" not in content
         assert "limiter.reset()" not in content
 
-    def test_emits_reset_fixture_when_rate_limiter_import_set(self, tmp_path):
+    def test_emits_reset_fixture_when_rate_limiter_import_set(
+        self, tmp_path: Path
+    ) -> None:
         from model_generator.utils.conftest_generator import (
             generate_conftest_content,
         )
@@ -3375,13 +3700,13 @@ class TestConftestGeneratorRateLimitReset:
 class TestComputeAuthExtra:
     """Test the _compute_auth_extra helper (§12 review #2)."""
 
-    def test_no_strategy_returns_empty(self):
+    def test_no_strategy_returns_empty(self) -> None:
         from model_generator.generate import _compute_auth_extra
 
         assert _compute_auth_extra({}) == []
         assert _compute_auth_extra({"auth": {}}) == []
 
-    def test_strategy_set_includes_bcrypt_itsdangerous_email_validator(self):
+    def test_strategy_set_includes_bcrypt_itsdangerous_email_validator(self) -> None:
         from model_generator.generate import _compute_auth_extra
 
         extra = _compute_auth_extra(
@@ -3396,7 +3721,7 @@ class TestComputeAuthExtra:
         # redis is opt-in
         assert not any(dep.startswith("redis") for dep in extra)
 
-    def test_rate_limit_disabled_omits_slowapi(self):
+    def test_rate_limit_disabled_omits_slowapi(self) -> None:
         from model_generator.generate import _compute_auth_extra
 
         extra = _compute_auth_extra(
@@ -3411,7 +3736,7 @@ class TestComputeAuthExtra:
         assert not any(dep.startswith("slowapi") for dep in extra)
         assert not any(dep.startswith("redis") for dep in extra)
 
-    def test_redis_backend_adds_redis_dep(self):
+    def test_redis_backend_adds_redis_dep(self) -> None:
         from model_generator.generate import _compute_auth_extra
 
         extra = _compute_auth_extra(
@@ -3429,12 +3754,12 @@ class TestComputeAuthExtra:
 class TestHasEncryptedBinaryField:
     """Test the _has_encrypted_binary_field helper (§13 emission gate)."""
 
-    def test_empty_models_returns_false(self):
+    def test_empty_models_returns_false(self) -> None:
         from model_generator.generate import _has_encrypted_binary_field
 
         assert _has_encrypted_binary_field([]) is False
 
-    def test_model_without_binary_field_returns_false(self):
+    def test_model_without_binary_field_returns_false(self) -> None:
         from model_generator.generate import _has_encrypted_binary_field
 
         models = [
@@ -3446,7 +3771,7 @@ class TestHasEncryptedBinaryField:
         ]
         assert _has_encrypted_binary_field(models) is False
 
-    def test_binary_field_without_encrypt_returns_false(self):
+    def test_binary_field_without_encrypt_returns_false(self) -> None:
         """Plain ``binary`` (no encrypt block) goes to LargeBinary directly —
         no EncryptedBytes TypeDecorator needed."""
         from model_generator.generate import _has_encrypted_binary_field
@@ -3460,7 +3785,7 @@ class TestHasEncryptedBinaryField:
         ]
         assert _has_encrypted_binary_field(models) is False
 
-    def test_binary_with_encrypt_returns_true(self):
+    def test_binary_with_encrypt_returns_true(self) -> None:
         from model_generator.generate import _has_encrypted_binary_field
 
         models = [
@@ -3479,11 +3804,11 @@ class TestHasEncryptedBinaryField:
         ]
         assert _has_encrypted_binary_field(models) is True
 
-    def test_detected_in_later_model_in_list(self):
+    def test_detected_in_later_model_in_list(self) -> None:
         """Mixed-project case: only the second model carries an encrypted field."""
         from model_generator.generate import _has_encrypted_binary_field
 
-        models = [
+        models: list[dict[str, Any]] = [
             {"entities": {"User": {"fields": {"email": {"type": "text"}}}}},
             {
                 "entities": {

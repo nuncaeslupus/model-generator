@@ -3,6 +3,7 @@ Database model generation utilities.
 """
 
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment
 
@@ -12,8 +13,8 @@ from ..utils.templates import snake_case
 
 
 def generate_database_model(
-    model: dict, config: dict, env: Environment, project_root: Path
-) -> dict | list[dict]:
+    model: dict[str, Any], config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | list[dict[str, Any]]:
     """Generate SQLAlchemy database model(s).
 
     In per-entity layout (the default) returns one dict per entity, each
@@ -45,8 +46,8 @@ def generate_database_model(
 
 
 def generate_init(
-    model: dict, config: dict, env: Environment, project_root: Path
-) -> dict | None:
+    model: dict[str, Any], config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
     """Generate __init__.py with exports for all model files."""
     output_dir = project_root / config["paths"]["database_models"]
     domains = scan_model_files(output_dir)
@@ -96,8 +97,8 @@ def generate_init(
 
 
 def generate_factories(
-    model: dict, config: dict, env: Environment, project_root: Path
-) -> dict | list[dict]:
+    model: dict[str, Any], config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | list[dict[str, Any]]:
     """Generate FactoryBoy factories for test data generation.
 
     Per-entity layout returns one factory file per entity; per-domain returns

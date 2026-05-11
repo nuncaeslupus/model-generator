@@ -12,7 +12,7 @@ import yaml
 class TestInteractiveFlag:
     """Test --interactive CLI flag."""
 
-    def test_interactive_launches_wizard(self):
+    def test_interactive_launches_wizard(self) -> None:
         """--interactive should call run_wizard and return."""
         from model_generator.generate import main
 
@@ -25,7 +25,7 @@ class TestInteractiveFlag:
             main()
             mock_wizard.assert_called_once()
 
-    def test_clear_only_without_model(self, tmp_path):
+    def test_clear_only_without_model(self, tmp_path: Path) -> None:
         """--clear-only should work without a model argument."""
         from model_generator.generate import main
 
@@ -49,7 +49,7 @@ class TestInteractiveFlag:
         finally:
             os.chdir(original_cwd)
 
-    def test_model_required_without_flags(self):
+    def test_model_required_without_flags(self) -> None:
         """Without --clear-only or --interactive, model is required."""
         from model_generator.generate import main
 
@@ -60,7 +60,7 @@ class TestInteractiveFlag:
             main()
         assert exc_info.value.code == 1
 
-    def test_nonexistent_model_file(self):
+    def test_nonexistent_model_file(self) -> None:
         """Non-existent model file should exit with error."""
         from model_generator.generate import main
 
@@ -75,7 +75,7 @@ class TestInteractiveFlag:
 class TestDryRunAndDiff:
     """Test --dry-run and --diff modes."""
 
-    def test_dry_run_creates_no_files(self, tmp_path):
+    def test_dry_run_creates_no_files(self, tmp_path: Path) -> None:
         from model_generator.generate import generate
 
         model = {
@@ -132,7 +132,7 @@ class TestDryRunAndDiff:
         finally:
             os.chdir(original_cwd)
 
-    def test_diff_creates_no_files(self, tmp_path):
+    def test_diff_creates_no_files(self, tmp_path: Path) -> None:
         from model_generator.generate import generate
 
         model = {
@@ -247,7 +247,7 @@ class TestProjectRootResolution:
         )
         return models_dir
 
-    def test_no_model_generator_yaml_exits_with_error(self, tmp_path):
+    def test_no_model_generator_yaml_exits_with_error(self, tmp_path: Path) -> None:
         """main() should exit with error if no .model-generator.yaml is found."""
         from model_generator.generate import main
 
@@ -272,8 +272,8 @@ class TestProjectRootResolution:
             os.chdir(original_cwd)
 
     def test_project_root_resolved_from_model_path_when_run_outside_project(
-        self, tmp_path
-    ):
+        self, tmp_path: Path
+    ) -> None:
         """main() should resolve project root to model's parent.parent, not cwd."""
         from model_generator.generate import main
 
@@ -294,7 +294,9 @@ class TestProjectRootResolution:
         finally:
             os.chdir(original_cwd)
 
-    def test_refuses_to_generate_into_model_generator_own_directory(self, tmp_path):
+    def test_refuses_to_generate_into_model_generator_own_directory(
+        self, tmp_path: Path
+    ) -> None:
         """main() should refuse if project_root resolves to model-generator itself."""
         from model_generator.generate import _GENERATOR_OWN_DIR, _validate_project_root
 
@@ -302,7 +304,9 @@ class TestProjectRootResolution:
             _validate_project_root(_GENERATOR_OWN_DIR)
         assert exc_info.value.code == 1
 
-    def test_validate_project_root_passes_for_valid_project(self, tmp_path):
+    def test_validate_project_root_passes_for_valid_project(
+        self, tmp_path: Path
+    ) -> None:
         """_validate_project_root() passes for a dir with .model-generator.yaml."""
         import yaml
 

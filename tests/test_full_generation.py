@@ -1,5 +1,7 @@
 import os
 import shutil
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -7,7 +9,7 @@ from model_generator import generate
 
 
 @pytest.fixture
-def example_project(tmp_path, project_root):
+def example_project(tmp_path: Path, project_root: Any) -> tuple[Path, Path]:
     """
     Setup a temporary project directory with:
     1. The example project config
@@ -34,7 +36,7 @@ def example_project(tmp_path, project_root):
     return tmp_path, model_dest
 
 
-def test_generate_from_examples(example_project):
+def test_generate_from_examples(example_project: Any) -> None:
     """
     Integration test that runs the generator against the repository's
     actual examples.
@@ -91,7 +93,7 @@ def test_generate_from_examples(example_project):
         os.chdir(original_cwd)
 
 
-def test_clean_command(example_project):
+def test_clean_command(example_project: Any) -> None:
     """Test that the cleanup command works correctly."""
     project_dir, model_path = example_project
     original_cwd = os.getcwd()
