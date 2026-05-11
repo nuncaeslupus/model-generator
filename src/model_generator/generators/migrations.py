@@ -3,13 +3,14 @@ Migration generation utilities (Alembic).
 """
 
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment
 
 
 def generate_migration_init(
-    model: dict, config: dict, env: Environment, project_root: Path
-) -> list[dict]:
+    model: dict[str, Any], config: dict[str, Any], env: Environment, project_root: Path
+) -> list[dict[str, Any]]:
     """Initialize Alembic migration structure."""
     outputs = []
 
@@ -96,8 +97,8 @@ alembic upgrade head
 
 
 def generate_migration_autogen(
-    model: dict, config: dict, env: Environment, project_root: Path
-) -> dict | None:
+    model: dict[str, Any], config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
     """
     Return instructions for running Alembic autogenerate.
 

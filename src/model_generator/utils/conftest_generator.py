@@ -8,13 +8,13 @@ then generates pytest fixtures in the correct order.
 
 import json
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from .constants import GENERATED_MARKER
 from .loaders import load_shared_constraints
 
 
-def load_all_models(models_dir: Path) -> dict[str, dict]:
+def load_all_models(models_dir: Path) -> dict[str, dict[str, Any]]:
     """Load all model JSON files."""
     models = {}
     for json_file in sorted(models_dir.glob("*.model.json")):
@@ -46,7 +46,7 @@ def load_enums(models_dir: Path) -> dict[str, str]:
         return enums
 
 
-def extract_entities(models: dict[str, dict]) -> dict[str, dict]:
+def extract_entities(models: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """
     Extract all entities across all domains.
 
@@ -73,7 +73,9 @@ def extract_entities(models: dict[str, dict]) -> dict[str, dict]:
     return entities
 
 
-def find_foreign_key_dependencies(entities: dict[str, dict]) -> dict[str, set[str]]:
+def find_foreign_key_dependencies(
+    entities: dict[str, dict[str, Any]],
+) -> dict[str, set[str]]:
     """
     Find which entities depend on which others via foreign keys.
 
@@ -133,7 +135,7 @@ def topological_sort(
     return sorted_entities
 
 
-def get_fixture_name(entity_name: str, entity_data: dict) -> str:
+def get_fixture_name(entity_name: str, entity_data: dict[str, Any]) -> str:
     """
     Generate fixture name for entity.
     For most entities: {entity_name.lower()}_id
@@ -151,7 +153,7 @@ def get_fixture_name(entity_name: str, entity_data: dict) -> str:
     return f"{entity_name.lower()}_id"
 
 
-def get_primary_key_field(entity_data: dict) -> str:
+def get_primary_key_field(entity_data: dict[str, Any]) -> str:
     """Get the primary key field name."""
     for field_name, field in entity_data["fields"].items():
         if field.get("primary_key"):
@@ -161,10 +163,10 @@ def get_primary_key_field(entity_data: dict) -> str:
 
 def generate_minimal_create_data(
     entity_name: str,
-    entity_data: dict,
+    entity_data: dict[str, Any],
     dependencies: dict[str, str],
     enums: dict[str, str],
-    constraints: dict[str, dict] | None = None,
+    constraints: dict[str, dict[str, Any]] | None = None,
 ) -> list[str]:
     """
     Generate minimal create data for an entity.
@@ -271,7 +273,9 @@ def generate_minimal_create_data(
     return lines
 
 
-def needs_unique_suffix(entity_data: dict, dep_mapping: dict[str, str]) -> bool:
+def needs_unique_suffix(
+    entity_data: dict[str, Any], dep_mapping: dict[str, str]
+) -> bool:
     """Check if entity needs unique_suffix variable."""
     for field_name, field in entity_data["fields"].items():
         # Skip excluded and auto-generated fields
@@ -307,12 +311,12 @@ def needs_unique_suffix(entity_data: dict, dep_mapping: dict[str, str]) -> bool:
 
 def generate_fixture(
     entity_name: str,
-    entity_data: dict,
+    entity_data: dict[str, Any],
     fixture_name: str,
     required_deps: set[str],
-    all_entities: dict[str, dict],
+    all_entities: dict[str, dict[str, Any]],
     enums: dict[str, str],
-    constraints: dict[str, dict] | None = None,
+    constraints: dict[str, dict[str, Any]] | None = None,
     auth_strategy: str | None = None,
 ) -> list[str]:
     """Generate fixture code for an entity.
@@ -392,7 +396,7 @@ def generate_fixture(
     return lines
 
 
-def find_alt_fixtures_needed(entities: dict[str, dict]) -> set[str]:
+def find_alt_fixtures_needed(entities: dict[str, dict[str, Any]]) -> set[str]:
     """
     Find which fixture names need _alt variants.
 
@@ -427,9 +431,9 @@ def find_alt_fixtures_needed(entities: dict[str, dict]) -> set[str]:
 def generate_alt_fixture(
     base_fixture_name: str,
     entity_name: str,
-    entity_data: dict,
+    entity_data: dict[str, Any],
     enums: dict[str, str],
-    constraints: dict[str, dict] | None = None,
+    constraints: dict[str, dict[str, Any]] | None = None,
     auth_strategy: str | None = None,
 ) -> list[str]:
     """Generate an _alt fixture that creates a second instance of the same entity."""
@@ -485,10 +489,10 @@ def generate_alt_fixture(
 
 
 def generate_conftest(
-    entities: dict[str, dict],
+    entities: dict[str, dict[str, Any]],
     dependencies: dict[str, set[str]],
     enums: dict[str, str],
-    constraints: dict[str, dict] | None = None,
+    constraints: dict[str, dict[str, Any]] | None = None,
     auth_strategy: str | None = None,
     rate_limiter_import: str | None = None,
 ) -> str:

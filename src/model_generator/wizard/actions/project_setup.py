@@ -5,6 +5,7 @@ Action: Setup or update project settings (.model-generator.yaml).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -93,7 +94,7 @@ def _create_config(config_path: Path, project_root: Path) -> None:
     layout_choices = list(_PATH_LAYOUTS.keys()) + ["custom"]
     layout = select("Path layout:", choices=layout_choices, default=layout_choices[0])
 
-    config: dict = {
+    config: dict[str, Any] = {
         "project": {"name": name, "version": version},
         "stack": stack,
     }

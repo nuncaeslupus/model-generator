@@ -1,6 +1,8 @@
 """Tests for model validation (validate.py)."""
 
 import json
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -10,7 +12,7 @@ from model_generator.validate import load_schema, validate_model, validate_seman
 
 
 class TestLoadSchema:
-    def test_loads_schema_successfully(self):
+    def test_loads_schema_successfully(self) -> None:
         schema = load_schema()
         assert isinstance(schema, dict)
         assert "properties" in schema or "type" in schema
@@ -21,10 +23,12 @@ class TestLoadSchema:
 
 class TestValidateModel:
     @pytest.fixture
-    def schema(self):
+    def schema(self) -> dict[str, Any]:
         return load_schema()
 
-    def test_valid_model_returns_no_errors(self, tmp_path, schema):
+    def test_valid_model_returns_no_errors(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
         model = {
             "domain": "users",
             "description": "User management",
@@ -44,13 +48,13 @@ class TestValidateModel:
         errors = validate_model(path, schema)
         assert errors == []
 
-    def test_missing_file(self, tmp_path, schema):
+    def test_missing_file(self, tmp_path: Path, schema: dict[str, Any]) -> None:
         path = tmp_path / "nonexistent.model.json"
         errors = validate_model(path, schema)
         assert len(errors) == 1
         assert "File not found" in errors[0]
 
-    def test_invalid_json(self, tmp_path, schema):
+    def test_invalid_json(self, tmp_path: Path, schema: dict[str, Any]) -> None:
         path = tmp_path / "bad.model.json"
         path.write_text("{not valid json")
 
@@ -58,7 +62,9 @@ class TestValidateModel:
         assert len(errors) == 1
         assert "Invalid JSON" in errors[0]
 
-    def test_schema_violation_fields_wrong_type(self, tmp_path, schema):
+    def test_schema_violation_fields_wrong_type(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
         """fields should be an object, not a list."""
         model = {
             "domain": "bad",
@@ -76,7 +82,9 @@ class TestValidateModel:
         assert len(errors) > 0
         assert any("is not of type" in e for e in errors)
 
-    def test_schema_error_includes_path(self, tmp_path, schema):
+    def test_schema_error_includes_path(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
         """Schema errors for nested fields should include a path."""
         model = {
             "domain": "bad",
@@ -97,7 +105,9 @@ class TestValidateModel:
         # Adjacent elements must be joined with " -> ", not "XX -> XX"
         assert any("Bad -> fields" in e for e in errors)
 
-    def test_schema_violation_missing_domain(self, tmp_path, schema):
+    def test_schema_violation_missing_domain(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
         model = {
             "entities": {
                 "X": {
@@ -112,7 +122,9 @@ class TestValidateModel:
         errors = validate_model(path, schema)
         assert len(errors) > 0
 
-    def test_root_level_error_shows_root_label(self, tmp_path, schema):
+    def test_root_level_error_shows_root_label(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
         """Root-level schema errors should show '(root)' as path."""
         model = {
             "entities": {
@@ -128,7 +140,9 @@ class TestValidateModel:
         errors = validate_model(path, schema)
         assert any("  (root):" in e for e in errors)
 
-    def test_semantic_validation_runs_after_schema_passes(self, tmp_path, schema):
+    def test_semantic_validation_runs_after_schema_passes(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
         """A schema-valid model missing a PK should get a semantic error."""
         model = {
             "domain": "test",
@@ -147,7 +161,9 @@ class TestValidateModel:
         errors = validate_model(path, schema)
         assert any("No primary key" in e for e in errors)
 
-    def test_valid_composite_foreign_key_passes(self, tmp_path, schema):
+    def test_valid_composite_foreign_key_passes(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
         """A well-formed entity-level foreign_keys array passes schema validation."""
         model = {
             "domain": "shop",
@@ -183,7 +199,9 @@ class TestValidateModel:
         errors = validate_model(path, schema)
         assert errors == []
 
-    def test_composite_fk_missing_references_table_rejected(self, tmp_path, schema):
+    def test_composite_fk_missing_references_table_rejected(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
         """references_table is required."""
         model = {
             "domain": "shop",
@@ -210,7 +228,9 @@ class TestValidateModel:
         errors = validate_model(path, schema)
         assert any("references_table" in e for e in errors)
 
-    def test_composite_fk_min_items_enforced(self, tmp_path, schema):
+    def test_composite_fk_min_items_enforced(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
         """fields and references_columns must each have minItems: 2.
 
         Single-column FKs go through `type: reference`, not foreign_keys.
@@ -245,10 +265,10 @@ class TestValidateModel:
 
 
 class TestValidateSemantics:
-    def _model(self, entities: dict) -> dict:
+    def _model(self, entities: dict[str, Any]) -> dict[str, Any]:
         return {"domain": "test", "entities": entities}
 
-    def test_valid_entity_no_errors(self):
+    def test_valid_entity_no_errors(self) -> None:
         model = self._model(
             {
                 "Widget": {
@@ -264,7 +284,7 @@ class TestValidateSemantics:
 
     # ── Primary Key ─────────────────────────────────────────────────────
 
-    def test_missing_primary_key(self):
+    def test_missing_primary_key(self) -> None:
         model = self._model(
             {
                 "NoPK": {
@@ -278,7 +298,7 @@ class TestValidateSemantics:
 
     # ── Enum Fields ─────────────────────────────────────────────────────
 
-    def test_enum_missing_enum_name(self):
+    def test_enum_missing_enum_name(self) -> None:
         model = self._model(
             {
                 "E": {
@@ -296,7 +316,7 @@ class TestValidateSemantics:
         errors = validate_semantics(model)
         assert any("missing enum_name" in e for e in errors)
 
-    def test_enum_missing_values_and_not_existing(self):
+    def test_enum_missing_values_and_not_existing(self) -> None:
         model = self._model(
             {
                 "E": {
@@ -314,7 +334,7 @@ class TestValidateSemantics:
         errors = validate_semantics(model)
         assert any("' needs enum_values or enum_existing=true" in e for e in errors)
 
-    def test_enum_with_existing_flag_no_error(self):
+    def test_enum_with_existing_flag_no_error(self) -> None:
         model = self._model(
             {
                 "E": {
@@ -333,7 +353,7 @@ class TestValidateSemantics:
         errors = validate_semantics(model)
         assert not any("enum_values or enum_existing" in e for e in errors)
 
-    def test_enum_with_values_no_error(self):
+    def test_enum_with_values_no_error(self) -> None:
         model = self._model(
             {
                 "E": {
@@ -354,7 +374,7 @@ class TestValidateSemantics:
 
     # ── Reference Fields ────────────────────────────────────────────────
 
-    def test_reference_missing_reference_table(self):
+    def test_reference_missing_reference_table(self) -> None:
         model = self._model(
             {
                 "R": {
@@ -369,7 +389,7 @@ class TestValidateSemantics:
         errors = validate_semantics(model)
         assert any("' missing reference_table" in e for e in errors)
 
-    def test_reference_with_table_no_error(self):
+    def test_reference_with_table_no_error(self) -> None:
         model = self._model(
             {
                 "R": {
@@ -389,7 +409,7 @@ class TestValidateSemantics:
 
     # ── Field Constraint Cross-References ───────────────────────────────
 
-    def test_constraint_depends_on_nonexistent_field(self):
+    def test_constraint_depends_on_nonexistent_field(self) -> None:
         model = self._model(
             {
                 "C": {
@@ -409,7 +429,7 @@ class TestValidateSemantics:
         errors = validate_semantics(model)
         assert any("non-existent field 'end_date'" in e for e in errors)
 
-    def test_constraint_depends_on_existing_field(self):
+    def test_constraint_depends_on_existing_field(self) -> None:
         model = self._model(
             {
                 "C": {
@@ -432,7 +452,7 @@ class TestValidateSemantics:
 
     # ── Table Constraints ───────────────────────────────────────────────
 
-    def test_table_constraint_references_nonexistent_field(self):
+    def test_table_constraint_references_nonexistent_field(self) -> None:
         model = self._model(
             {
                 "T": {
@@ -449,7 +469,7 @@ class TestValidateSemantics:
         errors = validate_semantics(model)
         assert any("non-existent field 'ghost_field'" in e for e in errors)
 
-    def test_table_constraint_valid_fields(self):
+    def test_table_constraint_valid_fields(self) -> None:
         model = self._model(
             {
                 "T": {
@@ -469,7 +489,7 @@ class TestValidateSemantics:
 
     # ── Index Field References ──────────────────────────────────────────
 
-    def test_index_references_nonexistent_field(self):
+    def test_index_references_nonexistent_field(self) -> None:
         model = self._model(
             {
                 "I": {
@@ -486,7 +506,7 @@ class TestValidateSemantics:
             "Index references non-existent field 'missing_field'" in e for e in errors
         )
 
-    def test_index_valid_fields(self):
+    def test_index_valid_fields(self) -> None:
         model = self._model(
             {
                 "I": {
@@ -504,7 +524,7 @@ class TestValidateSemantics:
 
     # ── Immutable Entity Checks ─────────────────────────────────────────
 
-    def test_immutable_with_updated_timestamp(self):
+    def test_immutable_with_updated_timestamp(self) -> None:
         model = self._model(
             {
                 "Imm": {
@@ -520,7 +540,7 @@ class TestValidateSemantics:
         errors = validate_semantics(model)
         assert any("should not have updated_at" in e for e in errors)
 
-    def test_immutable_with_update_endpoint(self):
+    def test_immutable_with_update_endpoint(self) -> None:
         model = self._model(
             {
                 "Imm": {
@@ -536,7 +556,7 @@ class TestValidateSemantics:
         errors = validate_semantics(model)
         assert any("should not have 'update' or 'delete'" in e for e in errors)
 
-    def test_immutable_with_delete_endpoint(self):
+    def test_immutable_with_delete_endpoint(self) -> None:
         model = self._model(
             {
                 "Imm": {
@@ -552,7 +572,7 @@ class TestValidateSemantics:
         errors = validate_semantics(model)
         assert any("should not have 'update' or 'delete'" in e for e in errors)
 
-    def test_immutable_correct_no_errors(self):
+    def test_immutable_correct_no_errors(self) -> None:
         model = self._model(
             {
                 "Imm": {
@@ -571,7 +591,7 @@ class TestValidateSemantics:
 
     # ── Multiple Entities ───────────────────────────────────────────────
 
-    def test_multiple_entities_independent_errors(self):
+    def test_multiple_entities_independent_errors(self) -> None:
         model = self._model(
             {
                 "Good": {
@@ -595,7 +615,9 @@ class TestValidateSemantics:
             ("updated_at", "updated"),
         ],
     )
-    def test_index_cannot_reference_timestamp_field_when_disabled(self, field, ts_key):
+    def test_index_cannot_reference_timestamp_field_when_disabled(
+        self, field: Any, ts_key: Any
+    ) -> None:
         """Timestamp-generated fields are invalid index targets when disabled."""
         model = self._model(
             {
@@ -617,7 +639,9 @@ class TestValidateSemantics:
             ("updated_at", "updated"),
         ],
     )
-    def test_index_can_reference_timestamp_field_when_enabled(self, field, ts_key):
+    def test_index_can_reference_timestamp_field_when_enabled(
+        self, field: Any, ts_key: Any
+    ) -> None:
         """Timestamp-generated fields are valid index targets when enabled."""
         model = self._model(
             {
@@ -634,7 +658,7 @@ class TestValidateSemantics:
 
     # ── Relationship Targets (non-error, just coverage) ─────────────────
 
-    def test_relationship_target_outside_domain_no_error(self):
+    def test_relationship_target_outside_domain_no_error(self) -> None:
         """Relationship to entity not in this domain is allowed (cross-domain)."""
         model = self._model(
             {
@@ -652,18 +676,18 @@ class TestValidateSemantics:
 
     # ── Missing-key defensive tests ─────────────────────────────────────
 
-    def test_no_entities_key_returns_empty(self):
+    def test_no_entities_key_returns_empty(self) -> None:
         """Model with no 'entities' key should produce no errors."""
         assert validate_semantics({}) == []
         assert validate_semantics({"domain": "x"}) == []
 
-    def test_entity_with_no_fields_key_reports_no_pk(self):
+    def test_entity_with_no_fields_key_reports_no_pk(self) -> None:
         """Entity with no 'fields' key gets a 'No primary key' error."""
         model = self._model({"Bad": {"table": "bads"}})
         errors = validate_semantics(model)
         assert any("No primary key" in e for e in errors)
 
-    def test_table_constraint_with_no_fields_key_no_error(self):
+    def test_table_constraint_with_no_fields_key_no_error(self) -> None:
         """Constraint with no 'fields' key does not raise and produces no error."""
         model = self._model(
             {
@@ -677,7 +701,7 @@ class TestValidateSemantics:
         errors = validate_semantics(model)
         assert not any("Table constraint" in e for e in errors)
 
-    def test_index_with_no_fields_key_no_error(self):
+    def test_index_with_no_fields_key_no_error(self) -> None:
         """Index with no 'fields' key does not raise and produces no error."""
         model = self._model(
             {
@@ -694,7 +718,7 @@ class TestValidateSemantics:
     @pytest.mark.parametrize("field", ["created_at", "updated_at"])
     def test_index_can_reference_timestamp_field_when_timestamps_dict_empty(
         self, field: str
-    ):
+    ) -> None:
         """When timestamps dict has no key for a field, it defaults to enabled."""
         model = self._model(
             {

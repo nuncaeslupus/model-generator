@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 
-def scan_model_files(models_dir: Path) -> list[dict]:
+def scan_model_files(models_dir: Path) -> list[dict[str, Any]]:
     """
     Scan model files and extract entity class names using AST.
 
@@ -66,7 +66,7 @@ def scan_model_files(models_dir: Path) -> list[dict]:
     return domains
 
 
-def scan_api_model_files(api_models_dir: Path) -> list[dict]:
+def scan_api_model_files(api_models_dir: Path) -> list[dict[str, Any]]:
     """
     Scan API model files and extract model class names using AST.
 

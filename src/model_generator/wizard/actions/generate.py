@@ -5,6 +5,7 @@ Action: Generate code from model specifications.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from ..prompts import checkbox, confirm, select
 
@@ -114,7 +115,7 @@ def run_generate() -> None:
         domains: list[str] = []
         route_modules: list[str] = []
         factory_modules: list[str] = []
-        loaded_models: list[dict] = []
+        loaded_models: list[dict[str, Any]] = []
         for model_file in selected_files:
             model = load_model(model_file)
             loaded_models.append(model)

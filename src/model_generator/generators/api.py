@@ -3,6 +3,7 @@ API generation utilities (models, routes, tests).
 """
 
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment
 
@@ -11,7 +12,7 @@ from ..utils.parser import scan_api_model_files
 from ..utils.templates import snake_case
 
 
-def _filter_api_entities(model: dict) -> dict | None:
+def _filter_api_entities(model: dict[str, Any]) -> dict[str, Any] | None:
     """Return model copy with only API-enabled entities, or None if none."""
     entities = {
         name: entity
@@ -23,7 +24,7 @@ def _filter_api_entities(model: dict) -> dict | None:
     return {**model, "entities": entities}
 
 
-def _filter_test_entities(model: dict) -> dict | None:
+def _filter_test_entities(model: dict[str, Any]) -> dict[str, Any] | None:
     """Return model copy with only test-enabled entities, or None if none."""
     entities = {
         name: entity
@@ -36,12 +37,12 @@ def _filter_test_entities(model: dict) -> dict | None:
 
 
 def generate_api_models(
-    model: dict,
-    config: dict,
+    model: dict[str, Any],
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
     model_path: Path | None = None,
-) -> list[dict] | None:
+) -> list[dict[str, Any]] | None:
     """Generate Pydantic response and request models.
 
     In per-entity layout (the default) returns two files per entity
@@ -100,8 +101,8 @@ def generate_api_models(
 
 
 def generate_api_init(
-    model: dict, config: dict, env: Environment, project_root: Path
-) -> dict | None:
+    model: dict[str, Any], config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
     """Generate __init__.py with exports for all API model files."""
     output_dir = project_root / config["paths"]["api_models"]
     domains = scan_api_model_files(output_dir)
@@ -166,8 +167,8 @@ def generate_api_init(
 
 
 def generate_api_pagination(
-    model: dict, config: dict, env: Environment, project_root: Path
-) -> dict | None:
+    model: dict[str, Any], config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
     """Generate pagination.py with reusable pagination models."""
     output_dir = project_root / config["paths"]["api_models"]
     pagination_file = output_dir / "pagination.py"
@@ -184,14 +185,14 @@ def generate_api_pagination(
 
 
 def generate_api_routes(
-    model: dict,
-    config: dict,
+    model: dict[str, Any],
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    enums: dict | None = None,
-    constraints: dict | None = None,
+    enums: dict[str, Any] | None = None,
+    constraints: dict[str, Any] | None = None,
     model_path: Path | None = None,
-) -> dict | list[dict] | None:
+) -> dict[str, Any] | list[dict[str, Any]] | None:
     """Generate FastAPI routes.
 
     In per-entity layout (the default) returns one dict per entity at
@@ -233,14 +234,14 @@ def generate_api_routes(
 
 
 def generate_api_tests(
-    model: dict,
-    config: dict,
+    model: dict[str, Any],
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    enums: dict | None = None,
-    constraints: dict | None = None,
+    enums: dict[str, Any] | None = None,
+    constraints: dict[str, Any] | None = None,
     model_path: Path | None = None,
-) -> dict | list[dict] | None:
+) -> dict[str, Any] | list[dict[str, Any]] | None:
     """Generate API contract tests.
 
     In per-entity layout (the default) returns one dict per entity at

@@ -4,7 +4,7 @@ from model_generator import utils
 
 
 class TestGeneratorUtils(unittest.TestCase):
-    def test_deep_merge_simple(self):
+    def test_deep_merge_simple(self) -> None:
         """Test simple dictionary merging."""
         base = {"a": 1, "b": 2}
         override = {"b": 3, "c": 4}
@@ -12,7 +12,7 @@ class TestGeneratorUtils(unittest.TestCase):
         expected = {"a": 1, "b": 3, "c": 4}
         self.assertEqual(result, expected)
 
-    def test_deep_merge_nested(self):
+    def test_deep_merge_nested(self) -> None:
         """Test recursive dictionary merging."""
         base = {"nested": {"x": 1, "y": 2}, "other": 5, "deep": {"a": {"b": 1}}}
         override = {"nested": {"y": 3, "z": 4}, "deep": {"a": {"c": 2}}}
@@ -24,7 +24,7 @@ class TestGeneratorUtils(unittest.TestCase):
         }
         self.assertEqual(result, expected)
 
-    def test_path_to_import(self):
+    def test_path_to_import(self) -> None:
         """Test file path to python import string conversion."""
         # Standard path
         self.assertEqual(

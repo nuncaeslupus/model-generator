@@ -1,5 +1,7 @@
 import json
 import os
+from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -8,7 +10,7 @@ from model_generator import generate
 
 
 @pytest.fixture
-def project_setup(tmp_path):
+def project_setup(tmp_path: Path) -> tuple[Path, Path]:
     """Set up a temporary project structure."""
     # Create project config with GENERIC paths to prove tool is agnostic
     config = {
@@ -54,7 +56,7 @@ def project_setup(tmp_path):
     return tmp_path, model_path
 
 
-def test_generate_all(project_setup):
+def test_generate_all(project_setup: Any) -> None:
     """Test full generation for a simple model with custom paths."""
     project_root, model_path = project_setup
 

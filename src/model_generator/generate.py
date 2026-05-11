@@ -21,7 +21,7 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .generators import (
     generate_api_init,
@@ -42,11 +42,11 @@ from .utils import (
     get_layout,
     get_template_env,
     load_config,
-    load_model,
     load_shared_constraints,
     load_shared_enums,
     run_quality_tools,
 )
+from .utils import load_model as load_model
 from .utils.conftest_generator import generate_conftest_content
 from .utils.templates import path_to_import, snake_case
 
@@ -78,7 +78,12 @@ TARGETS = INFRASTRUCTURE_TARGETS + DOMAIN_TARGETS + ["infrastructure", "all"]
 
 
 # Generator dispatch table
-GENERATORS = {
+_GeneratorFn = Callable[
+    [dict[str, Any], dict[str, Any], Any, Path, Path],
+    dict[str, Any] | list[dict[str, Any]] | None,
+]
+
+GENERATORS: dict[str, _GeneratorFn] = {
     "enums": lambda m, c, e, p, mp: generate_enums(m, c, e, p, mp),
     "constraints": lambda m, c, e, p, mp: generate_constraints(m, c, e, p, mp),
     "init": lambda m, c, e, p, mp: generate_init(m, c, e, p),
@@ -110,7 +115,7 @@ def cleanup_generated(
         _cleanup_selective(project_root, paths, dry_run)
 
 
-def _cleanup_full(project_root: Path, paths: dict, dry_run: bool) -> None:
+def _cleanup_full(project_root: Path, paths: dict[str, Any], dry_run: bool) -> None:
     """Delete entire source directories and generated files."""
     dirs_to_delete = set()
     files_to_delete = set()
@@ -178,7 +183,9 @@ def _cleanup_full(project_root: Path, paths: dict, dry_run: bool) -> None:
         print("✅ Cleanup complete")
 
 
-def _cleanup_selective(project_root: Path, paths: dict, dry_run: bool) -> None:
+def _cleanup_selective(
+    project_root: Path, paths: dict[str, Any], dry_run: bool
+) -> None:
     """Delete only generated files, not entire directories."""
     files_to_delete: list[Path] = []
     dirs_to_delete: list[Path] = []
@@ -287,8 +294,12 @@ def _cleanup_selective(project_root: Path, paths: dict, dry_run: bool) -> None:
 
 
 def generate_conftest(
-    model: dict, config: dict, env: Any, project_root: Path, model_path: Path
-) -> dict | None:
+    model: dict[str, Any],
+    config: dict[str, Any],
+    env: Any,
+    project_root: Path,
+    model_path: Path,
+) -> dict[str, Any] | None:
     """Generate conftest.py with fixtures for all domains."""
     if model_path.is_file():
         models_dir = model_path.parent
@@ -308,7 +319,7 @@ def generate_conftest(
     return {"path": output_file, "content": content, "mode": "write"}
 
 
-def _compute_rate_limiter_import(config: dict) -> str | None:
+def _compute_rate_limiter_import(config: dict[str, Any]) -> str | None:
     """Return the import path to the auth rate_limit module, or None.
 
     Mirrors the import-path logic in ``generators/infrastructure.py``: emits
@@ -327,7 +338,7 @@ def _compute_rate_limiter_import(config: dict) -> str | None:
     return path_to_import(rate_limit_module_path, python_root=python_root)
 
 
-def _compute_auth_extra(config: dict) -> list[str]:
+def _compute_auth_extra(config: dict[str, Any]) -> list[str]:
     """Runtime deps the auth scaffolding pulls in. Empty when auth is off.
 
     The auth router uses bcrypt for password hashing and itsdangerous for
@@ -347,7 +358,7 @@ def _compute_auth_extra(config: dict) -> list[str]:
     return extra
 
 
-def _has_encrypted_binary_field(models: list[dict]) -> bool:
+def _has_encrypted_binary_field(models: list[dict[str, Any]]) -> bool:
     """True when any loaded model has a ``binary`` field with an ``encrypt`` block.
 
     Mirrors the ``ns.has_encrypted_binary`` template flag in ``model.py.j2``
@@ -462,7 +473,7 @@ def _validate_project_root(project_root: Path) -> None:
         sys.exit(1)
 
 
-def _validate_auth_config(model: dict, config: dict) -> None:
+def _validate_auth_config(model: dict[str, Any], config: dict[str, Any]) -> None:
     """Abort if any entity declares api.scope without auth.dependency_path in config."""
     scoped = [
         name
@@ -496,7 +507,7 @@ def _validate_auth_config(model: dict, config: dict) -> None:
         sys.exit(1)
 
 
-def _validate_generation_config(config: dict) -> None:
+def _validate_generation_config(config: dict[str, Any]) -> None:
     """Abort if generation.layout has an unknown value."""
     valid = {"per-entity", "per-domain"}
     layout = get_layout(config)
@@ -515,7 +526,7 @@ def _validate_generation_config(config: dict) -> None:
         sys.exit(1)
 
 
-def _validate_composite_foreign_keys(model: dict) -> None:
+def _validate_composite_foreign_keys(model: dict[str, Any]) -> None:
     """Abort if any entity declares a composite foreign_key with invalid structure.
 
     Per composite FK, checks:
@@ -579,7 +590,9 @@ def _validate_composite_foreign_keys(model: dict) -> None:
         sys.exit(1)
 
 
-def _validate_auth_strategy(models: list[dict], config: dict) -> None:
+def _validate_auth_strategy(
+    models: list[dict[str, Any]], config: dict[str, Any]
+) -> None:
     """Abort if auth.strategy is set but its prerequisites are missing.
 
     Cross-model validation: takes the full list of loaded models so it can
@@ -674,14 +687,14 @@ def _validate_auth_strategy(models: list[dict], config: dict) -> None:
 
 def _generate_target(
     target: str,
-    model: dict,
-    config: dict,
+    model: dict[str, Any],
+    config: dict[str, Any],
     env: Any,
     project_root: Path,
     model_path: Path,
-    enums: dict,
-    constraints: dict,
-) -> dict | list | None:
+    enums: dict[str, Any],
+    constraints: dict[str, Any],
+) -> dict[str, Any] | list[dict[str, Any]] | None:
     """Generate a single target, returning output dict(s) or None."""
     # Use dispatch table for simple generators
     if target in GENERATORS:
@@ -702,7 +715,9 @@ def _generate_target(
     return None
 
 
-def _process_outputs(outputs: list[dict], diff: bool, dry_run: bool) -> list[Path]:
+def _process_outputs(
+    outputs: list[dict[str, Any]], diff: bool, dry_run: bool
+) -> list[Path]:
     """Write outputs to files, returning list of generated paths."""
     generated_files = []
 
@@ -865,7 +880,7 @@ def main() -> None:
     route_modules: list[str] = []
     factory_modules: list[str] = []
     extra_deps: list[str] = []
-    loaded_models: list[dict] = []
+    loaded_models: list[dict[str, Any]] = []
     for model_file in model_files:
         model = load_model(model_file)
         loaded_models.append(model)

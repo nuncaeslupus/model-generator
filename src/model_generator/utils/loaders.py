@@ -14,7 +14,7 @@ import yaml
 from .templates import path_to_import
 
 
-def load_model(model_path: Path) -> dict:
+def load_model(model_path: Path) -> dict[str, Any]:
     """
     Load and parse model JSON file.
 
@@ -47,7 +47,7 @@ def load_model(model_path: Path) -> dict:
     return cast(dict[str, Any], data)
 
 
-def _normalize_indexes(data: dict) -> None:
+def _normalize_indexes(data: dict[str, Any]) -> None:
     """Normalize legacy index shapes to canonical form.
 
     Early docs showed ``{"type": "single"|"composite"|"unique", ...}`` but the
@@ -74,7 +74,7 @@ def _normalize_indexes(data: dict) -> None:
                 idx.setdefault("unique", True)
 
 
-def _normalize_field_types(data: dict) -> None:
+def _normalize_field_types(data: dict[str, Any]) -> None:
     """Normalize field type aliases and constraints.
 
     Currently:
@@ -115,7 +115,7 @@ def _normalize_field_types(data: dict) -> None:
                     field["constraints"].pop(ts_after_idx)
 
 
-def _validate_model_schema(data: dict, model_path: Path) -> None:
+def _validate_model_schema(data: dict[str, Any], model_path: Path) -> None:
     """Validate model data against JSON schema."""
     script_dir = Path(__file__).parent.parent
     schema_path = script_dir / "schema" / "model.schema.json"
@@ -135,7 +135,7 @@ def _validate_model_schema(data: dict, model_path: Path) -> None:
         # Warn but don't exit - allow partial/WIP models
 
 
-def deep_merge(base: dict, override: dict) -> dict:
+def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """
     Deep merge two dictionaries.
 
@@ -150,7 +150,7 @@ def deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-def load_config(stack: str = "python-fastapi") -> dict:
+def load_config(stack: str = "python-fastapi") -> dict[str, Any]:
     """
     Load stack configuration and merge with project config.
 
@@ -217,7 +217,7 @@ def load_config(stack: str = "python-fastapi") -> dict:
     return merged_config
 
 
-def get_layout(config: dict) -> str:
+def get_layout(config: dict[str, Any]) -> str:
     """Return the configured generation layout (defaulting to per-entity).
 
     `load_config` already injects the default, but this helper guards
@@ -226,7 +226,7 @@ def get_layout(config: dict) -> str:
     return cast(str, config.get("generation", {}).get("layout", "per-entity"))
 
 
-def load_shared_enums(model_path: Path) -> dict:
+def load_shared_enums(model_path: Path) -> dict[str, Any]:
     """
     Load enum definitions from _shared/enums.json.
 
@@ -246,7 +246,7 @@ def load_shared_enums(model_path: Path) -> dict:
         return cast(dict[str, Any], data.get("enums", {}))
 
 
-def load_shared_constraints(model_path: Path) -> dict:
+def load_shared_constraints(model_path: Path) -> dict[str, Any]:
     """
     Load constraint definitions from _shared/constraints.json.
 

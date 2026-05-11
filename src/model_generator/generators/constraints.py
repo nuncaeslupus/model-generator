@@ -4,6 +4,7 @@ Constraint generation utilities.
 
 import re
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment
 
@@ -20,9 +21,11 @@ def get_existing_constraints(constraints_file: Path) -> set[str]:
     return set(re.findall(pattern, content, re.MULTILINE))
 
 
-def extract_constraint_refs(model: dict, shared_constraints: dict) -> list[dict]:
+def extract_constraint_refs(
+    model: dict[str, Any], shared_constraints: dict[str, Any]
+) -> list[dict[str, Any]]:
     """Extract all constraint references from model field definitions."""
-    refs: list[dict] = []
+    refs: list[dict[str, Any]] = []
     seen: set[str] = set()
 
     for entity in model.get("entities", {}).values():
@@ -54,12 +57,12 @@ def extract_constraint_refs(model: dict, shared_constraints: dict) -> list[dict]
 
 
 def _extract_ref(
-    constraint: dict,
+    constraint: dict[str, Any],
     ref_key: str,
-    shared_constraints: dict,
+    shared_constraints: dict[str, Any],
     field_name: str,
-    refs: list,
-    seen: set,
+    refs: list[dict[str, Any]],
+    seen: set[str],
     is_min: bool,
 ) -> None:
     """Extract min_ref or max_ref from constraint."""
@@ -82,11 +85,11 @@ def _extract_ref(
 
 
 def _extract_regex_ref(
-    constraint: dict,
-    shared_constraints: dict,
+    constraint: dict[str, Any],
+    shared_constraints: dict[str, Any],
     field_name: str,
-    refs: list,
-    seen: set,
+    refs: list[dict[str, Any]],
+    seen: set[str],
 ) -> None:
     """Extract regex_ref from constraint."""
     if "regex_ref" not in constraint or constraint["regex_ref"] in seen:
@@ -107,12 +110,12 @@ def _extract_regex_ref(
 
 
 def generate_constraints(
-    model: dict,
-    config: dict,
+    model: dict[str, Any],
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
     model_path: Path | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """
     Generate constraint constants from _shared/constraints.json.
 

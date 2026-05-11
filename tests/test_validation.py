@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -6,7 +8,9 @@ from model_generator import generate
 from model_generator.utils.loaders import _normalize_indexes
 
 
-def test_load_model_validates_schema(tmp_path, capsys):
+def test_load_model_validates_schema(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Test that load_model validates against the schema."""
     # Create a model with a type mismatch (fields should be object, not list)
     invalid_model = {
@@ -37,7 +41,9 @@ def test_load_model_validates_schema(tmp_path, capsys):
     assert "is not of type 'object'" in captured.out
 
 
-def test_load_model_valid_schema(tmp_path, capsys):
+def test_load_model_valid_schema(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Test that load_model is silent for valid schema."""
     valid_model = {
         "domain": "valid_domain",
@@ -81,14 +87,14 @@ def test_load_model_valid_schema(tmp_path, capsys):
         ),
     ],
 )
-def test_normalize_indexes_legacy_shapes(legacy, canonical):
+def test_normalize_indexes_legacy_shapes(legacy: Any, canonical: Any) -> None:
     """Each legacy index shape is rewritten to the schema-accepted form."""
     data = {"entities": {"E": {"indexes": [legacy]}}}
     _normalize_indexes(data)
     assert data["entities"]["E"]["indexes"][0] == canonical
 
 
-def test_normalize_indexes_leaves_canonical_untouched():
+def test_normalize_indexes_leaves_canonical_untouched() -> None:
     """Already-canonical entries pass through unchanged."""
     canonical = {"fields": ["email"], "unique": True, "name": "custom_name"}
     data = {"entities": {"E": {"indexes": [dict(canonical)]}}}
@@ -96,7 +102,7 @@ def test_normalize_indexes_leaves_canonical_untouched():
     assert data["entities"]["E"]["indexes"][0] == canonical
 
 
-def test_normalize_indexes_preserves_explicit_unique_false():
+def test_normalize_indexes_preserves_explicit_unique_false() -> None:
     """Legacy {type: 'unique', unique: false} is a contradiction.
 
     Respect the explicit value instead of letting the legacy type override it.
@@ -113,7 +119,9 @@ def test_normalize_indexes_preserves_explicit_unique_false():
     }
 
 
-def test_load_model_accepts_legacy_index_shape(tmp_path, capsys):
+def test_load_model_accepts_legacy_index_shape(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """End-to-end: a spec using the old docs' shape loads cleanly (no warning)."""
     legacy_model = {
         "domain": "legacy",

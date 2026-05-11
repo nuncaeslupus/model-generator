@@ -4,6 +4,7 @@ Enum generation utilities.
 
 import re
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment
 
@@ -21,8 +22,12 @@ def get_existing_enums(enums_file: Path) -> set[str]:
 
 
 def generate_enums(
-    model: dict, config: dict, env: Environment, project_root: Path, model_path: Path
-) -> dict | None:
+    model: dict[str, Any],
+    config: dict[str, Any],
+    env: Environment,
+    project_root: Path,
+    model_path: Path,
+) -> dict[str, Any] | None:
     """
     Generate enum definitions from _shared/enums.json.
 
