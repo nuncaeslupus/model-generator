@@ -80,7 +80,7 @@ TARGETS = INFRASTRUCTURE_TARGETS + DOMAIN_TARGETS + ["infrastructure", "all"]
 # Generator dispatch table
 _GeneratorFn = Callable[
     [dict[str, Any], dict[str, Any], Any, Path, Path],
-    "dict[str, Any] | list[Any] | None",
+    dict[str, Any] | list[dict[str, Any]] | None,
 ]
 
 GENERATORS: dict[str, _GeneratorFn] = {
@@ -694,7 +694,7 @@ def _generate_target(
     model_path: Path,
     enums: dict[str, Any],
     constraints: dict[str, Any],
-) -> dict[str, Any] | list[Any] | None:
+) -> dict[str, Any] | list[dict[str, Any]] | None:
     """Generate a single target, returning output dict(s) or None."""
     # Use dispatch table for simple generators
     if target in GENERATORS:

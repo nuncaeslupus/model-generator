@@ -61,8 +61,8 @@ def _extract_ref(
     ref_key: str,
     shared_constraints: dict[str, Any],
     field_name: str,
-    refs: list[Any],
-    seen: set[Any],
+    refs: list[dict[str, Any]],
+    seen: set[str],
     is_min: bool,
 ) -> None:
     """Extract min_ref or max_ref from constraint."""
@@ -88,8 +88,8 @@ def _extract_regex_ref(
     constraint: dict[str, Any],
     shared_constraints: dict[str, Any],
     field_name: str,
-    refs: list[Any],
-    seen: set[Any],
+    refs: list[dict[str, Any]],
+    seen: set[str],
 ) -> None:
     """Extract regex_ref from constraint."""
     if "regex_ref" not in constraint or constraint["regex_ref"] in seen:
