@@ -147,6 +147,99 @@ class TestValidateModel:
         errors = validate_model(path, schema)
         assert any("No primary key" in e for e in errors)
 
+    def test_valid_composite_foreign_key_passes(self, tmp_path, schema):
+        """A well-formed entity-level foreign_keys array passes schema validation."""
+        model = {
+            "domain": "shop",
+            "entities": {
+                "Order": {
+                    "table": "orders",
+                    "fields": {
+                        "tenant_id": {"type": "uuid", "primary_key": True},
+                        "id": {"type": "uuid", "primary_key": True},
+                    },
+                },
+                "OrderItem": {
+                    "table": "order_items",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                        "tenant_id": {"type": "uuid"},
+                        "order_id": {"type": "uuid"},
+                    },
+                    "foreign_keys": [
+                        {
+                            "fields": ["tenant_id", "order_id"],
+                            "references_table": "orders",
+                            "references_columns": ["tenant_id", "id"],
+                            "on_delete": "CASCADE",
+                        }
+                    ],
+                },
+            },
+        }
+        path = tmp_path / "shop.model.json"
+        path.write_text(json.dumps(model))
+
+        errors = validate_model(path, schema)
+        assert errors == []
+
+    def test_composite_fk_missing_references_table_rejected(self, tmp_path, schema):
+        """references_table is required."""
+        model = {
+            "domain": "shop",
+            "entities": {
+                "OrderItem": {
+                    "table": "order_items",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                        "tenant_id": {"type": "uuid"},
+                        "order_id": {"type": "uuid"},
+                    },
+                    "foreign_keys": [
+                        {
+                            "fields": ["tenant_id", "order_id"],
+                            "references_columns": ["tenant_id", "id"],
+                        }
+                    ],
+                }
+            },
+        }
+        path = tmp_path / "shop.model.json"
+        path.write_text(json.dumps(model))
+
+        errors = validate_model(path, schema)
+        assert any("references_table" in e for e in errors)
+
+    def test_composite_fk_min_items_enforced(self, tmp_path, schema):
+        """fields and references_columns must each have minItems: 2.
+
+        Single-column FKs go through `type: reference`, not foreign_keys.
+        """
+        model = {
+            "domain": "shop",
+            "entities": {
+                "OrderItem": {
+                    "table": "order_items",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                        "tenant_id": {"type": "uuid"},
+                    },
+                    "foreign_keys": [
+                        {
+                            "fields": ["tenant_id"],
+                            "references_table": "orders",
+                            "references_columns": ["tenant_id"],
+                        }
+                    ],
+                }
+            },
+        }
+        path = tmp_path / "shop.model.json"
+        path.write_text(json.dumps(model))
+
+        errors = validate_model(path, schema)
+        assert any("too short" in e or "minItems" in e for e in errors)
+
 
 # ── validate_semantics ─────────────────────────────────────────────────────
 

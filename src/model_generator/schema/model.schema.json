@@ -164,6 +164,13 @@
                         "$ref": "#/definitions/table_constraint"
                     }
                 },
+                "foreign_keys": {
+                    "type": "array",
+                    "description": "Composite foreign keys spanning multiple columns. Use when the target entity has a composite primary key.",
+                    "items": {
+                        "$ref": "#/definitions/composite_foreign_key"
+                    }
+                },
                 "cross_field_constraints": {
                     "type": "array",
                     "description": "Constraints that involve relationships between multiple fields",
@@ -561,6 +568,44 @@
                 "unique": {
                     "type": "boolean",
                     "default": false
+                }
+            }
+        },
+        "composite_foreign_key": {
+            "type": "object",
+            "required": [
+                "fields",
+                "references_table",
+                "references_columns"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "minItems": 2
+                },
+                "references_table": {
+                    "type": "string"
+                },
+                "references_columns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "minItems": 2
+                },
+                "on_delete": {
+                    "type": "string",
+                    "enum": [
+                        "CASCADE",
+                        "SET NULL",
+                        "RESTRICT",
+                        "NO ACTION"
+                    ],
+                    "default": "CASCADE"
                 }
             }
         },

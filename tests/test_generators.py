@@ -417,6 +417,210 @@ class TestDatabaseGeneratorPerEntity:
             assert divider_banner not in entry["content"]
 
 
+@pytest.fixture
+def composite_fk_model():
+    """Composite FK fixture: OrderItem references Order's composite PK.
+
+    Order has a composite PK (tenant_id, id). OrderItem's (tenant_id, order_id)
+    pair forms a single composite FK to that PK. The relationship's foreign_keys
+    array disambiguates the ORM mapping; the entity-level foreign_keys array
+    declares the schema-level FK constraint.
+    """
+    return {
+        "domain": "shop",
+        "entities": {
+            "Order": {
+                "table": "orders",
+                "fields": {
+                    "tenant_id": {"type": "uuid", "primary_key": True},
+                    "id": {"type": "uuid", "primary_key": True, "auto_generate": True},
+                    "name": {"type": "text", "max_length": 100, "required": True},
+                },
+                "relationships": {
+                    "items": {
+                        "type": "one_to_many",
+                        "target": "OrderItem",
+                        "back_populates": "order",
+                    },
+                },
+            },
+            "OrderItem": {
+                "table": "order_items",
+                "fields": {
+                    "id": {"type": "uuid", "primary_key": True, "auto_generate": True},
+                    "tenant_id": {"type": "uuid", "required": True},
+                    "order_id": {"type": "uuid", "required": True},
+                    "sku": {"type": "text", "max_length": 64, "required": True},
+                },
+                "foreign_keys": [
+                    {
+                        "fields": ["tenant_id", "order_id"],
+                        "references_table": "orders",
+                        "references_columns": ["tenant_id", "id"],
+                        "on_delete": "CASCADE",
+                    }
+                ],
+                "relationships": {
+                    "order": {
+                        "type": "many_to_one",
+                        "target": "Order",
+                        "back_populates": "items",
+                        "foreign_keys": ["tenant_id", "order_id"],
+                    },
+                },
+            },
+        },
+    }
+
+
+@pytest.fixture
+def self_ref_composite_fk_model():
+    """Self-ref composite FK: Node points at its parent in the same tree.
+
+    Composite PK (org_id, node_id); composite FK (org_id, parent_node_id) →
+    (org_id, node_id). Exercises the §1 external-review fix for self-ref
+    remote_side collecting all PK fields.
+    """
+    return {
+        "domain": "tree",
+        "entities": {
+            "Node": {
+                "table": "nodes",
+                "fields": {
+                    "org_id": {"type": "uuid", "primary_key": True},
+                    "node_id": {
+                        "type": "uuid",
+                        "primary_key": True,
+                        "auto_generate": True,
+                    },
+                    "parent_node_id": {"type": "uuid"},
+                    "label": {"type": "text", "max_length": 100, "required": True},
+                },
+                "foreign_keys": [
+                    {
+                        "fields": ["org_id", "parent_node_id"],
+                        "references_table": "nodes",
+                        "references_columns": ["org_id", "node_id"],
+                        "on_delete": "CASCADE",
+                    }
+                ],
+                "relationships": {
+                    "parent": {
+                        "type": "many_to_one",
+                        "target": "Node",
+                        "back_populates": "children",
+                        "foreign_keys": ["org_id", "parent_node_id"],
+                    },
+                    "children": {
+                        "type": "one_to_many",
+                        "target": "Node",
+                        "back_populates": "parent",
+                        "foreign_keys": ["org_id", "parent_node_id"],
+                    },
+                },
+            },
+        },
+    }
+
+
+class TestCompositeForeignKey:
+    """Composite FK emission inside __table_args__."""
+
+    def _orderitem_content(self, model, project_env_per_entity):
+        project_root, config, env = project_env_per_entity
+        result = generate_database_model(model, config, env, project_root)
+        by_name = {r["path"].name: r["content"] for r in result}
+        return by_name["order_item.py"]
+
+    def test_emits_foreign_key_constraint_in_table_args(
+        self, composite_fk_model, project_env_per_entity
+    ):
+        content = self._orderitem_content(composite_fk_model, project_env_per_entity)
+        assert "__table_args__" in content
+        assert "ForeignKeyConstraint(" in content
+        assert '["tenant_id", "order_id"]' in content
+        assert '["orders.tenant_id", "orders.id"]' in content
+        assert 'ondelete="CASCADE"' in content
+
+    def test_member_fields_emit_as_plain_columns(
+        self, composite_fk_model, project_env_per_entity
+    ):
+        """Composite-FK member columns must NOT carry an inline ForeignKey(...)."""
+        content = self._orderitem_content(composite_fk_model, project_env_per_entity)
+        # Locate the OrderItem class body.
+        class_body = content.split("class OrderItem(Base):")[1].split("class ")[0]
+        # tenant_id and order_id should be plain typed columns, no ForeignKey wrapping.
+        for col in ("tenant_id", "order_id"):
+            line_idx = class_body.find(f"{col}: Mapped[")
+            assert line_idx != -1, f"missing column {col}"
+            # The column declaration spans until the next column (or end of class).
+            tail = class_body[line_idx : line_idx + 200]
+            assert "ForeignKey(" not in tail.split("\n")[1] if "\n" in tail else True
+            assert 'ForeignKey("orders' not in tail
+
+    def test_imports_foreign_key_constraint(
+        self, composite_fk_model, project_env_per_entity
+    ):
+        content = self._orderitem_content(composite_fk_model, project_env_per_entity)
+        # Import block uses parenthesized multi-line form.
+        import_section = content.split("from sqlalchemy import (")[1].split(")")[0]
+        assert "ForeignKeyConstraint" in import_section
+
+    def test_no_fk_constraint_import_when_unused(
+        self, multi_entity_model, project_env_per_entity
+    ):
+        """No composite FKs in fixture → ForeignKeyConstraint must not be imported."""
+        project_root, config, env = project_env_per_entity
+        result = generate_database_model(multi_entity_model, config, env, project_root)
+        for entry in result:
+            assert "ForeignKeyConstraint" not in entry["content"]
+
+    def test_self_ref_composite_fk(
+        self, self_ref_composite_fk_model, project_env_per_entity
+    ):
+        """Self-ref composite FK emits ForeignKeyConstraint and full remote_side."""
+        project_root, config, env = project_env_per_entity
+        result = generate_database_model(
+            self_ref_composite_fk_model, config, env, project_root
+        )
+        content = next(r["content"] for r in result if r["path"].name == "node.py")
+        assert "ForeignKeyConstraint(" in content
+        assert '["org_id", "parent_node_id"]' in content
+        assert '["nodes.org_id", "nodes.node_id"]' in content
+        # §1 external-review fix: remote_side collects ALL PK fields.
+        assert "remote_side=[org_id, node_id]" in content
+
+    def test_configure_mappers_succeeds(
+        self, composite_fk_model, project_env_per_entity
+    ):
+        """Live SQLAlchemy probe — composite FK emission must not raise.
+
+        Strips project-local imports (`.base`, `.types`) and substitutes a
+        local DeclarativeBase + a String-aliased PortableUuid so the rendered
+        module can exec in isolation. Then calls Base.registry.configure() —
+        this is the exact step that raises AmbiguousForeignKeysError when
+        multiple FK paths exist between two tables.
+        """
+        import re
+
+        from sqlalchemy import String
+        from sqlalchemy.orm import DeclarativeBase
+
+        project_root, config, env = project_env_per_entity
+        result = generate_database_model(composite_fk_model, config, env, project_root)
+        # Concatenate the two rendered files so both classes share one Base.
+        merged = "\n".join(r["content"] for r in result)
+        # Strip relative + project-local imports — Base + PortableUuid are supplied.
+        merged = re.sub(r"^from (?:\.|src\.)[^\n]+\n", "", merged, flags=re.MULTILINE)
+
+        class Base(DeclarativeBase):
+            pass
+
+        namespace: dict = {"Base": Base, "PortableUuid": String}
+        exec(merged, namespace)
+        Base.registry.configure()  # would raise AmbiguousForeignKeysError if broken
+
+
 class TestGenerateInitPerEntity:
     """Per-entity __init__.py emission."""
 
@@ -959,6 +1163,99 @@ class TestValidateAuthConfig:
         out = capsys.readouterr().out
         assert "no_dots_here" in out
         assert "dotted path" in out
+
+
+class TestValidateCompositeForeignKeys:
+    """Test the _validate_composite_foreign_keys helper."""
+
+    def _model_with_fk(self, fk: dict) -> dict:
+        return {
+            "entities": {
+                "Order": {
+                    "table": "orders",
+                    "fields": {
+                        "tenant_id": {"type": "uuid", "primary_key": True},
+                        "id": {"type": "uuid", "primary_key": True},
+                    },
+                },
+                "OrderItem": {
+                    "table": "order_items",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                        "tenant_id": {"type": "uuid"},
+                        "order_id": {"type": "uuid"},
+                    },
+                    "foreign_keys": [fk],
+                },
+            }
+        }
+
+    def _valid_fk(self) -> dict:
+        return {
+            "fields": ["tenant_id", "order_id"],
+            "references_table": "orders",
+            "references_columns": ["tenant_id", "id"],
+            "on_delete": "CASCADE",
+        }
+
+    def test_no_foreign_keys_passes(self):
+        from model_generator.generate import _validate_composite_foreign_keys
+
+        _validate_composite_foreign_keys({"entities": {}})  # no entities, no FKs
+
+    def test_valid_composite_fk_passes(self):
+        from model_generator.generate import _validate_composite_foreign_keys
+
+        _validate_composite_foreign_keys(self._model_with_fk(self._valid_fk()))
+
+    def test_length_mismatch_exits(self, capsys):
+        from model_generator.generate import _validate_composite_foreign_keys
+
+        bad = {**self._valid_fk(), "references_columns": ["tenant_id"]}
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_composite_foreign_keys(self._model_with_fk(bad))
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "must match" in out
+        assert "OrderItem.foreign_keys[0]" in out
+
+    def test_unknown_field_exits(self, capsys):
+        from model_generator.generate import _validate_composite_foreign_keys
+
+        bad = {**self._valid_fk(), "fields": ["tenant_id", "ghost_col"]}
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_composite_foreign_keys(self._model_with_fk(bad))
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "ghost_col" in out
+        assert "not declared" in out
+
+    def test_reference_typed_member_exits(self, capsys):
+        """Composite-FK members must use the underlying type, not 'reference'."""
+        from model_generator.generate import _validate_composite_foreign_keys
+
+        model = self._model_with_fk(self._valid_fk())
+        model["entities"]["OrderItem"]["fields"]["tenant_id"] = {
+            "type": "reference",
+            "reference_table": "orders",
+        }
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_composite_foreign_keys(model)
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert 'type "reference"' in out
+        assert "mutex" in out
+
+    def test_unknown_references_table_exits(self, capsys):
+        from model_generator.generate import _validate_composite_foreign_keys
+
+        bad = {**self._valid_fk(), "references_table": "ghost_table"}
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_composite_foreign_keys(self._model_with_fk(bad))
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "ghost_table" in out
+        assert "not found in this model" in out
 
 
 class TestValidateAuthStrategy:
