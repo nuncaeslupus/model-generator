@@ -5,6 +5,14 @@ project:
 
 stack: python-fastapi
 
+# Optional: Python import root for src-layout projects.
+# When set, this prefix is stripped from paths.* when forming import strings.
+# Filesystem paths are unchanged.
+# E.g., python_root: "src" + database_models: "src/hub/database/models" →
+#   generated import: `from hub.database.models import X`
+#   (instead of `from src.hub.database.models import X`)
+# python_root: "src"
+
 # Generated layout: how generated code is split across files.
 #   per-entity (default): one file per entity, e.g. models/user.py + models/role.py.
 #   per-domain:           one file per spec domain, e.g. models/users.py with both.

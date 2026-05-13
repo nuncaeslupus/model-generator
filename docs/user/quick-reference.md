@@ -116,6 +116,16 @@ Lookup tables for model-generator. No prose — just the facts.
 
 ---
 
+## Project Config (Top-Level YAML Keys)
+
+Top-level keys in `.model-generator.yaml` (siblings of `paths:`, `project:`, `stack:`).
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `python_root` | string | Prefix stripped from `paths.*` when forming Python imports. Use for `src/`-layout projects. See [Python Import Root](./usage-guide.md#python-import-root). |
+
+---
+
 ## CLI Targets
 
 | Target | Description | Scope |

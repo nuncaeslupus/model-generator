@@ -19,7 +19,38 @@ model-gen [model_dir] [options]
 - `--dry-run` — List files that would be created
 - `--clean` — Delete generated files before generating
 - `--clear-only` — Delete only, don't generate
+- `--no-root-files` — Skip `pyproject.toml`, `alembic.ini`, and `.gitignore` (see [Generating into an existing project](#generating-into-an-existing-project))
 - `--interactive` — Launch the interactive wizard
+
+---
+
+## Python Import Root
+
+By default, generated imports use the configured `paths.*` value verbatim. With `paths.database_models: src/hub/database/models`, the database model file emits:
+
+```python
+from src.hub.database.types import PortableUuid
+```
+
+That's wrong for the standard `src/`-layout, where `src/` is on `sys.path` (not a package) and the correct import is `from hub.database.types import PortableUuid`.
+
+Set the top-level `python_root` key in `.model-generator.yaml` to strip that prefix when forming Python import strings. **Filesystem paths are unchanged — only generated imports differ.**
+
+```yaml
+project:
+  name: "My App"
+
+stack: python-fastapi
+
+python_root: "src"    # strips "src/" from paths.* when forming imports
+
+paths:
+  database_models: src/hub/database/models
+  # → generated import: from hub.database.models import X
+  # → file written to:  src/hub/database/models/x.py (unchanged)
+```
+
+Omit the key (or set it empty) when your `paths.*` values are already importable as-is (e.g. `backend/src/...` flat-layout projects that import from `backend.src.X`).
 
 ---
 
@@ -91,6 +122,18 @@ model-gen --clear-only --scope full
 **Cleanup scopes:**
 - `selective` (default) — Only files that would be regenerated
 - `full` — Also removes cache dirs (`.pytest_cache`, `.mypy_cache`, `.venv`), generated infrastructure, and `alembic.ini`
+
+### Generating into an existing project
+
+When integrating model-generator output into a project that already has its own `pyproject.toml`, `.gitignore`, or alembic config, use `--no-root-files` to suppress root-level file emission:
+
+```bash
+model-gen models/ --target all --no-root-files
+```
+
+This skips `pyproject.toml`, `alembic.ini`, and `.gitignore` even when those files don't yet exist in the target directory. The in-tree `alembic/env.py`, `script.py.mako`, and `versions/.gitkeep` still emit, since they live inside the migrations subdirectory rather than at the project root.
+
+Useful for the scratch-and-migrate workflow: generate into a scratch directory, then move the generated `src/` and `tests/` trees into your real repo without clobbering its curated root files.
 
 ---
 

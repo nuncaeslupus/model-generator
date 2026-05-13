@@ -31,6 +31,7 @@ from model_generator.generators.infrastructure import (
     generate_base,
     generate_engine,
     generate_errors,
+    generate_gitignore,
     generate_infrastructure,
     generate_main,
     generate_pyproject,
@@ -2370,6 +2371,47 @@ class TestMigrationGenerator:
         )
         assert gitkeep["content"] == ""
 
+    def test_generate_migration_init_skips_alembic_ini_when_exists(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """Pre-existing alembic.ini stays put; in-tree alembic/ files still emit."""
+        project_root, config, env = project_env
+        (project_root / "alembic.ini").write_text(
+            "[alembic]\nscript_location = custom\n"
+        )
+
+        result = generate_migration_init(minimal_model, config, env, project_root)
+        assert isinstance(result, list)
+
+        paths = [r["path"] for r in result]
+        assert project_root / "alembic.ini" not in paths
+        migrations_dir = project_root / "alembic"
+        assert migrations_dir / "env.py" in paths
+        assert migrations_dir / "script.py.mako" in paths
+        assert migrations_dir / "README.md" in paths
+        assert migrations_dir / "versions" / ".gitkeep" in paths
+
+    def test_generate_migration_init_with_no_root_files_skips_alembic_ini(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """--no-root-files suppresses alembic.ini; in-tree alembic/ files still emit."""
+        project_root, config, env = project_env
+
+        result = generate_migration_init(
+            minimal_model, config, env, project_root, no_root_files=True
+        )
+        assert isinstance(result, list)
+
+        paths = [r["path"] for r in result]
+        assert project_root / "alembic.ini" not in paths
+        assert not (project_root / "alembic.ini").exists()
+        # In-tree alembic/ scaffolding still emits (lives inside the migrations dir).
+        migrations_dir = project_root / "alembic"
+        assert migrations_dir / "env.py" in paths
+        assert migrations_dir / "script.py.mako" in paths
+        assert migrations_dir / "README.md" in paths
+        assert migrations_dir / "versions" / ".gitkeep" in paths
+
 
 class TestMigrationAutogen:
     """Test generate_migration_autogen."""
@@ -2451,6 +2493,34 @@ class TestInfrastructureGenerators:
 
         result = generate_pyproject(config, env, project_root, config)
         assert result is None
+
+    def test_generate_pyproject_with_no_root_files_returns_none(
+        self, project_env: Any
+    ) -> None:
+        """--no-root-files suppresses pyproject.toml even in a fresh project."""
+        project_root, config, env = project_env
+        result = generate_pyproject(
+            config, env, project_root, config, no_root_files=True
+        )
+        assert result is None
+        assert not (project_root / "pyproject.toml").exists()
+
+    def test_generate_gitignore_skips_when_exists(self, project_env: Any) -> None:
+        """Pre-existing .gitignore must not be overwritten on regeneration."""
+        project_root, config, env = project_env
+        (project_root / ".gitignore").write_text(".venv/\n")
+
+        result = generate_gitignore(config, env, project_root)
+        assert result is None
+
+    def test_generate_gitignore_with_no_root_files_returns_none(
+        self, project_env: Any
+    ) -> None:
+        """--no-root-files suppresses .gitignore even in a fresh project."""
+        project_root, config, env = project_env
+        result = generate_gitignore(config, env, project_root, no_root_files=True)
+        assert result is None
+        assert not (project_root / ".gitignore").exists()
 
     def test_generate_pyproject_contains_runtime_deps(self, project_env: Any) -> None:
         project_root, config, env = project_env
@@ -3824,3 +3894,74 @@ class TestHasEncryptedBinaryField:
             },
         ]
         assert _has_encrypted_binary_field(models) is True
+
+
+@pytest.fixture
+def project_env_with_python_root(tmp_path: Path) -> tuple[Path, dict[str, Any], Any]:
+    """project_env variant with python_root: 'src' and paths under src/.
+
+    Mirrors a standard src-layout where src/ is on sys.path, not a package.
+    Used by the python_root integration test to verify the filter threads
+    end-to-end from .model-generator.yaml → load_config → get_template_env
+    → Jinja filter → generated file contents.
+    """
+    config_data = {
+        "project": {"name": "Test Project", "version": "0.1.0"},
+        "stack": "python-fastapi",
+        "python_root": "src",
+        "generation": {"layout": "per-domain"},
+        "paths": {
+            "database_models": "src/database/models",
+            "factories": "src/database/models/factories",
+            "api_models": "src/api/models",
+            "api_routes": "src/api/routes",
+            "api_tests": "tests/api",
+            "base": "src/database/models/base.py",
+            "engine": "src/database/engine.py",
+            "main": "src/main.py",
+            "errors": "src/api/errors.py",
+            "validators": "src/api/validators.py",
+            "test_conftest_root": "tests/conftest.py",
+            "enums": "src/database/models/enums.py",
+            "constraints": "src/database/models/constraints.py",
+            "migrations": "alembic",
+        },
+    }
+
+    config_path = tmp_path / ".model-generator.yaml"
+    with open(config_path, "w") as f:
+        yaml.dump(config_data, f)
+
+    original_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    config = load_config("python-fastapi")
+    env = get_template_env("python-fastapi", config=config)
+    os.chdir(original_cwd)
+
+    return tmp_path, config, env
+
+
+class TestPythonRootIntegration:
+    """End-to-end: python_root in config flows through to generated imports.
+
+    test_template_utils.py covers path_to_import() and the filter closure in
+    isolation. This test guards against future regressions where someone
+    adds a new absolute-import site in a template without piping the value
+    through the path_to_import filter — model.py.j2's `types` import is the
+    canonical site to probe in the database-model surface.
+    """
+
+    def test_database_model_strips_python_root_from_types_import(
+        self,
+        minimal_model: dict[str, Any],
+        project_env_with_python_root: Any,
+    ) -> None:
+        project_root, config, env = project_env_with_python_root
+        result = generate_database_model(minimal_model, config, env, project_root)
+        assert isinstance(result, dict)
+
+        content = result["content"]
+        # paths.database_models="src/database/models" + python_root="src" →
+        # types-module parent="src/database" → import base="database".
+        assert "from database.types import" in content
+        assert "from src.database.types import" not in content

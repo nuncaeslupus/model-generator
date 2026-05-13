@@ -121,9 +121,20 @@ def generate_utils(
 
 
 def generate_gitignore(
-    config: dict[str, Any], env: Environment, project_root: Path
+    config: dict[str, Any],
+    env: Environment,
+    project_root: Path,
+    no_root_files: bool = False,
 ) -> dict[str, Any] | None:
-    """Generate .gitignore for new projects (only if none exists)."""
+    """Generate .gitignore for new projects (only if none exists).
+
+    Returns None when ``no_root_files`` is set, so adopters using
+    --no-root-files for scratch-and-migrate workflows keep their own
+    repository's .gitignore unchanged.
+    """
+    if no_root_files:
+        return None
+
     output_path = project_root / ".gitignore"
 
     if output_path.exists():
@@ -141,8 +152,17 @@ def generate_pyproject(
     project_root: Path,
     project_config: dict[str, Any],
     extra_deps: list[str] | None = None,
+    no_root_files: bool = False,
 ) -> dict[str, Any] | None:
-    """Generate pyproject.toml for new projects (only if none exists)."""
+    """Generate pyproject.toml for new projects (only if none exists).
+
+    Returns None when ``no_root_files`` is set, so adopters using
+    --no-root-files for scratch-and-migrate workflows keep their own
+    repository's pyproject.toml unchanged.
+    """
+    if no_root_files:
+        return None
+
     output_path = project_root / "pyproject.toml"
 
     if output_path.exists():
@@ -551,6 +571,7 @@ def generate_infrastructure(
     route_modules: list[str] | None = None,
     factory_modules: list[str] | None = None,
     has_encrypted_binary: bool = False,
+    no_root_files: bool = False,
 ) -> list[Path]:
     """
     Generate all infrastructure files.
@@ -563,8 +584,15 @@ def generate_infrastructure(
 
     # Collect all infrastructure outputs
     generators = [
-        generate_gitignore(config, env, project_root),
-        generate_pyproject(config, env, project_root, project_config, extra_deps),
+        generate_gitignore(config, env, project_root, no_root_files=no_root_files),
+        generate_pyproject(
+            config,
+            env,
+            project_root,
+            project_config,
+            extra_deps,
+            no_root_files=no_root_files,
+        ),
         generate_base(config, env, project_root),
         generate_engine(config, env, project_root),
         generate_types(config, env, project_root),
