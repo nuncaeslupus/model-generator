@@ -23,6 +23,36 @@ model-gen [model_dir] [options]
 
 ---
 
+## Python Import Root
+
+By default, generated imports use the configured `paths.*` value verbatim. With `paths.database_models: src/hub/database/models`, the database model file emits:
+
+```python
+from src.hub.database.types import PortableUuid
+```
+
+That's wrong for the standard `src/`-layout, where `src/` is on `sys.path` (not a package) and the correct import is `from hub.database.types import PortableUuid`.
+
+Set the top-level `python_root` key in `.model-generator.yaml` to strip that prefix when forming Python import strings. **Filesystem paths are unchanged — only generated imports differ.**
+
+```yaml
+project:
+  name: "My App"
+
+stack: python-fastapi
+
+python_root: "src"    # strips "src/" from paths.* when forming imports
+
+paths:
+  database_models: src/hub/database/models
+  # → generated import: from hub.database.models import X
+  # → file written to:  src/hub/database/models/x.py (unchanged)
+```
+
+Omit the key (or set it empty) when your `paths.*` values are already importable as-is (e.g. `backend/src/...` flat-layout projects that import from `backend.src.X`).
+
+---
+
 ## Generation Targets
 
 | Target | Description | Output |
