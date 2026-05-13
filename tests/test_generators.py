@@ -31,6 +31,7 @@ from model_generator.generators.infrastructure import (
     generate_base,
     generate_engine,
     generate_errors,
+    generate_gitignore,
     generate_infrastructure,
     generate_main,
     generate_pyproject,
@@ -2370,6 +2371,47 @@ class TestMigrationGenerator:
         )
         assert gitkeep["content"] == ""
 
+    def test_generate_migration_init_skips_alembic_ini_when_exists(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """Pre-existing alembic.ini stays put; in-tree alembic/ files still emit."""
+        project_root, config, env = project_env
+        (project_root / "alembic.ini").write_text(
+            "[alembic]\nscript_location = custom\n"
+        )
+
+        result = generate_migration_init(minimal_model, config, env, project_root)
+        assert isinstance(result, list)
+
+        paths = [r["path"] for r in result]
+        assert project_root / "alembic.ini" not in paths
+        migrations_dir = project_root / "alembic"
+        assert migrations_dir / "env.py" in paths
+        assert migrations_dir / "script.py.mako" in paths
+        assert migrations_dir / "README.md" in paths
+        assert migrations_dir / "versions" / ".gitkeep" in paths
+
+    def test_generate_migration_init_with_no_root_files_skips_alembic_ini(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """--no-root-files suppresses alembic.ini; in-tree alembic/ files still emit."""
+        project_root, config, env = project_env
+
+        result = generate_migration_init(
+            minimal_model, config, env, project_root, no_root_files=True
+        )
+        assert isinstance(result, list)
+
+        paths = [r["path"] for r in result]
+        assert project_root / "alembic.ini" not in paths
+        assert not (project_root / "alembic.ini").exists()
+        # In-tree alembic/ scaffolding still emits (lives inside the migrations dir).
+        migrations_dir = project_root / "alembic"
+        assert migrations_dir / "env.py" in paths
+        assert migrations_dir / "script.py.mako" in paths
+        assert migrations_dir / "README.md" in paths
+        assert migrations_dir / "versions" / ".gitkeep" in paths
+
 
 class TestMigrationAutogen:
     """Test generate_migration_autogen."""
@@ -2451,6 +2493,34 @@ class TestInfrastructureGenerators:
 
         result = generate_pyproject(config, env, project_root, config)
         assert result is None
+
+    def test_generate_pyproject_with_no_root_files_returns_none(
+        self, project_env: Any
+    ) -> None:
+        """--no-root-files suppresses pyproject.toml even in a fresh project."""
+        project_root, config, env = project_env
+        result = generate_pyproject(
+            config, env, project_root, config, no_root_files=True
+        )
+        assert result is None
+        assert not (project_root / "pyproject.toml").exists()
+
+    def test_generate_gitignore_skips_when_exists(self, project_env: Any) -> None:
+        """Pre-existing .gitignore must not be overwritten on regeneration."""
+        project_root, config, env = project_env
+        (project_root / ".gitignore").write_text(".venv/\n")
+
+        result = generate_gitignore(config, env, project_root)
+        assert result is None
+
+    def test_generate_gitignore_with_no_root_files_returns_none(
+        self, project_env: Any
+    ) -> None:
+        """--no-root-files suppresses .gitignore even in a fresh project."""
+        project_root, config, env = project_env
+        result = generate_gitignore(config, env, project_root, no_root_files=True)
+        assert result is None
+        assert not (project_root / ".gitignore").exists()
 
     def test_generate_pyproject_contains_runtime_deps(self, project_env: Any) -> None:
         project_root, config, env = project_env

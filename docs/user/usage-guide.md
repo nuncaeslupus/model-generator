@@ -19,6 +19,7 @@ model-gen [model_dir] [options]
 - `--dry-run` — List files that would be created
 - `--clean` — Delete generated files before generating
 - `--clear-only` — Delete only, don't generate
+- `--no-root-files` — Skip `pyproject.toml`, `alembic.ini`, and `.gitignore` (see [Generating into an existing project](#generating-into-an-existing-project))
 - `--interactive` — Launch the interactive wizard
 
 ---
@@ -121,6 +122,18 @@ model-gen --clear-only --scope full
 **Cleanup scopes:**
 - `selective` (default) — Only files that would be regenerated
 - `full` — Also removes cache dirs (`.pytest_cache`, `.mypy_cache`, `.venv`), generated infrastructure, and `alembic.ini`
+
+### Generating into an existing project
+
+When integrating model-generator output into a project that already has its own `pyproject.toml`, `.gitignore`, or alembic config, use `--no-root-files` to suppress root-level file emission:
+
+```bash
+model-gen models/ --target all --no-root-files
+```
+
+This skips `pyproject.toml`, `alembic.ini`, and `.gitignore` even when those files don't yet exist in the target directory. The in-tree `alembic/env.py`, `script.py.mako`, and `versions/.gitkeep` still emit, since they live inside the migrations subdirectory rather than at the project root.
+
+Useful for the scratch-and-migrate workflow: generate into a scratch directory, then move the generated `src/` and `tests/` trees into your real repo without clobbering its curated root files.
 
 ---
 

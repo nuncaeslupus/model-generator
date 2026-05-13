@@ -378,6 +378,7 @@ def generate(
     diff: bool = False,
     dry_run: bool = False,
     stack: str = "python-fastapi",
+    no_root_files: bool = False,
 ) -> None:
     """Generate code from model definition."""
     project_root = _find_project_root(model_path)
@@ -406,7 +407,15 @@ def generate(
 
     for t in targets_to_generate:
         result = _generate_target(
-            t, model, config, env, project_root, model_path, enums, constraints
+            t,
+            model,
+            config,
+            env,
+            project_root,
+            model_path,
+            enums,
+            constraints,
+            no_root_files=no_root_files,
         )
         if result is None:
             continue
@@ -694,6 +703,7 @@ def _generate_target(
     model_path: Path,
     enums: dict[str, Any],
     constraints: dict[str, Any],
+    no_root_files: bool = False,
 ) -> dict[str, Any] | list[dict[str, Any]] | None:
     """Generate a single target, returning output dict(s) or None."""
     # Use dispatch table for simple generators
@@ -708,7 +718,9 @@ def _generate_target(
     elif target == "api-routes":
         return generate_api_routes(model, config, env, project_root, enums, constraints)
     elif target == "migration-init":
-        return generate_migration_init(model, config, env, project_root)
+        return generate_migration_init(
+            model, config, env, project_root, no_root_files=no_root_files
+        )
     elif target == "migration-autogen":
         return generate_migration_autogen(model, config, env, project_root)
 
@@ -807,6 +819,14 @@ def main() -> None:
         "--clear-only",
         action="store_true",
         help="Only delete generated files without regenerating",
+    )
+    parser.add_argument(
+        "--no-root-files",
+        action="store_true",
+        help=(
+            "Skip pyproject.toml, alembic.ini, and .gitignore emission "
+            "(for the scratch-and-migrate workflow)"
+        ),
     )
     parser.add_argument(
         "--stack",
@@ -935,6 +955,7 @@ def main() -> None:
             diff=args.diff,
             dry_run=args.dry_run,
             has_encrypted_binary=has_encrypted_binary,
+            no_root_files=args.no_root_files,
         )
         if infra_files and not args.dry_run and not args.diff:
             run_quality_tools(config, project_root, infra_files)
@@ -952,6 +973,7 @@ def main() -> None:
             diff=args.diff,
             dry_run=args.dry_run,
             stack=args.stack,
+            no_root_files=args.no_root_files,
         )
 
 

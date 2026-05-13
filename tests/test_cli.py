@@ -314,3 +314,89 @@ class TestProjectRootResolution:
 
         (tmp_path / ".model-generator.yaml").write_text(yaml.dump({"project": {}}))
         _validate_project_root(tmp_path)  # Should not raise
+
+
+class TestNoRootFilesFlag:
+    """Test that --no-root-files propagates through main() into generators."""
+
+    def _make_project(self, project_dir: Path) -> Path:
+        config = {
+            "project": {"name": "Test"},
+            "stack": "python-fastapi",
+            "paths": {
+                "database_models": "src/db/models",
+                "factories": "src/db/models/factories",
+                "api_models": "src/api/models",
+                "api_routes": "src/api/routes",
+                "api_tests": "tests/api",
+                "base": "src/db/models/base.py",
+                "engine": "src/db/engine.py",
+                "main": "src/main.py",
+                "errors": "src/api/errors.py",
+                "validators": "src/api/validators.py",
+                "test_conftest_root": "tests/conftest.py",
+                "migrations": "alembic",
+            },
+        }
+        (project_dir / ".model-generator.yaml").write_text(yaml.dump(config))
+        models_dir = project_dir / "models"
+        models_dir.mkdir()
+        (models_dir / "widgets.model.json").write_text(
+            json.dumps(
+                {
+                    "domain": "widgets",
+                    "entities": {
+                        "Widget": {
+                            "table": "widgets",
+                            "fields": {
+                                "id": {
+                                    "type": "uuid",
+                                    "primary_key": True,
+                                    "auto_generate": True,
+                                },
+                                "name": {
+                                    "type": "text",
+                                    "required": True,
+                                    "max_length": 50,
+                                },
+                            },
+                            "timestamps": {"created": True, "updated": True},
+                        }
+                    },
+                }
+            )
+        )
+        return models_dir
+
+    def test_no_root_files_flag_propagates(self, tmp_path: Path) -> None:
+        """--no-root-files reaches generate_infrastructure and generate()."""
+        from model_generator.generate import main
+
+        models_dir = self._make_project(tmp_path)
+
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            with (
+                patch(
+                    "sys.argv",
+                    [
+                        "model-gen",
+                        str(models_dir),
+                        "--no-root-files",
+                        "--dry-run",
+                    ],
+                ),
+                patch("model_generator.generate.generate_infrastructure") as mock_infra,
+                patch("model_generator.generate.generate") as mock_generate,
+            ):
+                mock_infra.return_value = []
+                main()
+
+            mock_infra.assert_called_once()
+            assert mock_infra.call_args.kwargs.get("no_root_files") is True
+
+            mock_generate.assert_called_once()
+            assert mock_generate.call_args.kwargs.get("no_root_files") is True
+        finally:
+            os.chdir(original_cwd)

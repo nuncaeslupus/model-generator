@@ -9,9 +9,19 @@ from jinja2 import Environment
 
 
 def generate_migration_init(
-    model: dict[str, Any], config: dict[str, Any], env: Environment, project_root: Path
+    model: dict[str, Any],
+    config: dict[str, Any],
+    env: Environment,
+    project_root: Path,
+    no_root_files: bool = False,
 ) -> list[dict[str, Any]]:
-    """Initialize Alembic migration structure."""
+    """Initialize Alembic migration structure.
+
+    When ``no_root_files`` is set, the project-root ``alembic.ini`` is
+    suppressed while the in-tree alembic/ scaffolding (env.py,
+    script.py.mako, README, versions/.gitkeep) still emits — those live
+    inside the migrations directory, not at the project root.
+    """
     outputs = []
 
     migrations_dir = project_root / config["paths"].get("migrations", "alembic")
@@ -21,11 +31,12 @@ def generate_migration_init(
     versions_dir.mkdir(parents=True, exist_ok=True)
 
     # alembic.ini (bootstrap-only; don't overwrite adopter customizations)
-    alembic_ini_path = project_root / "alembic.ini"
-    if not alembic_ini_path.exists():
-        template = env.get_template("migrations/ini.j2")
-        content = template.render(config=config)
-        outputs.append({"path": alembic_ini_path, "content": content})
+    if not no_root_files:
+        alembic_ini_path = project_root / "alembic.ini"
+        if not alembic_ini_path.exists():
+            template = env.get_template("migrations/ini.j2")
+            content = template.render(config=config)
+            outputs.append({"path": alembic_ini_path, "content": content})
 
     # env.py
     template = env.get_template("migrations/env.py.j2")
