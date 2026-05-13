@@ -1,24 +1,24 @@
 # Next Session Plan
 
-## Current State (2026-05-11, composite-FK `__table_args__` in flight on `feat/composite-fk-table-args`)
+## Current State (2026-05-11, on `main`)
 
-§13 emission gap merged to `main` as **`5563731`** via PR #14 — see "Recently Completed Fixes" below. The latent `encrypted_bytes.py` emission gap that the §12 status doc had flagged is now closed.
+`main` is at **`2f33207`** (PR #16: mypy strict + `py.typed`). The composite-FK `__table_args__` epic that previously lived in this section as in-flight work merged the same day as **`7a40831`** via PR #15. The latent §13 `encrypted_bytes.py` emission gap closed earlier on PR #14 (**`5563731`**). All three are detailed under "Recently Completed Fixes" below.
 
-**Branch:** `feat/composite-fk-table-args`. Composite foreign keys now express via a new entity-level `foreign_keys` array, emit as a single `ForeignKeyConstraint(...)` inside `__table_args__`, and pass a live `Base.registry.configure()` probe. Member columns stay typed (`uuid`, `text`, …) and a new template `uuid` case fills the non-PK, non-`reference` gap. Eager validator rejects length mismatches, unknown fields, `reference`-typed members, and unknown `references_table`. 423 unit tests (was 408; +15: 6 emission, 6 validator, 3 schema), example suite green (130 passed), lint clean.
+No concrete known gaps remain. **Active arc starting next session:** mutation testing on the generator package (via the shared `mutmut-report` skill) → test-suite refactor (`tests/core/` + `tests/stacks/<name>/` + standardized smoke-test contract). Mutmut findings will scope which tests need strengthening before the layout change.
 
 ---
 
 ## Future Work
 
-(No concrete known gaps remain. Composite-FK `__table_args__` emission — the only entry that used to live here — is in flight on `feat/composite-fk-table-args`.)
+(No concrete known gaps remain. Composite-FK `__table_args__` emission — the only entry that used to live here — landed in PR #15.)
 
 ---
 
 ## Other Possible Next Steps
 
-1. **New stacks** — templates beyond python-fastapi (python-django, node-express).
-2. **Test suite refactor** — split into `tests/core/` + `tests/stacks/<name>/`, snapshot tests for generators, standardized stack smoke-test contract.
-3. **Mutation testing** — run mutmut to tighten test-suite assertions.
+1. **Mutation testing** *(queued — active arc)* — run mutmut to surface untested generator behaviors, tighten test assertions.
+2. **Test suite refactor** *(queued — active arc, scope informed by #1)* — split into `tests/core/` + `tests/stacks/<name>/`, snapshot tests for generators, standardized stack smoke-test contract.
+3. **New stacks** — templates beyond python-fastapi (python-django, node-express).
 4. **Template improvements** — more constraint types, pagination options, bulk endpoints.
 5. **Wizard enhancements** — interactive mode UX, model editing workflow.
 6. **Documentation** — architecture diagrams, more examples, video walkthrough.
@@ -26,6 +26,61 @@
 ---
 
 ## Recently Completed Fixes
+
+### Mypy strict + `py.typed` marker (2026-05-11, PR #16)
+
+Merged to `main` as **`2f33207`** (squash of 2 commits on `feat/strict-typing`). Brings the CLI mypy in line with what the IDE was already showing and publishes the package as typed for downstream consumers (PEP 561).
+
+- Switches `[tool.mypy]` to `strict = true`; drops `tests/` from exclude so the same rules apply to the suite. Adds `mypy_path = "src"` so the Makefile's `--explicit-package-bases` doesn't double-resolve modules under both `src.model_generator.X` and `model_generator.X`.
+- Adds `src/model_generator/py.typed` (PEP 561) and registers it in package-data so the wheel ships it.
+- Pins Pyright/Pylance to `typeCheckingMode = "standard"` via a new `[tool.pyright]` block. Strict would emit ~322 `reportUnknownXxxType` errors on `dict[str, Any]` JSON-spec code that mypy strict accepts; proper fix would require TypedDict for every spec shape (separate, larger refactor).
+- Annotates ~135 bare `dict / list / set` generics across `src/` and `tests/`.
+- Adds 107 `isinstance(result, dict | list)` asserts in `tests/test_generators.py` to narrow the `dict | list[dict] | None` Union that generators return based on the runtime layout config.
+- Re-exports `load_model` explicitly via `as` so `no_implicit_reexport` (implied by strict) doesn't break test imports.
+
+Gemini-bot review folded in as the second squashed commit (`refactor(typing): tighten generator helper types`): drops the `list[Any]` / `set[Any]` fallbacks the strict pass had introduced when callers already know the concrete shape (`_GeneratorFn` / `_generate_target` return `list[dict[str, Any]]`; `_extract_ref` / `_extract_regex_ref` `refs` / `seen` → `list[dict[str, Any]]` / `set[str]`).
+
+**Verified:** `make lint` clean (ruff check + ruff format --check + mypy strict), 423 tests pass, `uv run pyright` 0 errors.
+
+### Composite-FK `__table_args__` emission (2026-05-11, PR #15)
+
+Merged to `main` as **`7a40831`** (squash of 4 commits on `feat/composite-fk-table-args`). Closes the only concrete known gap that `Future Work` had been tracking.
+
+New entity-level `foreign_keys` array (mirrors `indexes` / `constraints`) lets a composite FK target a composite-PK table; generator emits a single `ForeignKeyConstraint(...)` inside `__table_args__`; member columns stay typed (`uuid` / `text` / …); a live `Base.registry.configure()` probe verifies no `AmbiguousForeignKeysError`. Eager validator rejects length mismatches, unknown field names, `reference`-typed members (mutex with composite FK), and unknown `references_table`.
+
+**Latent gaps surfaced and closed on the same PR:**
+
+- Non-PK plain `uuid` fields previously emitted nothing — `model.py.j2`'s `regular_fields` dispatch had no `uuid` case. Composite-FK members are the first legitimate non-PK plain-uuid use case; added the dispatch.
+- The pre-existing `relationship.foreign_keys` schema property is a disambiguation hint for `relationship(...)`, **not** an FK constraint declaration. The new entity-level `foreign_keys` array is the actual schema-level constraint. Both are needed for composite FKs.
+
+**Spec shape:**
+
+```json
+"OrderItem": {
+  "fields": {
+    "tenant_id": {"type": "uuid", "required": true},
+    "order_id":  {"type": "uuid", "required": true}
+  },
+  "foreign_keys": [
+    {
+      "fields": ["tenant_id", "order_id"],
+      "references_table": "orders",
+      "references_columns": ["tenant_id", "id"],
+      "on_delete": "CASCADE"
+    }
+  ],
+  "relationships": {
+    "order": {
+      "type": "many_to_one", "target": "Order", "back_populates": "items",
+      "foreign_keys": ["tenant_id", "order_id"]
+    }
+  }
+}
+```
+
+**Out of scope (deferred):** wizard interactive-mode support for composite FKs (current wizard doesn't cover composite PKs either); cross-domain composite FKs (target entity in a different model file) — works mechanically since `references_table` is a SQL string, but validation rejects them for v1, relax in a follow-up; `ON UPDATE` action on composite FKs (symmetric gap with single-column FKs).
+
+**Verified:** 423 unit tests (was 408; +15: 6 emission, 6 validator, 3 schema), example suite 130 / 130, lint clean.
 
 ### §13.1 — Encrypted-bytes emission gap (2026-05-10, PR #14)
 
