@@ -769,6 +769,77 @@ class TestFactoryGeneratorPerEntity:
         assert "PostFactory.create_batch(count, author=obj)" in author_content
 
 
+@pytest.fixture
+def self_ref_factory_model() -> dict[str, Any]:
+    """Single entity with both a self-ref reference field and a self-loop one_to_many.
+
+    Category.parent_id → Category (reference field, exercises factory.py.j2
+    entity_refs collection on the field path). Category.children → Category
+    (one_to_many self-rel, exercises the same collection on the relationship
+    path). Both paths used to emit ``from .category import CategoryFactory``
+    inside category.py — a self-import that ruff catches as F811.
+    """
+    return {
+        "domain": "category",
+        "entities": {
+            "Category": {
+                "table": "categories",
+                "fields": {
+                    "id": {
+                        "type": "uuid",
+                        "primary_key": True,
+                        "auto_generate": True,
+                    },
+                    "name": {"type": "text", "max_length": 100, "required": True},
+                    "parent_id": {
+                        "type": "reference",
+                        "reference_entity": "Category",
+                        "reference_table": "categories",
+                        "required": False,
+                    },
+                },
+                "relationships": {
+                    "parent": {
+                        "type": "many_to_one",
+                        "target": "Category",
+                        "back_populates": "children",
+                    },
+                    "children": {
+                        "type": "one_to_many",
+                        "target": "Category",
+                        "back_populates": "parent",
+                    },
+                },
+            },
+        },
+    }
+
+
+class TestFactoryGeneratorSelfRef:
+    """Self-referential entities must not import their own factory class."""
+
+    def test_no_self_import_line_emitted(
+        self, self_ref_factory_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
+        """Generated category.py contains no `from .category import CategoryFactory`."""
+        project_root, config, env = project_env_per_entity
+        result = generate_factories(self_ref_factory_model, config, env, project_root)
+        assert isinstance(result, list)
+        content = next(r["content"] for r in result if r["path"].name == "category.py")
+        assert "from .category import" not in content
+
+    def test_in_class_subfactory_reference_preserved(
+        self, self_ref_factory_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
+        """Skipping the self-import must not drop the in-class SubFactory call:
+        ``CategoryFactory`` is defined locally and resolves at runtime."""
+        project_root, config, env = project_env_per_entity
+        result = generate_factories(self_ref_factory_model, config, env, project_root)
+        assert isinstance(result, list)
+        content = next(r["content"] for r in result if r["path"].name == "category.py")
+        assert "factory.SubFactory(CategoryFactory)" in content
+
+
 class TestApiModelsGeneratorPerEntity:
     """Per-entity api-models emission: two files per entity."""
 
