@@ -22,13 +22,19 @@ Ship in order B → C. Each is independent, small, low-risk. One PR per finding.
 
 ### PR C — `fix(generator): make generate_main skip-if-exists (bootstrap-only parity)`
 
-`infrastructure.py:208` (`generate_main`) is the **only** infra generator without `if output_path.exists(): return None`. Every other one skips (base.py, engine.py, types.py, database_init.py, errors.py, gitignore, pyproject.toml). Consumer aliased `paths.main: hub/main_generated.py` to avoid clobber, which propagated into test imports (`contract.py.j2:1701/1717` correctly derives `from {paths.main} import app` at generation time — the bug is upstream of that).
+`infrastructure.py:228` (`generate_main`) is one of **four** infra generators that emit a single file without `if output_path.exists(): return None`; the others are `generate_validators` (96), `generate_utils` (109), and `generate_test_conftest_root` (450) — flagged by Gemini-bot review on PR #20 (2026-05-17). Most other infra generators skip (base.py, engine.py, types.py, database_init.py, errors.py, gitignore, pyproject.toml, auth_router, csrf, encrypted_bytes, rate_limit). Consumer aliased `paths.main: hub/main_generated.py` to avoid clobber, which propagated into test imports (`contract.py.j2:1701/1717` correctly derives `from {paths.main} import app` at generation time — the bug is upstream of that).
 
-**Fix.** Add `if output_path.exists(): return None` to `generate_main` after computing `output_path` (~line 224). Update `test_infrastructure_skips_existing` to add `main.py` to the `skipped_infra` set. Add `test_generate_main_skips_existing` (parity with `test_generate_base_skips_existing`).
+**Scope decision (next session).** Three viable options:
 
-**Trade-off (call out in commit msg).** New domains added later won't auto-wire — adopters edit `main.py` manually to add `from {package}.api.routes import {new_domain}` + include the router. Matches the contract of every other "skip-if-exists" file and the project's "one-shot generation, then evolve manually" principle (CLAUDE.md).
+- **C-narrow:** Only `generate_main`. Matches the original consumer-addendum finding; smallest blast radius.
+- **C-medium:** `generate_main` + `generate_test_conftest_root`. Both are adopter-customized files (main wires routers; conftest holds fixture overrides). Higher value, still surgical.
+- **C-wide:** All four. `generate_validators` + `generate_utils` are project-agnostic templates today (zero render args), so the clobber risk is theoretical — but adopters typically add domain-specific validators / utilities once a project matures. Closes the parity gap cleanly.
 
-**Verification.** 435 passing. Manual probe: generate, edit `main.py`, regenerate → edit preserved. Example: delete example's `main.py`, regenerate, `APP_PASSWORD_PEPPER=test_pepper uv run pytest -q` → 130/130.
+**Fix (per generator chosen).** Add `if output_path.exists(): return None` after computing `output_path`. Update `test_infrastructure_skips_existing` to add the relevant filenames to the `skipped_infra` set. Add per-generator `test_generate_X_skips_existing` tests (parity with `test_generate_base_skips_existing`).
+
+**Trade-off (call out in commit msg).** New domains/routes added later won't auto-wire — adopters edit `main.py` (and conftest if covered) manually. Matches the contract of every other "skip-if-exists" file and the project's "one-shot generation, then evolve manually" principle (CLAUDE.md).
+
+**Verification.** Pytest count depends on chosen scope (C-narrow: 435, C-medium: 437, C-wide: 441 — one skip-if-exists test per generator covered, plus the `skipped_infra` set assertion in the shared test). Manual probe: generate, edit the target file, regenerate → edit preserved. Example: delete example's `main.py`, regenerate, `APP_PASSWORD_PEPPER=test_pepper uv run pytest -q` → 130/130.
 
 ### Branch + PR strategy
 
