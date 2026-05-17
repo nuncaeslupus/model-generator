@@ -2,6 +2,8 @@
 
 import json
 import os
+import sys
+import types
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -767,6 +769,144 @@ class TestFactoryGeneratorPerEntity:
         )
         assert "from .post import PostFactory" in author_content
         assert "PostFactory.create_batch(count, author=obj)" in author_content
+
+
+@pytest.fixture
+def self_ref_factory_model() -> dict[str, Any]:
+    """Single entity with both a self-ref reference field and a self-loop one_to_many.
+
+    Category.parent_id → Category (reference field, exercises factory.py.j2
+    entity_refs collection on the field path). Category.children → Category
+    (one_to_many self-rel, exercises the same collection on the relationship
+    path). Both paths used to emit ``from .category import CategoryFactory``
+    inside category.py — a self-import that ruff catches as F811.
+    """
+    return {
+        "domain": "category",
+        "entities": {
+            "Category": {
+                "table": "categories",
+                "fields": {
+                    "id": {
+                        "type": "uuid",
+                        "primary_key": True,
+                        "auto_generate": True,
+                    },
+                    "name": {"type": "text", "max_length": 100, "required": True},
+                    "parent_id": {
+                        "type": "reference",
+                        "reference_entity": "Category",
+                        "reference_table": "categories",
+                        "required": False,
+                    },
+                },
+                "relationships": {
+                    "parent": {
+                        "type": "many_to_one",
+                        "target": "Category",
+                        "back_populates": "children",
+                    },
+                    "children": {
+                        "type": "one_to_many",
+                        "target": "Category",
+                        "back_populates": "parent",
+                    },
+                },
+            },
+        },
+    }
+
+
+class TestFactoryGeneratorSelfRef:
+    """Self-referential entities must not import their own factory class."""
+
+    def test_no_self_import_line_emitted(
+        self, self_ref_factory_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
+        """Generated category.py contains no `from .category import CategoryFactory`."""
+        project_root, config, env = project_env_per_entity
+        result = generate_factories(self_ref_factory_model, config, env, project_root)
+        assert isinstance(result, list)
+        content = next(r["content"] for r in result if r["path"].name == "category.py")
+        assert "from .category import" not in content
+
+    def test_in_class_subfactory_reference_preserved(
+        self, self_ref_factory_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
+        """Self-ref SubFactory must emit as a string literal — referencing the
+        bare class name in the class body raises NameError at module-load time
+        (the class isn't bound until the ``class`` statement completes).
+        Factoryboy resolves the string lazily at ``.create()`` time."""
+        project_root, config, env = project_env_per_entity
+        result = generate_factories(self_ref_factory_model, config, env, project_root)
+        assert isinstance(result, list)
+        content = next(r["content"] for r in result if r["path"].name == "category.py")
+        assert 'factory.SubFactory("CategoryFactory")' in content
+        # The bare-class form is the regression mode — must NOT appear for self-ref.
+        assert "factory.SubFactory(CategoryFactory)" not in content
+
+    def test_generated_factory_execs_without_nameerror(
+        self, self_ref_factory_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
+        """Smoke test: ``exec()`` the generated factory under stubbed
+        factoryboy/faker/SQLAlchemy modules. Catches class-body self-references
+        (the class of regression Gemini flagged on PR #19) regardless of which
+        macro emits them."""
+        project_root, config, env = project_env_per_entity
+        result = generate_factories(self_ref_factory_model, config, env, project_root)
+        assert isinstance(result, list)
+        content = next(r["content"] for r in result if r["path"].name == "category.py")
+
+        factory_stub = types.ModuleType("factory")
+        factory_stub.LazyFunction = lambda *_a, **_k: object()  # type: ignore[attr-defined]
+        factory_stub.SubFactory = lambda *_a, **_k: object()  # type: ignore[attr-defined]
+        factory_stub.Faker = lambda *_a, **_k: object()  # type: ignore[attr-defined]
+        factory_stub.Sequence = lambda *_a, **_k: object()  # type: ignore[attr-defined]
+        factory_stub.post_generation = lambda fn: fn  # type: ignore[attr-defined]
+        alchemy_stub = types.ModuleType("factory.alchemy")
+
+        class _SQLAlchemyModelFactory:
+            pass
+
+        alchemy_stub.SQLAlchemyModelFactory = _SQLAlchemyModelFactory  # type: ignore[attr-defined]
+        factory_stub.alchemy = alchemy_stub  # type: ignore[attr-defined]
+
+        faker_stub = types.ModuleType("faker")
+
+        class _FakerStub:
+            def __getattr__(self, _name: str) -> Any:
+                return lambda *_a, **_k: ""
+
+        faker_stub.Faker = _FakerStub  # type: ignore[attr-defined]
+
+        cat_stub = types.ModuleType("src.database.models.category")
+
+        class Category:
+            pass
+
+        cat_stub.Category = Category  # type: ignore[attr-defined]
+
+        stubbed = {
+            "factory": factory_stub,
+            "factory.alchemy": alchemy_stub,
+            "faker": faker_stub,
+            "src": types.ModuleType("src"),
+            "src.database": types.ModuleType("src.database"),
+            "src.database.models": types.ModuleType("src.database.models"),
+            "src.database.models.category": cat_stub,
+        }
+        saved = {k: sys.modules.get(k) for k in stubbed}
+        try:
+            sys.modules.update(stubbed)
+            ns: dict[str, Any] = {"__name__": "category_factory_test"}
+            exec(content, ns)
+            assert "CategoryFactory" in ns
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    sys.modules.pop(k, None)
+                else:
+                    sys.modules[k] = v
 
 
 class TestApiModelsGeneratorPerEntity:
