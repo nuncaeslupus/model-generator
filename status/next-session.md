@@ -2,23 +2,13 @@
 
 ## Current State (2026-05-17, on `main`)
 
-`main` is at **`3bafed5`** (PR #19: addendum NEW SHARP EDGE #1 — factory self-import). The consumer-gaps arc closed §3 + §4 via PR #18 (squashed as `4224a56`, 2026-05-13) and the first addendum NEW finding via PR #19 (squashed as `3bafed5`, 2026-05-17 — addressed Gemini's NameError review on the initial commit with a follow-up using `factory.SubFactory("EntityFactory")` string-literal form). 433 model-generator tests pass.
+`main` is at **`b3c018f`** pre-merge of PR #21 (`feat(generate): warn when paths.base is outside paths.database_models`). PR #21 closes the second of three NEW findings from the multi-agent-researcher consumer addendum; once squashed to `main`, the active arc reduces to a single follow-up PR (PR C). 440 model-generator tests pass.
 
-**Active arc next session:** two remaining follow-up PRs from the multi-agent-researcher consumer addendum (lines 176-281 of `status/gaps-from-multi-agent-researcher-2026-05-13.md`, currently untracked-by-design). Both verified real against current source on 2026-05-13; PR A (factory self-import) shipped 2026-05-17.
+**Active arc next session:** one remaining follow-up PR from the consumer addendum (lines 176-281 of `status/gaps-from-multi-agent-researcher-2026-05-13.md`, currently untracked-by-design). PR A shipped 2026-05-17 (#19); PR B shipped 2026-05-17 (#21, this PR).
 
 ---
 
-## Active arc: 2 remaining addendum follow-up PRs
-
-Ship in order B → C. Each is independent, small, low-risk. One PR per finding. (PR A shipped 2026-05-17 as PR #19, squashed to main as `3bafed5` — see "Recently Completed Fixes" below for what surfaced during review.)
-
-### PR B — `feat(generate): warn when paths.base is outside paths.database_models`
-
-`templates/database/model.py.j2:151` does `from .base import Base` (relative). The base module MUST live inside `paths.database_models`. Setting `paths.base: hub/database/base.py` (sibling of models/, naturally-feeling) generates working files but `ModuleNotFoundError: No module named 'hub.database.models.base'` at test-collection time. Example yaml already does this correctly (`paths.base: backend/src/database/models/base.py`); no validation or docs callout exists.
-
-**Fix.** Add `_validate_paths_base()` in `generate.py` (sibling of `_validate_generation_config`). Checks `Path(paths.base).parent == Path(paths.database_models)`. Exit with remediation message on mismatch. Call site: after `_validate_generation_config(config)` in `generate()`. Add docs callout in `usage-guide.md` + `quick-reference.md`.
-
-**Tests.** `test_validate_paths_base_inside_database_models_passes` + `test_validate_paths_base_outside_database_models_exits`. Verification: 434 passing.
+## Active arc: 1 remaining addendum follow-up PR
 
 ### PR C — `fix(generator): make generate_main skip-if-exists (bootstrap-only parity)`
 
@@ -34,15 +24,15 @@ Ship in order B → C. Each is independent, small, low-risk. One PR per finding.
 
 **Trade-off (call out in commit msg).** New domains/routes added later won't auto-wire — adopters edit `main.py` (and conftest if covered) manually. Matches the contract of every other "skip-if-exists" file and the project's "one-shot generation, then evolve manually" principle (CLAUDE.md).
 
-**Verification.** Pytest count depends on chosen scope (C-narrow: 435, C-medium: 437, C-wide: 441 — one skip-if-exists test per generator covered, plus the `skipped_infra` set assertion in the shared test). Manual probe: generate, edit the target file, regenerate → edit preserved. Example: delete example's `main.py`, regenerate, `APP_PASSWORD_PEPPER=test_pepper uv run pytest -q` → 130/130.
+**Verification.** Pytest count depends on chosen scope (C-narrow: 442, C-medium: 444, C-wide: 448 — one skip-if-exists test per generator covered, plus the `skipped_infra` set assertion in the shared test). Manual probe: generate, edit the target file, regenerate → edit preserved. Example: delete example's `main.py`, regenerate, `APP_PASSWORD_PEPPER=test_pepper uv run pytest -q` → 130/130.
 
 ### Branch + PR strategy
 
-- Branch off the post-#19 `main` (currently `3bafed5`).
-- Two feature branches: `feat/validate-paths-base`, `fix/generate-main-skip-if-exists`.
-- One PR per branch. Squash-merge on approval.
+- Branch off post-#21 `main`.
+- Branch name: `fix/generate-main-skip-if-exists` (rename if scope expands beyond `generate_main`).
+- One PR. Squash-merge on approval.
 
-### After both merge
+### After PR C merges
 
 Re-queue mutmut + test-suite refactor as the active arc (deferred since 2026-05-11; details under "Other Possible Next Steps" below).
 
@@ -50,7 +40,7 @@ Re-queue mutmut + test-suite refactor as the active arc (deferred since 2026-05-
 
 ## Other Possible Next Steps
 
-1. **Mutation testing** *(queued — re-active after addendum PRs)* — run mutmut to surface untested generator behaviors, tighten test assertions.
+1. **Mutation testing** *(queued — re-active after PR C)* — run mutmut to surface untested generator behaviors, tighten test assertions.
 2. **Test suite refactor** *(queued — scope informed by #1)* — split into `tests/core/` + `tests/stacks/<name>/`, snapshot tests for generators, standardized stack smoke-test contract.
 3. **New stacks** — templates beyond python-fastapi (python-django, node-express).
 4. **Template improvements** — more constraint types, pagination options, bulk endpoints.
@@ -60,6 +50,19 @@ Re-queue mutmut + test-suite refactor as the active arc (deferred since 2026-05-
 ---
 
 ## Recently Completed Fixes
+
+### Addendum NEW SHARP EDGE #2 — paths.base validator + loader derivation (2026-05-17, PR #21)
+
+Branch tip on `feat/validate-paths-base` (2 commits, squash on merge). Closes the second of three NEW findings from the multi-agent-researcher consumer integration addendum. PR B in the active arc.
+
+- **First commit — `feat(generate): validate paths.base sibling of paths.database_models`.** New `_validate_paths_base()` helper in `generate.py` (sibling of `_validate_generation_config`), wired into `generate()` after `_validate_generation_config(config)`. Generated database model files emit `from .base import Base` (relative), so the base module MUST live inside `paths.database_models`. A mismatch generates successfully but raises `ModuleNotFoundError` at import / test-collection time — silent at generation, loud at runtime. Validator catches it eagerly with a remediation message echoing both paths and the fix shape. Three initial tests under `TestValidatePathsBase`: default-passes, sibling-passes, outside-exits. `tests/test_integration.py::project_setup` had been relying on the silent broken behavior (custom `paths.database_models: lib/db/models` + default `paths.base: backend/src/database/models/base.py`); fixture corrected.
+- **Second commit — `refactor: address Gemini-bot review feedback on PR #21`.** Three changes from gemini-code-assist's review:
+  1. **Default `paths.base` now derives from `paths.database_models`.** Done at the loader (`utils/loaders.py:load_config`) rather than at each reader, so the merged config is internally consistent — the stack `config.yaml`'s `base: backend/src/database/models/base.py` no longer wins on deep-merge when the project only overrides `paths.database_models`. Lets adopters customize `database_models` without having to also restate `paths.base`. Also lets the `test_integration.py` fixture revert to its pre-PR shape (no explicit `paths.base`).
+  2. **Filename enforcement.** `_validate_paths_base` now also rejects `paths.base` with a name other than `base.py`. The template's `from .base import Base` is hardcoded, so `paths.base: src/db/models/foundation.py` would generate fine but fail at runtime. Caught eagerly with a dedicated error message.
+  3. **Docs wording cleanup.** `usage-guide.md` and `quick-reference.md` clarified: `base.py` is a *child* of `paths.database_models` (and a sibling of the generated model files), not a sibling of the directory itself. Fixed the "live one directory below itself" typo. Added the filename constraint to both docs.
+- **Not addressed: Gemini's `.resolve()` suggestion.** `Path()` already normalizes `./` prefixes and trailing slashes; `.resolve()` would make errors show absolute paths anchored to CWD — worse for the user.
+
+**Verification:** `make format` + `make lint` clean (ruff + mypy strict), 440 / 440 tests passing (was 433 pre-PR-B; +7: 5 in `TestValidatePathsBase`, 2 in `TestLoadConfigEdgeCases` guarding the loader-level derivation).
 
 ### Addendum NEW SHARP EDGE #1 — factory self-import (2026-05-17, PR #19)
 

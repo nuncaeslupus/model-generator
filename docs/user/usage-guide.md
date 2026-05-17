@@ -54,6 +54,28 @@ Omit the key (or set it empty) when your `paths.*` values are already importable
 
 ---
 
+## Base Module Location
+
+`paths.base` **must be located inside `paths.database_models`** and **must be named `base.py`** — the base module is required to be a child of the models directory (and a sibling of the generated model files). Generated model files emit a relative import:
+
+```python
+from .base import Base
+```
+
+so the file specified by `paths.base` must live inside the `paths.database_models` directory under the filename `base.py`. A mismatch generates without complaint but fails at test-collection time with `ModuleNotFoundError: No module named '<...>.models.base'`.
+
+```yaml
+paths:
+  database_models: hub/database/models
+  base: hub/database/models/base.py   # ✓ child of paths.database_models, named base.py
+  # base: hub/database/base.py        # ✗ ModuleNotFoundError (wrong directory)
+  # base: hub/database/models/foundation.py   # ✗ filename must be base.py
+```
+
+When `paths.base` is omitted, the default derives from `paths.database_models` (`{database_models}/base.py`), so adopters who only customize the models directory don't need to also restate the base path. `model-gen` validates both constraints eagerly and exits with a remediation message on mismatch.
+
+---
+
 ## Generation Targets
 
 | Target | Description | Output |

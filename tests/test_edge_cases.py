@@ -144,6 +144,53 @@ class TestLoadConfigEdgeCases:
         finally:
             os.chdir(original_cwd)
 
+    def test_paths_base_derives_from_overridden_database_models(
+        self, tmp_path: Path
+    ) -> None:
+        """If project config overrides paths.database_models but not paths.base,
+        the merged config derives paths.base from the new database_models —
+        without this, the stack default's paths.base wins on deep-merge and
+        the two paths diverge (silent broken state caught by _validate_paths_base).
+        """
+        (tmp_path / ".model-generator.yaml").write_text(
+            yaml.dump(
+                {
+                    "stack": "python-fastapi",
+                    "paths": {"database_models": "lib/db/models"},
+                }
+            )
+        )
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            config = load_config("python-fastapi")
+            assert config["paths"]["base"] == "lib/db/models/base.py"
+            assert config["paths"]["database_models"] == "lib/db/models"
+        finally:
+            os.chdir(original_cwd)
+
+    def test_paths_base_explicit_override_is_preserved(self, tmp_path: Path) -> None:
+        """If project config sets paths.base explicitly, the loader does not
+        rewrite it — even when paths.database_models is also overridden."""
+        (tmp_path / ".model-generator.yaml").write_text(
+            yaml.dump(
+                {
+                    "stack": "python-fastapi",
+                    "paths": {
+                        "database_models": "lib/db/models",
+                        "base": "lib/db/models/base.py",  # explicit
+                    },
+                }
+            )
+        )
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            config = load_config("python-fastapi")
+            assert config["paths"]["base"] == "lib/db/models/base.py"
+        finally:
+            os.chdir(original_cwd)
+
     def test_default_project_keys_inserted(self, tmp_path: Path) -> None:
         """When stack config has no 'project' key, sensible defaults are inserted."""
         original_cwd = os.getcwd()

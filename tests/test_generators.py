@@ -1641,6 +1641,72 @@ class TestValidateGenerationConfig:
         assert "generation.layout" in out
 
 
+class TestValidatePathsBase:
+    """Test the _validate_paths_base helper."""
+
+    def test_default_paths_pass(self) -> None:
+        from model_generator.generate import _validate_paths_base
+
+        _validate_paths_base(config={})
+
+    def test_base_inside_database_models_passes(self) -> None:
+        from model_generator.generate import _validate_paths_base
+
+        _validate_paths_base(
+            {
+                "paths": {
+                    "database_models": "src/db/models",
+                    "base": "src/db/models/base.py",
+                }
+            }
+        )
+
+    def test_default_base_derives_from_custom_database_models(self) -> None:
+        """When database_models is custom but base is omitted, the default
+        derives the base path from database_models — so no mismatch fires."""
+        from model_generator.generate import _validate_paths_base
+
+        _validate_paths_base({"paths": {"database_models": "lib/db/models"}})
+
+    def test_non_base_filename_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from model_generator.generate import _validate_paths_base
+
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_paths_base(
+                {
+                    "paths": {
+                        "database_models": "src/db/models",
+                        "base": "src/db/models/foundation.py",
+                    }
+                }
+            )
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "base.py" in out
+        assert "foundation.py" in out
+
+    def test_base_outside_database_models_exits(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from model_generator.generate import _validate_paths_base
+
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_paths_base(
+                {
+                    "paths": {
+                        "database_models": "hub/database/models",
+                        "base": "hub/database/base.py",
+                    }
+                }
+            )
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "paths.base" in out
+        assert "hub/database/base.py" in out
+        assert "hub/database/models" in out
+        assert "from .base import Base" in out
+
+
 class TestApiTestsGenerator:
     """Test contract test generation."""
 

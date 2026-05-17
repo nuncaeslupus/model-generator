@@ -388,6 +388,7 @@ def generate(
     config = load_config(stack)
     _validate_auth_config(model, config)
     _validate_generation_config(config)
+    _validate_paths_base(config)
     _validate_composite_foreign_keys(model)
     env = get_template_env(stack, config)
 
@@ -531,6 +532,48 @@ def _validate_generation_config(config: dict[str, Any]) -> None:
             "  # or\n"
             "  generation:\n"
             '    layout: "per-domain"  # legacy; one file per domain'
+        )
+        sys.exit(1)
+
+
+def _validate_paths_base(config: dict[str, Any]) -> None:
+    """Abort if paths.base is not inside paths.database_models (or misnamed).
+
+    Generated database model files emit ``from .base import Base`` (relative),
+    so the base module must live inside paths.database_models AND be named
+    ``base.py``. A mismatch is silent at generation time but raises
+    ``ModuleNotFoundError`` at import or test-collection time.
+    """
+    paths = config.get("paths", {})
+    db_models_str = paths.get("database_models", "backend/src/database/models")
+    base_str = paths.get("base", f"{db_models_str}/base.py")
+
+    base_path = Path(base_str)
+    if base_path.name != "base.py":
+        print(
+            f'Error: paths.base filename must be "base.py" '
+            f'(got "{base_path.name}" from "{base_str}").\n\n'
+            "Generated model files import the base module with a hardcoded "
+            "relative 'from .base import Base' statement, so the filename "
+            "is fixed.\n\n"
+            "Fix in .model-generator.yaml:\n\n"
+            "  paths:\n"
+            f"    base: {base_path.parent}/base.py"
+        )
+        sys.exit(1)
+
+    if base_path.parent != Path(db_models_str):
+        print(
+            f'Error: paths.base ("{base_str}") must live inside '
+            f'paths.database_models ("{db_models_str}"), '
+            f'but its parent is "{base_path.parent}".\n\n'
+            "Generated model files import the base module with a relative "
+            "'from .base import Base' statement, so paths.base must be a "
+            "child of paths.database_models on disk.\n\n"
+            "Fix in .model-generator.yaml:\n\n"
+            "  paths:\n"
+            f"    database_models: {db_models_str}\n"
+            f"    base: {db_models_str}/base.py"
         )
         sys.exit(1)
 
