@@ -209,7 +209,11 @@ fake = Faker()
 {% elif field.type == 'json_array' %}
     {{ field_name }} = factory.LazyFunction(lambda: [])
 {% elif field.type == 'reference' and field.reference_entity is defined %}
+{% if field.reference_entity == entity_name %}
+    {{ field_name }} = factory.SubFactory("{{ field.reference_entity }}Factory")
+{% else %}
     {{ field_name }} = factory.SubFactory({{ field.reference_entity }}Factory)
+{% endif %}
 {% elif field.default is defined %}
 {% if field.default is string %}
     {{ field_name }} = "{{ field.default }}"

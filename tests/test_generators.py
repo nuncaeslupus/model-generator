@@ -2,6 +2,8 @@
 
 import json
 import os
+import sys
+import types
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -831,13 +833,80 @@ class TestFactoryGeneratorSelfRef:
     def test_in_class_subfactory_reference_preserved(
         self, self_ref_factory_model: dict[str, Any], project_env_per_entity: Any
     ) -> None:
-        """Skipping the self-import must not drop the in-class SubFactory call:
-        ``CategoryFactory`` is defined locally and resolves at runtime."""
+        """Self-ref SubFactory must emit as a string literal — referencing the
+        bare class name in the class body raises NameError at module-load time
+        (the class isn't bound until the ``class`` statement completes).
+        Factoryboy resolves the string lazily at ``.create()`` time."""
         project_root, config, env = project_env_per_entity
         result = generate_factories(self_ref_factory_model, config, env, project_root)
         assert isinstance(result, list)
         content = next(r["content"] for r in result if r["path"].name == "category.py")
-        assert "factory.SubFactory(CategoryFactory)" in content
+        assert 'factory.SubFactory("CategoryFactory")' in content
+        # The bare-class form is the regression mode — must NOT appear for self-ref.
+        assert "factory.SubFactory(CategoryFactory)" not in content
+
+    def test_generated_factory_execs_without_nameerror(
+        self, self_ref_factory_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
+        """Smoke test: ``exec()`` the generated factory under stubbed
+        factoryboy/faker/SQLAlchemy modules. Catches class-body self-references
+        (the class of regression Gemini flagged on PR #19) regardless of which
+        macro emits them."""
+        project_root, config, env = project_env_per_entity
+        result = generate_factories(self_ref_factory_model, config, env, project_root)
+        assert isinstance(result, list)
+        content = next(r["content"] for r in result if r["path"].name == "category.py")
+
+        factory_stub = types.ModuleType("factory")
+        factory_stub.LazyFunction = lambda *_a, **_k: object()  # type: ignore[attr-defined]
+        factory_stub.SubFactory = lambda *_a, **_k: object()  # type: ignore[attr-defined]
+        factory_stub.Faker = lambda *_a, **_k: object()  # type: ignore[attr-defined]
+        factory_stub.Sequence = lambda *_a, **_k: object()  # type: ignore[attr-defined]
+        factory_stub.post_generation = lambda fn: fn  # type: ignore[attr-defined]
+        alchemy_stub = types.ModuleType("factory.alchemy")
+
+        class _SQLAlchemyModelFactory:
+            pass
+
+        alchemy_stub.SQLAlchemyModelFactory = _SQLAlchemyModelFactory  # type: ignore[attr-defined]
+        factory_stub.alchemy = alchemy_stub  # type: ignore[attr-defined]
+
+        faker_stub = types.ModuleType("faker")
+
+        class _FakerStub:
+            def __getattr__(self, _name: str) -> Any:
+                return lambda *_a, **_k: ""
+
+        faker_stub.Faker = _FakerStub  # type: ignore[attr-defined]
+
+        cat_stub = types.ModuleType("src.database.models.category")
+
+        class Category:
+            pass
+
+        cat_stub.Category = Category  # type: ignore[attr-defined]
+
+        stubbed = {
+            "factory": factory_stub,
+            "factory.alchemy": alchemy_stub,
+            "faker": faker_stub,
+            "src": types.ModuleType("src"),
+            "src.database": types.ModuleType("src.database"),
+            "src.database.models": types.ModuleType("src.database.models"),
+            "src.database.models.category": cat_stub,
+        }
+        saved = {k: sys.modules.get(k) for k in stubbed}
+        try:
+            sys.modules.update(stubbed)
+            ns: dict[str, Any] = {"__name__": "category_factory_test"}
+            exec(content, ns)
+            assert "CategoryFactory" in ns
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    sys.modules.pop(k, None)
+                else:
+                    sys.modules[k] = v
 
 
 class TestApiModelsGeneratorPerEntity:
