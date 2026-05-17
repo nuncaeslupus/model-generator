@@ -1,23 +1,51 @@
 # Next Session Plan
 
-## Current State (2026-05-11, on `main`)
+## Current State (2026-05-17, on `main`)
 
-`main` is at **`2f33207`** (PR #16: mypy strict + `py.typed`). The composite-FK `__table_args__` epic that previously lived in this section as in-flight work merged the same day as **`7a40831`** via PR #15. The latent §13 `encrypted_bytes.py` emission gap closed earlier on PR #14 (**`5563731`**). All three are detailed under "Recently Completed Fixes" below.
+`main` is at **`3bafed5`** (PR #19: addendum NEW SHARP EDGE #1 — factory self-import). The consumer-gaps arc closed §3 + §4 via PR #18 (squashed as `4224a56`, 2026-05-13) and the first addendum NEW finding via PR #19 (squashed as `3bafed5`, 2026-05-17 — addressed Gemini's NameError review on the initial commit with a follow-up using `factory.SubFactory("EntityFactory")` string-literal form). 433 model-generator tests pass.
 
-No concrete known gaps remain. **Active arc starting next session:** mutation testing on the generator package (via the shared `mutmut-report` skill) → test-suite refactor (`tests/core/` + `tests/stacks/<name>/` + standardized smoke-test contract). Mutmut findings will scope which tests need strengthening before the layout change.
+**Active arc next session:** two remaining follow-up PRs from the multi-agent-researcher consumer addendum (lines 176-281 of `status/gaps-from-multi-agent-researcher-2026-05-13.md`, currently untracked-by-design). Both verified real against current source on 2026-05-13; PR A (factory self-import) shipped 2026-05-17.
 
 ---
 
-## Future Work
+## Active arc: 2 remaining addendum follow-up PRs
 
-(No concrete known gaps remain. Composite-FK `__table_args__` emission — the only entry that used to live here — landed in PR #15.)
+Ship in order B → C. Each is independent, small, low-risk. One PR per finding. (PR A shipped 2026-05-17 as PR #19, squashed to main as `3bafed5` — see "Recently Completed Fixes" below for what surfaced during review.)
+
+### PR B — `feat(generate): warn when paths.base is outside paths.database_models`
+
+`templates/database/model.py.j2:151` does `from .base import Base` (relative). The base module MUST live inside `paths.database_models`. Setting `paths.base: hub/database/base.py` (sibling of models/, naturally-feeling) generates working files but `ModuleNotFoundError: No module named 'hub.database.models.base'` at test-collection time. Example yaml already does this correctly (`paths.base: backend/src/database/models/base.py`); no validation or docs callout exists.
+
+**Fix.** Add `_validate_paths_base()` in `generate.py` (sibling of `_validate_generation_config`). Checks `Path(paths.base).parent == Path(paths.database_models)`. Exit with remediation message on mismatch. Call site: after `_validate_generation_config(config)` in `generate()`. Add docs callout in `usage-guide.md` + `quick-reference.md`.
+
+**Tests.** `test_validate_paths_base_inside_database_models_passes` + `test_validate_paths_base_outside_database_models_exits`. Verification: 434 passing.
+
+### PR C — `fix(generator): make generate_main skip-if-exists (bootstrap-only parity)`
+
+`infrastructure.py:208` (`generate_main`) is the **only** infra generator without `if output_path.exists(): return None`. Every other one skips (base.py, engine.py, types.py, database_init.py, errors.py, gitignore, pyproject.toml). Consumer aliased `paths.main: hub/main_generated.py` to avoid clobber, which propagated into test imports (`contract.py.j2:1701/1717` correctly derives `from {paths.main} import app` at generation time — the bug is upstream of that).
+
+**Fix.** Add `if output_path.exists(): return None` to `generate_main` after computing `output_path` (~line 224). Update `test_infrastructure_skips_existing` to add `main.py` to the `skipped_infra` set. Add `test_generate_main_skips_existing` (parity with `test_generate_base_skips_existing`).
+
+**Trade-off (call out in commit msg).** New domains added later won't auto-wire — adopters edit `main.py` manually to add `from {package}.api.routes import {new_domain}` + include the router. Matches the contract of every other "skip-if-exists" file and the project's "one-shot generation, then evolve manually" principle (CLAUDE.md).
+
+**Verification.** 435 passing. Manual probe: generate, edit `main.py`, regenerate → edit preserved. Example: delete example's `main.py`, regenerate, `APP_PASSWORD_PEPPER=test_pepper uv run pytest -q` → 130/130.
+
+### Branch + PR strategy
+
+- Branch off the post-#19 `main` (currently `3bafed5`).
+- Two feature branches: `feat/validate-paths-base`, `fix/generate-main-skip-if-exists`.
+- One PR per branch. Squash-merge on approval.
+
+### After both merge
+
+Re-queue mutmut + test-suite refactor as the active arc (deferred since 2026-05-11; details under "Other Possible Next Steps" below).
 
 ---
 
 ## Other Possible Next Steps
 
-1. **Mutation testing** *(queued — active arc)* — run mutmut to surface untested generator behaviors, tighten test assertions.
-2. **Test suite refactor** *(queued — active arc, scope informed by #1)* — split into `tests/core/` + `tests/stacks/<name>/`, snapshot tests for generators, standardized stack smoke-test contract.
+1. **Mutation testing** *(queued — re-active after addendum PRs)* — run mutmut to surface untested generator behaviors, tighten test assertions.
+2. **Test suite refactor** *(queued — scope informed by #1)* — split into `tests/core/` + `tests/stacks/<name>/`, snapshot tests for generators, standardized stack smoke-test contract.
 3. **New stacks** — templates beyond python-fastapi (python-django, node-express).
 4. **Template improvements** — more constraint types, pagination options, bulk endpoints.
 5. **Wizard enhancements** — interactive mode UX, model editing workflow.
@@ -27,7 +55,28 @@ No concrete known gaps remain. **Active arc starting next session:** mutation te
 
 ## Recently Completed Fixes
 
+### Addendum NEW SHARP EDGE #1 — factory self-import (2026-05-17, PR #19)
+
+Merged to `main` as **`3bafed5`** (squash of 2 commits on `fix/factory-self-import`). Closes the first of three NEW findings from the multi-agent-researcher consumer integration addendum.
+
+- **`fc32e9b` — `fix(factory): skip self-loop in entity_refs collection`.** `templates/database/factory.py.j2` now filters self-loops in both `ns.entity_refs` collection paths (line 55 reference-field path, line 62 one_to_many sibling-rel path). The per-entity import block at lines 99-103 no longer emits `from .{entity_snake} import {Entity}Factory` for self-referential entities — that self-import is what ruff catches as F811 and mypy strict rejects.
+- **`59460f2` — `fix(factory): emit SubFactory string literal for self-ref fields`.** Folded in after Gemini's review on the first commit flagged a real `NameError` regression: removing the self-import (correctly) left a class-body bare reference `factory.SubFactory(EntityFactory)` that raises at module-load time, because the class isn't bound in the module namespace until the `class` statement completes. The pre-fix self-import had been incidentally pre-binding the name. Fix: emit `factory.SubFactory("EntityFactory")` (string form) for self-ref reference fields — factoryboy resolves the name lazily at `.create()` time. Cross-entity refs keep the bare-class form (sibling-factory imports already bind those names). `create_related` is unaffected — its `EntityFactory.create_batch(...)` references live inside an `@factory.post_generation` method body, executed at call time.
+
+**New tests (3) under `TestFactoryGeneratorSelfRef`.** A `self_ref_factory_model` fixture (Category with `parent_id` reference + `children` one_to_many self-loops, covers both filter paths) drives: (1) asserts no `from .category import` self-import line; (2) asserts `factory.SubFactory("CategoryFactory")` string form is present (and the bare form is absent); (3) `exec()`s the generated factory under stubbed `factory` / `faker` / SQLAlchemy modules — the regression test that catches class-body self-references regardless of which macro emits them. TDD red→green verified for the third test: stashing the template fix → NameError reproduced; popping → passes.
+
+**Verified:** `make format` + `make lint` clean (ruff + mypy strict), 433 / 433 tests passing (was 430 pre-PR-A), Gemini follow-up review approved (`"the correct way to handle this in factory_boy"`).
+
+### Consumer gaps §3 + §4 (2026-05-13, PR #18)
+
+Merged to `main` as **`4224a56`** (squash of 2 commits on `feat/consumer-gaps-3-4`). Closes consumer integration findings §3 (`python_root` docs) + §4 (`--no-root-files` flag for scratch-dir workflow).
+
+- **`0f4e65a` — `docs(python_root): document existing config option`.** The top-level `python_root` config key (sibling of `paths:`, `project:`, `stack:`) was fully implemented (`utils/templates.py:path_to_import` threaded through every import site) but undocumented anywhere visible. Adds a "Python Import Root" section to `usage-guide.md`, a row to `quick-reference.md`, a commented example in `examples/user-auth-project/.model-generator.yaml`, and one end-to-end integration test (`TestPythonRootIntegration.test_database_model_strips_python_root_from_types_import`) that guards against future regressions where a new import site forgets to thread `python_root` through the Jinja filter.
+- **`e509088` — `feat(generate): --no-root-files flag for scratch-dir workflow`.** New CLI flag suppresses `pyproject.toml`, `alembic.ini`, and `.gitignore` emission at the project root, keeping in-tree alembic/ scaffolding (env.py, script.py.mako, README, versions/.gitkeep) intact. Threaded through `generate_gitignore`, `generate_pyproject`, `generate_infrastructure`, `generate_migration_init`, `generate()`, `_generate_target()`, and `main()` argparse. Wizard callsite unchanged (relies on the default `no_root_files=False`, matching the wizard's first-time-bootstrap intent). 5 new generator tests + 1 CLI flag-propagation test. Also backfilled the two missing skip-if-exists tests (`.gitignore`, `alembic.ini`) for parity with the pre-existing `pyproject.toml` skip-if-exists coverage.
+
+Verified: `make lint` clean (ruff + mypy strict), 430 / 430 tests passing, §3 + §4 manual probes clean, example 130 / 130 with `APP_PASSWORD_PEPPER` set.
+
 ### Mypy strict + `py.typed` marker (2026-05-11, PR #16)
+
 
 Merged to `main` as **`2f33207`** (squash of 2 commits on `feat/strict-typing`). Brings the CLI mypy in line with what the IDE was already showing and publishes the package as typed for downstream consumers (PEP 561).
 
