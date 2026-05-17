@@ -124,6 +124,8 @@ Top-level keys in `.model-generator.yaml` (siblings of `paths:`, `project:`, `st
 |-----|------|-------------|
 | `python_root` | string | Prefix stripped from `paths.*` when forming Python imports. Use for `src/`-layout projects. See [Python Import Root](./usage-guide.md#python-import-root). |
 
+> **`paths.base` constraint:** must live inside `paths.database_models` (`{database_models}/base.py`). Generated model files emit `from .base import Base` — a misplaced base raises `ModuleNotFoundError` at import time. See [Base Module Location](./usage-guide.md#base-module-location).
+
 ---
 
 ## CLI Targets

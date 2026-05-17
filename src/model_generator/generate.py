@@ -388,6 +388,7 @@ def generate(
     config = load_config(stack)
     _validate_auth_config(model, config)
     _validate_generation_config(config)
+    _validate_paths_base(config)
     _validate_composite_foreign_keys(model)
     env = get_template_env(stack, config)
 
@@ -531,6 +532,36 @@ def _validate_generation_config(config: dict[str, Any]) -> None:
             "  # or\n"
             "  generation:\n"
             '    layout: "per-domain"  # legacy; one file per domain'
+        )
+        sys.exit(1)
+
+
+def _validate_paths_base(config: dict[str, Any]) -> None:
+    """Abort if paths.base is not a sibling of paths.database_models.
+
+    Generated database model files emit ``from .base import Base`` (relative),
+    so the base module must live inside paths.database_models. A mismatch is
+    silent at generation time but raises ``ModuleNotFoundError`` at import or
+    test-collection time.
+    """
+    paths = config.get("paths", {})
+    base_str = paths.get("base", "backend/src/database/models/base.py")
+    db_models_str = paths.get("database_models", "backend/src/database/models")
+
+    base_parent = Path(base_str).parent
+    db_models = Path(db_models_str)
+    if base_parent != db_models:
+        print(
+            f'Error: paths.base ("{base_str}") must live inside '
+            f'paths.database_models ("{db_models_str}"), '
+            f'but its parent is "{base_parent}".\n\n'
+            "Generated model files import the base module with a relative "
+            "'from .base import Base' statement, so the two paths must be "
+            "siblings on disk.\n\n"
+            "Fix in .model-generator.yaml:\n\n"
+            "  paths:\n"
+            f"    database_models: {db_models_str}\n"
+            f"    base: {db_models_str}/base.py"
         )
         sys.exit(1)
 
