@@ -1661,6 +1661,30 @@ class TestValidatePathsBase:
             }
         )
 
+    def test_default_base_derives_from_custom_database_models(self) -> None:
+        """When database_models is custom but base is omitted, the default
+        derives the base path from database_models — so no mismatch fires."""
+        from model_generator.generate import _validate_paths_base
+
+        _validate_paths_base({"paths": {"database_models": "lib/db/models"}})
+
+    def test_non_base_filename_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from model_generator.generate import _validate_paths_base
+
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_paths_base(
+                {
+                    "paths": {
+                        "database_models": "src/db/models",
+                        "base": "src/db/models/foundation.py",
+                    }
+                }
+            )
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "base.py" in out
+        assert "foundation.py" in out
+
     def test_base_outside_database_models_exits(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

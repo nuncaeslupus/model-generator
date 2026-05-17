@@ -19,7 +19,6 @@ def project_setup(tmp_path: Path) -> tuple[Path, Path]:
         "generation": {"layout": "per-domain"},
         "paths": {
             "database_models": "lib/db/models",  # Custom path 1
-            "base": "lib/db/models/base.py",  # Must sibling database_models
             "api_models": "lib/api/schemas",  # Custom path 2
             "api_routes": "lib/api/endpoints",  # Custom path 3
             "api_tests": "tests/integration",  # Custom path 4

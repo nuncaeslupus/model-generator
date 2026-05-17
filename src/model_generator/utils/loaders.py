@@ -184,6 +184,15 @@ def load_config(stack: str = "python-fastapi") -> dict[str, Any]:
 
     merged_config = deep_merge(stack_config, project_config)
 
+    # If the project overrode paths.database_models but not paths.base,
+    # derive base from the new database_models so the two stay consistent.
+    # (Generated model files import base with a relative `from .base import
+    # Base` — see _validate_paths_base for the full constraint.)
+    project_paths = project_config.get("paths") or {}
+    if "base" not in project_paths and "database_models" in project_paths:
+        db_models = merged_config["paths"]["database_models"]
+        merged_config["paths"]["base"] = f"{db_models}/base.py"
+
     # Ensure project defaults exist
     if "project" not in merged_config:
         merged_config["project"] = {

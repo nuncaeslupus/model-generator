@@ -15,7 +15,8 @@ def generate_base(
     config: dict[str, Any], env: Environment, project_root: Path
 ) -> dict[str, Any] | None:
     """Generate SQLAlchemy Base class."""
-    base_path = config["paths"].get("base", "backend/src/database/models/base.py")
+    db_models = config["paths"].get("database_models", "backend/src/database/models")
+    base_path = config["paths"].get("base", f"{db_models}/base.py")
     output_path = project_root / base_path
 
     if output_path.exists():
