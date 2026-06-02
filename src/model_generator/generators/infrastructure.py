@@ -97,9 +97,16 @@ def generate_errors(
 def generate_validators(
     config: dict[str, Any], env: Environment, project_root: Path
 ) -> dict[str, Any] | None:
-    """Generate API validation utilities."""
+    """Generate API validation utilities.
+
+    Bootstrap-only: returns None when the file already exists so adopters
+    who add domain-specific validators are not overwritten on regeneration.
+    """
     validators_path = config["paths"].get("validators", "backend/src/api/validators.py")
     output_path = project_root / validators_path
+
+    if output_path.exists():
+        return None
 
     template = env.get_template("infrastructure/validators.py.j2")
     content = template.render()
@@ -110,10 +117,17 @@ def generate_validators(
 def generate_utils(
     config: dict[str, Any], env: Environment, project_root: Path
 ) -> dict[str, Any] | None:
-    """Generate API utility functions (normalize_decimal)."""
+    """Generate API utility functions (normalize_decimal).
+
+    Bootstrap-only: returns None when the file already exists so adopters
+    who add domain-specific utilities are not overwritten on regeneration.
+    """
     api_models_path = config["paths"].get("api_models", "backend/src/api/models")
     api_dir = str(Path(api_models_path).parent)
     output_path = project_root / api_dir / "utils.py"
+
+    if output_path.exists():
+        return None
 
     template = env.get_template("infrastructure/utils.py.j2")
     content = template.render()
@@ -240,9 +254,16 @@ def generate_main(
     layout-aware list of route module stems imported by main.py — entity
     snake_case names in per-entity mode, domain names in per-domain mode.
     Defaults to ``domains`` when not provided.
+
+    Bootstrap-only: returns None when the file already exists so adopters
+    who wire up additional routers / middleware are not overwritten on
+    regeneration. New domains/routes added later must be wired manually.
     """
     main_path = config["paths"].get("main", "backend/src/main.py")
     output_path = project_root / main_path
+
+    if output_path.exists():
+        return None
 
     python_root = config.get("python_root", "")
 
@@ -461,9 +482,16 @@ def generate_test_conftest_root(
     layout-aware list of factory module stems imported by conftest.py — entity
     snake_case names in per-entity mode, domain names in per-domain mode.
     Defaults to ``domains`` when not provided.
+
+    Bootstrap-only: returns None when the file already exists so adopters
+    who add fixture overrides are not overwritten on regeneration. New
+    factory modules added later must be wired manually.
     """
     conftest_path = config["paths"].get("test_conftest_root", "tests/conftest.py")
     output_path = project_root / conftest_path
+
+    if output_path.exists():
+        return None
 
     python_root = config.get("python_root", "")
 

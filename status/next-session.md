@@ -1,40 +1,16 @@
 # Next Session Plan
 
-## Current State (2026-05-17, on `main`)
+## Current State (2026-06-02, on `claude/wizardly-goodall-ftNAF`)
 
-`main` is at **`b3c018f`** pre-merge of PR #21 (`feat(generate): warn when paths.base is outside paths.database_models`). PR #21 closes the second of three NEW findings from the multi-agent-researcher consumer addendum; once squashed to `main`, the active arc reduces to a single follow-up PR (PR C). 440 model-generator tests pass.
+PR C shipped on `claude/wizardly-goodall-ftNAF` (branched off `main` at **`f2f3cbc`**, PR #21). The consumer-addendum arc is now fully closed (PR A #19, PR B #21, PR C this branch). 445 model-generator tests pass; example suite 130/130 on Python 3.12.
 
-**Active arc next session:** one remaining follow-up PR from the consumer addendum (lines 176-281 of `status/gaps-from-multi-agent-researcher-2026-05-13.md`, currently untracked-by-design). PR A shipped 2026-05-17 (#19); PR B shipped 2026-05-17 (#21, this PR).
+**Active arc next session:** mutmut + test-suite refactor (re-queued, see "Other Possible Next Steps" below).
 
 ---
 
-## Active arc: 1 remaining addendum follow-up PR
+## Active arc: re-queue mutmut + test-suite refactor
 
-### PR C — `fix(generator): make generate_main skip-if-exists (bootstrap-only parity)`
-
-`infrastructure.py:228` (`generate_main`) is one of **four** infra generators that emit a single file without `if output_path.exists(): return None`; the others are `generate_validators` (96), `generate_utils` (109), and `generate_test_conftest_root` (450) — flagged by Gemini-bot review on PR #20 (2026-05-17). Most other infra generators skip (base.py, engine.py, types.py, database_init.py, errors.py, gitignore, pyproject.toml, auth_router, csrf, encrypted_bytes, rate_limit). Consumer aliased `paths.main: hub/main_generated.py` to avoid clobber, which propagated into test imports (`contract.py.j2:1701/1717` correctly derives `from {paths.main} import app` at generation time — the bug is upstream of that).
-
-**Scope decision (next session).** Three viable options:
-
-- **C-narrow:** Only `generate_main`. Matches the original consumer-addendum finding; smallest blast radius.
-- **C-medium:** `generate_main` + `generate_test_conftest_root`. Both are adopter-customized files (main wires routers; conftest holds fixture overrides). Higher value, still surgical.
-- **C-wide:** All four. `generate_validators` + `generate_utils` are project-agnostic templates today (zero render args), so the clobber risk is theoretical — but adopters typically add domain-specific validators / utilities once a project matures. Closes the parity gap cleanly.
-
-**Fix (per generator chosen).** Add `if output_path.exists(): return None` after computing `output_path`. Update `test_infrastructure_skips_existing` to add the relevant filenames to the `skipped_infra` set. Add per-generator `test_generate_X_skips_existing` tests (parity with `test_generate_base_skips_existing`).
-
-**Trade-off (call out in commit msg).** New domains/routes added later won't auto-wire — adopters edit `main.py` (and conftest if covered) manually. Matches the contract of every other "skip-if-exists" file and the project's "one-shot generation, then evolve manually" principle (CLAUDE.md).
-
-**Verification.** Pytest count depends on chosen scope (C-narrow: 442, C-medium: 444, C-wide: 448 — one skip-if-exists test per generator covered, plus the `skipped_infra` set assertion in the shared test). Manual probe: generate, edit the target file, regenerate → edit preserved. Example: delete example's `main.py`, regenerate, `APP_PASSWORD_PEPPER=test_pepper uv run pytest -q` → 130/130.
-
-### Branch + PR strategy
-
-- Branch off post-#21 `main`.
-- Branch name: `fix/generate-main-skip-if-exists` (rename if scope expands beyond `generate_main`).
-- One PR. Squash-merge on approval.
-
-### After PR C merges
-
-Re-queue mutmut + test-suite refactor as the active arc (deferred since 2026-05-11; details under "Other Possible Next Steps" below).
+The consumer-addendum arc is closed. Next session picks up the two long-deferred items (since 2026-05-11): mutation testing (#1) then the test-suite refactor (#2), both detailed under "Other Possible Next Steps".
 
 ---
 
@@ -50,6 +26,18 @@ Re-queue mutmut + test-suite refactor as the active arc (deferred since 2026-05-
 ---
 
 ## Recently Completed Fixes
+
+### PR C — skip-if-exists parity for all single-file infra generators (2026-06-02)
+
+Branch `claude/wizardly-goodall-ftNAF`, off `main` at `f2f3cbc`. Closes the last consumer-addendum follow-up. **Scope: C-wide** (all four generators).
+
+Four single-file infra generators emitted unconditionally, clobbering adopter edits on every regeneration: `generate_main`, `generate_test_conftest_root`, `generate_validators`, `generate_utils`. Each now does `if output_path.exists(): return None` after computing `output_path` — matching the contract of every other bootstrap-only infra file (base, engine, types, errors, auth_router, csrf, …) and the project's "generate once, then evolve manually" principle.
+
+**Trade-off:** new domains/routes/factories added later no longer auto-wire into `main.py` / `conftest.py` — adopters edit those (and add domain validators/utilities) manually. This is the intended bootstrap-only contract.
+
+**Tests:** `test_infrastructure_skips_existing` `skipped_infra` set expanded to include `main.py`, `conftest.py`, `validators.py`, `utils.py`. Added 5 tests: `test_generate_validators_skips_existing`, `test_generate_utils` + `test_generate_utils_skips_existing` (utils had no standalone test), `test_generate_main_skips_existing`, `test_generate_test_conftest_root_skips_existing`. 440 → 445.
+
+**Verified:** `make lint` clean (ruff + mypy strict), 445/445 unit tests. Manual probe: generate example → append custom middleware to `main.py` → regenerate → edit preserved. Example suite 130/130 (`APP_PASSWORD_PEPPER=test_pepper`, Python 3.12).
 
 ### Addendum NEW SHARP EDGE #2 — paths.base validator + loader derivation (2026-05-17, PR #21)
 
