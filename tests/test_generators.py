@@ -39,6 +39,7 @@ from model_generator.generators.infrastructure import (
     generate_pyproject,
     generate_test_conftest_root,
     generate_types,
+    generate_utils,
     generate_validators,
 )
 from model_generator.utils import get_template_env, load_config
@@ -2938,6 +2939,33 @@ class TestInfrastructureGenerators:
         assert result is not None
         assert "validators.py" in str(result["path"])
 
+    def test_generate_validators_skips_existing(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        output_path = project_root / config["paths"]["validators"]
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("existing")
+
+        result = generate_validators(config, env, project_root)
+        assert result is None
+
+    def test_generate_utils(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        result = generate_utils(config, env, project_root)
+        assert isinstance(result, dict)
+
+        assert result is not None
+        assert "utils.py" in str(result["path"])
+
+    def test_generate_utils_skips_existing(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        api_dir = Path(config["paths"]["api_models"]).parent
+        output_path = project_root / api_dir / "utils.py"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("existing")
+
+        result = generate_utils(config, env, project_root)
+        assert result is None
+
     def test_generate_main(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_main(
@@ -2949,6 +2977,17 @@ class TestInfrastructureGenerators:
         assert "main.py" in str(result["path"])
         assert "FastAPI" in result["content"]
         assert "users" in result["content"]
+
+    def test_generate_main_skips_existing(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        output_path = project_root / config["paths"]["main"]
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("existing")
+
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        assert result is None
 
     def test_generate_main_no_auth_router_when_strategy_unset(
         self, project_env: Any
@@ -3097,6 +3136,17 @@ class TestInfrastructureGenerators:
         assert "conftest.py" in str(result["path"])
         assert "client" in result["content"]
 
+    def test_generate_test_conftest_root_skips_existing(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        output_path = project_root / config["paths"]["test_conftest_root"]
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("existing")
+
+        result = generate_test_conftest_root(
+            config, env, project_root, domains=["users"]
+        )
+        assert result is None
+
     def test_generate_infrastructure_creates_all(self, project_env: Any) -> None:
         project_root, config, env = project_env
         files = generate_infrastructure(
@@ -3137,9 +3187,19 @@ class TestInfrastructureGenerators:
         )
 
         assert len(files1) > 0
-        # base, engine, types, errors should be skipped on second run
-        # main.py, conftest.py, validators.py, utils.py always regenerate (by design)
-        skipped_infra = {"base.py", "engine.py", "types.py", "errors.py"}
+        # All single-file infra generators are bootstrap-only: skipped on the
+        # second run so adopter customizations (main router wiring, conftest
+        # fixture overrides, domain validators/utils) survive regeneration.
+        skipped_infra = {
+            "base.py",
+            "engine.py",
+            "types.py",
+            "errors.py",
+            "main.py",
+            "conftest.py",
+            "validators.py",
+            "utils.py",
+        }
         new_infra = [f for f in files2 if f.name in skipped_infra]
         assert len(new_infra) == 0
 
