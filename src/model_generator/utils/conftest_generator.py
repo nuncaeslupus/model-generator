@@ -69,6 +69,11 @@ def extract_entities(models: dict[str, dict[str, Any]]) -> dict[str, dict[str, A
                 "relationships": entity.get("relationships", {}),
                 "api_prefix": api_prefix,
                 "timestamps": entity.get("timestamps", {}),
+                # Carry index/constraint metadata so the shared fixtures can
+                # detect unique (incl. composite) indexes and emit distinct
+                # values — otherwise repeated inserts 409 on the session DB.
+                "indexes": entity.get("indexes", []),
+                "constraints": entity.get("constraints", []),
             }
     return entities
 
@@ -213,10 +218,19 @@ def generate_minimal_create_data(
             if "email" in field_name.lower():
                 email_val = 'f"test.{unique_suffix}@example.com"'
                 lines.append(f'            "{api_field_name}": {email_val},')
-            elif field.get("unique", False) or is_user_pk:
-                # For unique fields or user-provided PKs, use unique suffix
+            elif (
+                field.get("unique", False)
+                or _field_in_unique_index(field_name, entity_data)
+                or is_user_pk
+            ):
+                # For unique fields (field-level or via a unique index) and
+                # user-provided PKs, use a per-test unique suffix so repeated
+                # inserts don't 409 on the shared session-scoped database.
                 entity_lower = entity_name.lower()
-                field_prefix = field_name if is_user_pk else entity_lower
+                if is_user_pk or _field_in_unique_index(field_name, entity_data):
+                    field_prefix = field_name
+                else:
+                    field_prefix = entity_lower
                 unique_val = f'f"test_{field_prefix}_{{unique_suffix}}"'
                 lines.append(f'            "{api_field_name}": {unique_val},')
             else:
@@ -273,6 +287,25 @@ def generate_minimal_create_data(
     return lines
 
 
+def _field_in_unique_index(field_name: str, entity_data: dict[str, Any]) -> bool:
+    """True if ``field_name`` participates in any unique index or constraint.
+
+    Covers single- and multi-column unique indexes (e.g. a composite
+    ``(model_name, version)`` unique index). Fields under such an index must
+    receive distinct values in the shared, session-scoped contract fixtures —
+    otherwise repeated inserts collide (HTTP 409) on the shared test database.
+    """
+    for index in entity_data.get("indexes", []):
+        if index.get("unique") and field_name in index.get("fields", []):
+            return True
+    for constraint in entity_data.get("constraints", []):
+        if constraint.get("type") == "unique" and field_name in constraint.get(
+            "fields", []
+        ):
+            return True
+    return False
+
+
 def needs_unique_suffix(
     entity_data: dict[str, Any], dep_mapping: dict[str, str]
 ) -> bool:
@@ -303,7 +336,11 @@ def needs_unique_suffix(
         if field_type == "text":
             if "email" in field_name.lower():
                 return True
-            if field.get("unique", False) or is_user_pk:
+            if (
+                field.get("unique", False)
+                or _field_in_unique_index(field_name, entity_data)
+                or is_user_pk
+            ):
                 return True
 
     return False

@@ -1,8 +1,8 @@
 # Next Session Plan
 
-## Current State (2026-06-02, on `claude/wizardly-goodall-ftNAF`)
+## Current State (2026-06-03, on `claude/wizardly-goodall-ftNAF`)
 
-PR C shipped on `claude/wizardly-goodall-ftNAF` (branched off `main` at **`f2f3cbc`**, PR #21). The consumer-addendum arc is now fully closed (PR A #19, PR B #21, PR C this branch). 445 model-generator tests pass; example suite 130/130 on Python 3.12.
+PR C merged to `main` as **`786293d`** (#22). On top of it, a follow-up branch carries three consumer-surfaced template/generator fixes (alembic URL priority, unique-index fixtures, read-only filtering test — see "Recently Completed Fixes"). 445 model-generator tests pass; example suite 131/131 on Python 3.12.
 
 **Active arc next session:** mutmut + test-suite refactor (re-queued, see "Other Possible Next Steps" below).
 
@@ -26,6 +26,16 @@ The consumer-addendum arc is closed. Next session picks up the two long-deferred
 ---
 
 ## Recently Completed Fixes
+
+### Consumer template fixes — alembic URL, unique-index fixtures, read-only filtering (2026-06-03)
+
+Branch `claude/wizardly-goodall-ftNAF`, off `main` at `786293d` (post-PR #22). Three template/generator fixes surfaced by a downstream project that consumes MG, delivered as one patch:
+
+- **`migrations/env.py.j2` — `ALEMBIC_DATABASE_URL` priority.** `get_url()` now checks `ALEMBIC_DATABASE_URL` first, then `DATABASE_URL`, then `alembic.ini`. Lets adopters point migrations at a sync driver while the app runs an async one (the common asyncpg/psycopg split). Error message updated to list all three sources.
+- **`utils/conftest_generator.py` — unique-index/constraint detection.** New `_field_in_unique_index()` helper: text fields participating in a unique index or unique constraint (including composite ones, e.g. `(model_name, version)`) now get a per-test `unique_suffix` in the shared session-scoped fixtures, instead of a constant. Without this, repeated inserts collided with HTTP 409. `extract_entities()` now carries `indexes`/`constraints` metadata so the helper can see them. Wired into both `generate_minimal_create_data` and `needs_unique_suffix`.
+- **`tests/contract.py.j2` — read-only filtering test.** Entities with filterable fields and a `list` endpoint but no `create` (e.g. `User`, whose creation is owned by the auth router) now get a data-free `test_get_X_list_filtering` that asserts each filter parameter is accepted (HTTP 200) for a valid literal value, rather than POSTing seed data. Covers enum/boolean/datetime/financial/percentage/counter filters.
+
+**Verified:** `make lint` clean (ruff + mypy strict), 445/445 unit tests (test_generators.py assertion updated: read-only filtering is now emitted in data-free form). Example regenerated end-to-end → 131/131 (was 130; +1 = the new `User` read-only filtering test, which now exercises `status` / `last_login_at` / `email_verified` filters that previously had no coverage), Python 3.12, `APP_PASSWORD_PEPPER=test_pepper`.
 
 ### PR C — skip-if-exists parity for all single-file infra generators (2026-06-02)
 
