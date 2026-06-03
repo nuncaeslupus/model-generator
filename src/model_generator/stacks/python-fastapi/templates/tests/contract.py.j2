@@ -213,6 +213,48 @@ class Test{{ entity_name }}sAPI:
 {% endif %}
 {% endfor %}
 
+{% elif has_filterable_fields and 'list' in endpoints %}
+    def test_get_{{ entity.table }}_list_filtering(self, client: TestClient) -> None:
+        """Test filter query parameters are accepted for GET /api/v1/{{ entity_table_kebab }}.
+
+        Read-only entity (no create endpoint): the writer seeds rows directly in
+        the database, so assert each generated filter parameter is wired and
+        accepted (HTTP 200) for a valid value rather than asserting filtered
+        content.
+        """
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_response | default(false) and not field.primary_key | default(false) %}
+{% if field.type == 'enum' and field.enum_name is defined %}
+        # Filter by enum field: {{ field_name }}
+        response = client.get(
+            "/api/v1/{{ entity_table_kebab }}?{{ field_name }}={{ get_enum_value(field.enum_name, field.default, false, enums) }}"
+        )
+        assert response.status_code == 200
+{% elif field.type == 'boolean' %}
+        # Filter by boolean field: {{ field_name }}
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}=true")
+        assert response.status_code == 200
+{% elif field.type == 'datetime' %}
+        # Filter by datetime range: {{ field_name }}
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_after=2025-01-01T00:00:00Z")
+        assert response.status_code == 200
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_before=2099-12-31T23:59:59Z")
+        assert response.status_code == 200
+{% elif field.type in ['financial', 'percentage'] %}
+        # Filter by {{ field.type }} range: {{ field_name }}
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_min=0")
+        assert response.status_code == 200
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_max=1000")
+        assert response.status_code == 200
+{% elif field.type == 'counter' %}
+        # Filter by counter range: {{ field_name }}
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_min=0")
+        assert response.status_code == 200
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_max=100")
+        assert response.status_code == 200
+{% endif %}
+{% endif %}
+{% endfor %}
 {% endif %}
     def test_get_{{ entity.table }}_list_sorting(self, client: TestClient) -> None:
         """Test sorting capabilities for GET /api/v1/{{ entity_table_kebab }}."""

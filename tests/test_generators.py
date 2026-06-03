@@ -3918,12 +3918,17 @@ class TestApiTestsEndpointGates:
         assert "def test_put_item_partial_update" not in content
         assert "def test_delete_item_success" not in content
         assert "def test_item_immutable_fields" not in content
-        assert "def test_get_items_list_filtering" not in content
 
         # _not_found variants don't seed → still emitted
         assert "def test_get_item_by_id_not_found" in content
         assert "def test_put_item_not_found" in content
         assert "def test_delete_item_not_found" in content
+
+        # Filtering is still emitted, but in a data-free form for entities with
+        # `list` and filterable fields but no `create`: it asserts each filter
+        # parameter is accepted (200) rather than POSTing seed data.
+        assert "def test_get_items_list_filtering" in content
+        assert "client.post(" not in content
 
     def test_skips_list_tests_when_list_endpoint_excluded(
         self, project_env: Any
