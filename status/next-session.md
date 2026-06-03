@@ -2,7 +2,7 @@
 
 ## Current State (2026-06-03, on `claude/wizardly-goodall-ftNAF`)
 
-Consumer template fixes merged to `main` as **`eeff908`** (#23). On top of it, a follow-up branch backfills filter-test coverage for `reference` and unique-`text` fields in both contract-test branches (create-mode + read-only — see "Recently Completed Fixes"). 448 model-generator tests pass; example suite 131/131 on Python 3.12.
+Filter-test coverage merged to `main` as **`eec462f`** (#24). On top of it, a follow-up branch applies a consumer factory/seeding patch (financial+counter constraint fix, factory-seeded read-only get-by-id test, layout-aware factory import) plus the PR #25 Gemini-review responses (min_ref/max_ref resolved at generation time, safe config access) — see "Recently Completed Fixes". 457 model-generator tests pass; example suite 131/131 on Python 3.12.
 
 **Active arc next session:** mutmut + test-suite refactor (re-queued, see "Other Possible Next Steps" below).
 
@@ -26,6 +26,27 @@ The consumer-addendum arc is closed. Next session picks up the two long-deferred
 ---
 
 ## Recently Completed Fixes
+
+### Factory constraint fix + factory-seeded read-only get-by-id (2026-06-03)
+
+Branch `claude/wizardly-goodall-ftNAF`, off `main` at `eec462f` (post-PR #24). Consumer patch (factory + seeding) plus one correctness fix I added on top.
+
+- **`factory.py.j2` financial/counter constraints.** The old `min_ref`/`max_ref` handling set loop-local `min_val`/`max_val` inside a `{% for constraint %}` loop — a Jinja scoping bug: `{% set %}` inside a `for` does not persist outside it, so the values silently stayed at the `0`/`999999` defaults (dead code). Rewritten with `namespace(min=…, max=…)` (the standard Jinja workaround), and extended to honor `type: positive` (min→1), inline `type: range` `min`/`max`, plus the existing `min_ref`/`max_ref`. The financial faker call drops `left_digits=12` + `positive=True` when min/max are set (faker rejects `left_digits` combined with `min_value`/`max_value`); the no-constraints branch keeps `left_digits`.
+- **`contract.py.j2` + `conftest_root.py.j2` read-only get-by-id.** Read-only entities (no `create`) previously had no `test_get_X_by_id_success` — there was no endpoint to seed a row. Now, when an entity has `get` but no `create`, no required FK, and no `one_to_many` (factory cascade would pull in child rows with their own FKs), the test seeds a row directly via `{Entity}Factory.create()` (the writer path) and reads it back. `conftest_root.py.j2` binds every factory to a sync `seed_session` on the same SQLite file the async app reads (`sqlalchemy_session_persistence = "commit"` makes the row visible across connections).
+- **Layout-aware factory import (added on top of the patch).** The patch hardcoded `from {factories}.{model.domain} import {Entity}Factory`, which only works in **per-domain** layout. The default is **per-entity**, where factories live at `{factories}/{entity_snake}.py`. Fixed to derive the module from `snake_case(entity_name)` in per-entity layout, `model.domain` in per-domain. Without this, a per-entity read-only entity matching the guard would emit a broken import (ModuleNotFoundError at collection).
+
+**Gemini review responses (PR #25).**
+- **min_ref/max_ref NameError (high) — fixed by resolving at generation time (user-chosen).** The revived `min_ref`/`max_ref` handling emitted the bare constant name (`min_value=PRICE_MAX`), which would `NameError` at `create()` (the factory never imports the constraints module). `generate_factories` now loads the flattened shared-constraint dict (`load_shared_constraints`, threaded via a new `model_path`/`constraints` param + the `factories` dispatcher passing `mp`) and the template resolves `constraints[ref].value` to a literal; unresolved refs fall back to default bounds. Verified end-to-end: a probe with `range` `min_ref`/`max_ref` on financial+counter fields emits `min_value=10.00, max_value=5000.00` / `max_value=100`, compiles, zero bare names.
+- **Safe config access (medium) — applied.** Read-only factory import switched from `config.generation.layout | default(...)` to `config.get('generation', {}).get('layout', 'per-entity')`. The `| default` form does **not** protect a missing `generation` key — the `UndefinedError` fires during attribute access, before the filter (confirmed: `factory.py.j2:88` raises the same way on a bare config).
+- **pkgutil factory discovery (high) — declined (incorrect premise).** Gemini assumed `_get_factory_classes()` imports `{domain}` and so breaks in per-entity layout. But the conftest's `domains` var is `factory_modules` in per-entity mode (`infrastructure.py:520`), i.e. the entity snakes — so it already imports `factories/{entity_snake}.py`. Proven by the per-entity probe (imported `country`, get-by-id passed). Replied on the PR.
+
+**Folded in: `_shared/_tests.j2` counter range refs.** A counter `range` constraint using `min_ref`/`max_ref` (no inline `min`/`max`) tripped `constraint.min | int` on an Undefined → generation crash (pre-existing; no example/pre-PR input exercised counter-range-with-refs). The counter branch now resolves inline-or-ref bounds via a namespace, computes the midpoint from whichever bounds are present (`(min+max)//2`, else `min`, else `max//2`, else `10`), and falls back cleanly when refs are unresolved. The financial/percentage builders already resolved `max_ref` and never touched `min`, so they didn't crash — left as-is. Added `TestApiTestsCounterRangeRefs` (2 tests: refs→midpoint 50; unresolved→fallback 10).
+
+**Folded in: `model.py.j2` one-sided range CHECK.** A `range` / `range_or_null` constraint with only one bound (e.g. `max_ref` and no min) emitted a broken `CheckConstraint(f"x >= {} AND x <= {MAX}")` (empty `{}` → `SyntaxError` at import). Both branches now emit a one-sided CHECK when only one bound is defined (`x >= {MIN}` or `x <= {MAX}`, plus the `OR x IS NULL` tail for `range_or_null`); two-bound ranges are unchanged. Added `TestDatabaseGeneratorRangeCheck` (4 tests: both bounds, max-only, min-only, range_or_null max-only — each asserts no empty `{}`).
+
+**Tests:** patch updated `test_skips_create_tests_when_create_endpoint_excluded` (get-by-id now emitted, factory-seeded, still no `client.post(`). Added `test_read_only_factory_import_is_layout_aware` (per-entity import targets `factories.country`, not `factories.geo`), `test_ref_constraints_resolve_to_literals`, `test_ref_constraints_fall_back_when_unresolved`, and `TestApiTestsCounterRangeRefs` (2). 448 → 457.
+
+**Verified:** `make lint` clean (ruff + mypy strict), 457/457 unit tests. Example regenerated end-to-end → 131/131 (financial/counter fields exercise the factory branch); generated-project ruff identical to the no-patch baseline (4 pre-existing quirks: alembic E402, pagination PEP695 under ruff's 3.11 target, 2× main/auth I001 — patch adds zero new). Built a throwaway per-entity project with a read-only `Country` entity (list+get, unique text, `counter` `positive`) → import resolves to `factories.country`, `population` factory emits `min_value=1`, `test_get_country_by_id_success` **passes** end-to-end on Python 3.12 (validates seeding + commit visibility).
 
 ### Filter-test coverage for reference + unique-text fields (2026-06-03)
 

@@ -118,8 +118,8 @@ true
 {% endif %}{% else %}            "{{ field.api_field_name | default(field_name) }}": "{{ 0.15 | normalize_decimal }}",
 {% endif %}
 {% elif field.type == 'counter' %}
-{% set has_range = namespace(found=false) %}{% if field.constraints %}{% for constraint in field.constraints %}{% if constraint.type == 'range' %}{% set has_range.found = true %}{% set mid_val = ((constraint.min | int) + (constraint.max | int)) / 2 %}            "{{ field.api_field_name | default(field_name) }}": {{ mid_val | int }},
-{% endif %}{% endfor %}{% if not has_range.found %}            "{{ field.api_field_name | default(field_name) }}": 10,
+{% set cn = namespace(found=false, min=none, max=none) %}{% if field.constraints %}{% for constraint in field.constraints %}{% if constraint.type == 'range' %}{% set cn.found = true %}{% if constraint.min is defined %}{% set cn.min = constraint.min | int %}{% elif constraint.min_ref is defined and constraints and constraint.min_ref in constraints %}{% set cn.min = constraints[constraint.min_ref]['value'] | int %}{% endif %}{% if constraint.max is defined %}{% set cn.max = constraint.max | int %}{% elif constraint.max_ref is defined and constraints and constraint.max_ref in constraints %}{% set cn.max = constraints[constraint.max_ref]['value'] | int %}{% endif %}{% endif %}{% endfor %}{% if cn.found %}{% if cn.min is not none and cn.max is not none %}{% set mid_val = (cn.min + cn.max) // 2 %}{% elif cn.min is not none %}{% set mid_val = cn.min %}{% elif cn.max is not none %}{% set mid_val = cn.max // 2 %}{% else %}{% set mid_val = 10 %}{% endif %}            "{{ field.api_field_name | default(field_name) }}": {{ mid_val }},
+{% else %}            "{{ field.api_field_name | default(field_name) }}": 10,
 {% endif %}{% else %}            "{{ field.api_field_name | default(field_name) }}": 10,
 {% endif %}
 {% elif field.type == 'boolean' %}

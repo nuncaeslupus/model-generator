@@ -23,6 +23,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
 from {{ database_models_import }}.base import Base
 from {{ main_import }} import app
@@ -67,6 +68,13 @@ def client() -> Generator[TestClient, None, None]:
     # Create all tables
     Base.metadata.create_all(bind=sync_engine)
 
+    # Bind factories to a sync session so tests can seed rows directly — needed
+    # for read-only entities (no create endpoint) to exercise get-by-id and
+    # response-shape. Writes land in the same database file the async app reads.
+    seed_session = sessionmaker(bind=sync_engine)()
+    for _factory_cls in _get_factory_classes():
+        _factory_cls._meta.sqlalchemy_session = seed_session
+
     async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
         async with async_session_local() as session:
             yield session
@@ -79,6 +87,7 @@ def client() -> Generator[TestClient, None, None]:
     app.dependency_overrides.clear()
 
     # Cleanup
+    seed_session.close()
     sync_engine.dispose()
 
     # Remove temporary database

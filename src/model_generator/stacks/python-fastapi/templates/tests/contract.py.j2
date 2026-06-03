@@ -31,6 +31,20 @@ import pytest
 from fastapi.testclient import TestClient
 
 {% for entity_name, entity in model.entities.items() %}
+{% set _ep = entity.api.endpoints if (entity.api is defined and entity.api.endpoints is defined) else ["list", "create", "get", "update", "delete"] %}
+{% set _reqfk = namespace(found=false) %}
+{% for _fn, _fld in entity.fields.items() %}{% if _fld.type == 'reference' and _fld.required %}{% set _reqfk.found = true %}{% endif %}{% endfor %}
+{% set _o2m = namespace(found=false) %}
+{% for _rn, _rel in (entity.relationships | default({})).items() %}{% if _rel.type == 'one_to_many' %}{% set _o2m.found = true %}{% endif %}{% endfor %}
+{% if 'create' not in _ep and 'get' in _ep and not _reqfk.found and not _o2m.found %}
+{#- Factory module is layout-aware: per-entity layout (the default) keeps one
+    factory file per entity at {factories}/{entity_snake}.py; per-domain layout
+    groups them in {factories}/{domain}.py. -#}
+{% set _factory_module = (entity_name | snake_case) if (config.get('generation', {}).get('layout', 'per-entity')) == 'per-entity' else model.domain %}
+from {{ config.paths.factories | path_to_import }}.{{ _factory_module }} import {{ entity_name }}Factory
+{% endif %}
+{% endfor %}
+{% for entity_name, entity in model.entities.items() %}
 {#- Convert table name to kebab-case for URLs -#}
 {% set entity_table_kebab = entity.table.replace('_', '-') %}
 
@@ -80,6 +94,11 @@ from fastapi.testclient import TestClient
   {% set _ = required_fk_fields.append({'field_name': field_name, 'fixture_name': fixture_name, 'api_name': field.api_field_name | default(field_name)}) %}
 {% endif %}
 {% endfor %}
+{#- Detect one_to_many relationships: their factory create() cascades to child
+    rows (which may have their own required FKs), so such entities are not
+    seeded directly in the read-only get-by-id test. -#}
+{% set _has_o2m = namespace(found=false) %}
+{% for _rn, _rel in (entity.relationships | default({})).items() %}{% if _rel.type == 'one_to_many' %}{% set _has_o2m.found = true %}{% endif %}{% endfor %}
 
 @pytest.mark.contract
 class Test{{ entity_name }}sAPI:
@@ -676,6 +695,28 @@ class Test{{ entity_name }}sAPI:
         {{ entity_name.lower() }} = response.json()
         assert {{ entity_name.lower() }}["{{ get_primary_key_field(entity) }}"] == {{ entity_name.lower() }}_id
 
+{% elif not required_fk_fields and not _has_o2m.found %}
+    def test_get_{{ entity_name.lower() }}_by_id_success(self, client: TestClient) -> None:
+        """Test GET /api/v1/{{ entity_table_kebab }}/{id} success (read-only: seeded via factory)."""
+        # No create endpoint — seed a row directly via the factory (the writer
+        # path), then read it back and validate the response shape.
+        seeded = {{ entity_name }}Factory.create()
+
+        response = client.get(
+            f"/api/v1/{{ entity_table_kebab }}/{seeded.{{ get_primary_key_field(entity) }}}"
+        )
+
+        assert response.status_code == 200
+        {{ entity_name.lower() }} = response.json()
+        assert str({{ entity_name.lower() }}["{{ get_primary_key_field(entity) }}"]) == str(
+            seeded.{{ get_primary_key_field(entity) }}
+        )
+        # Response-shape validation: every non-excluded field is present
+{% for field_name, field in entity.fields.items() %}
+{% if not field.api_exclude_response | default(false) %}
+        assert "{{ field.api_field_name | default(field_name) }}" in {{ entity_name.lower() }}
+{% endif %}
+{% endfor %}
 {% endif %}
     def test_get_{{ entity_name.lower() }}_by_id_not_found(self, client: TestClient) -> None:
         """Test GET /api/v1/{{ entity_table_kebab }}/{id} not found."""

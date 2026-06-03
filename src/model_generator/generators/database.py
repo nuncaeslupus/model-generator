@@ -7,7 +7,7 @@ from typing import Any
 
 from jinja2 import Environment
 
-from ..utils.loaders import get_layout
+from ..utils.loaders import get_layout, load_shared_constraints
 from ..utils.parser import scan_model_files
 from ..utils.templates import snake_case
 
@@ -97,7 +97,12 @@ def generate_init(
 
 
 def generate_factories(
-    model: dict[str, Any], config: dict[str, Any], env: Environment, project_root: Path
+    model: dict[str, Any],
+    config: dict[str, Any],
+    env: Environment,
+    project_root: Path,
+    model_path: Path | None = None,
+    constraints: dict[str, Any] | None = None,
 ) -> dict[str, Any] | list[dict[str, Any]]:
     """Generate FactoryBoy factories for test data generation.
 
@@ -105,10 +110,18 @@ def generate_factories(
     a single combined file. ``sibling_entities`` (the full domain entity
     list) is threaded into the template so cross-entity ``create_related``
     blocks survive the per-entity slicing of ``model.entities``.
+
+    ``constraints`` (the flattened shared-constraint dict) is threaded into
+    the template so ``min_ref`` / ``max_ref`` bounds on financial/counter
+    fields resolve to literal values at generation time — the factory module
+    never imports the constraints module, so emitting the bare constant name
+    would ``NameError`` at ``create()`` time.
     """
     template = env.get_template("database/factory.py.j2")
     factories_dir = project_root / config["paths"]["database_models"] / "factories"
     sibling_entities = list(model.get("entities", {}).keys())
+    if constraints is None:
+        constraints = load_shared_constraints(model_path or project_root)
 
     if get_layout(config) == "per-entity":
         return [
@@ -118,6 +131,7 @@ def generate_factories(
                     model={**model, "entities": {name: entity}},
                     config=config,
                     sibling_entities=sibling_entities,
+                    constraints=constraints,
                 ),
             }
             for name, entity in model.get("entities", {}).items()
@@ -125,6 +139,9 @@ def generate_factories(
 
     domain = model.get("domain", "models")
     content = template.render(
-        model=model, config=config, sibling_entities=sibling_entities
+        model=model,
+        config=config,
+        sibling_entities=sibling_entities,
+        constraints=constraints,
     )
     return {"path": factories_dir / f"{domain}.py", "content": content}

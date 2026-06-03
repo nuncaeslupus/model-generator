@@ -357,14 +357,26 @@ class {{ entity_name }}(Base):
 {% set min_val = fc.constraint.min_ref | default(fc.constraint.min) %}
 {% set max_val = fc.constraint.max_ref | default(fc.constraint.max) %}
         CheckConstraint(
+{% if min_val is defined and max_val is defined %}
             f"{{ col }} >= {{ '{' }}{{ min_val }}{{ '}' }} AND {{ col }} <= {{ '{' }}{{ max_val }}{{ '}' }}",
+{% elif min_val is defined %}
+            f"{{ col }} >= {{ '{' }}{{ min_val }}{{ '}' }}",
+{% else %}
+            f"{{ col }} <= {{ '{' }}{{ max_val }}{{ '}' }}",
+{% endif %}
             name="ck_{{ entity.table }}_{{ fc.field }}_range",
         ),
 {% elif fc.constraint.type == 'range_or_null' %}
 {% set min_val = fc.constraint.min_ref | default(fc.constraint.min) %}
 {% set max_val = fc.constraint.max_ref | default(fc.constraint.max) %}
         CheckConstraint(
+{% if min_val is defined and max_val is defined %}
             f"{{ col }} >= {{ '{' }}{{ min_val }}{{ '}' }} AND {{ col }} <= {{ '{' }}{{ max_val }}{{ '}' }} OR {{ fc.field }} IS NULL",
+{% elif min_val is defined %}
+            f"{{ col }} >= {{ '{' }}{{ min_val }}{{ '}' }} OR {{ fc.field }} IS NULL",
+{% else %}
+            f"{{ col }} <= {{ '{' }}{{ max_val }}{{ '}' }} OR {{ fc.field }} IS NULL",
+{% endif %}
             name="ck_{{ entity.table }}_{{ fc.field }}_range_or_null",
         ),
 {% elif fc.constraint.type == 'length' %}

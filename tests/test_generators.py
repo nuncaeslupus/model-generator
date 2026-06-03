@@ -294,6 +294,79 @@ class TestFactoryGenerator:
         db_models_dir = project_root / config["paths"]["database_models"]
         assert result["path"] == db_models_dir / "factories" / "models.py"
 
+    def test_ref_constraints_resolve_to_literals(self, project_env: Any) -> None:
+        """financial/counter min_ref/max_ref resolve to literal constant values.
+
+        The factory module never imports the constraints module, so emitting the
+        bare constant name (e.g. ``PRICE_MAX``) would NameError at create() time.
+        """
+        project_root, config, env = project_env
+        model = {
+            "domain": "shop",
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "price": {
+                            "type": "financial",
+                            "constraints": [{"type": "range", "max_ref": "PRICE_MAX"}],
+                        },
+                        "qty": {
+                            "type": "counter",
+                            "constraints": [{"type": "range", "min_ref": "QTY_MIN"}],
+                        },
+                    },
+                }
+            },
+        }
+        constraints = {
+            "PRICE_MAX": {"value": "5000.00"},
+            "QTY_MIN": {"value": 1},
+        }
+        result = generate_factories(
+            model, config, env, project_root, constraints=constraints
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # Literal values, not bare constant names.
+        assert "max_value=5000.00" in content
+        assert "min_value=1," in content
+        assert "PRICE_MAX" not in content
+        assert "QTY_MIN" not in content
+
+    def test_ref_constraints_fall_back_when_unresolved(self, project_env: Any) -> None:
+        """An unresolved ref falls back to default bounds (no bare name leaks)."""
+        project_root, config, env = project_env
+        model = {
+            "domain": "shop",
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "qty": {
+                            "type": "counter",
+                            "constraints": [{"type": "range", "max_ref": "MISSING"}],
+                        },
+                    },
+                }
+            },
+        }
+        result = generate_factories(model, config, env, project_root, constraints={})
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "max_value=999999" in content
+        assert "MISSING" not in content
+
 
 @pytest.fixture
 def multi_entity_model() -> dict[str, Any]:
@@ -402,9 +475,85 @@ def project_env_per_entity(tmp_path: Path) -> tuple[Path, dict[str, Any], Any]:
     return tmp_path, config, env
 
 
-class TestDatabaseGeneratorPerEntity:
-    """Per-entity database model emission."""
+class TestDatabaseGeneratorRangeCheck:
+    """CHECK-constraint emission for range / range_or_null bounds."""
 
+    def _model(self, constraint: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "domain": "shop",
+            "entities": {
+                "Product": {
+                    "table": "products",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "stock": {
+                            "type": "counter",
+                            "required": True,
+                            "constraints": [constraint],
+                        },
+                    },
+                }
+            },
+        }
+
+    def test_range_both_bounds(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        result = generate_database_model(
+            self._model({"type": "range", "min_ref": "QTY_MIN", "max_ref": "QTY_MAX"}),
+            config,
+            env,
+            project_root,
+        )
+        assert isinstance(result, dict)
+        assert 'f"stock >= {QTY_MIN} AND stock <= {QTY_MAX}"' in result["content"]
+
+    def test_range_max_only_emits_one_sided_check(self, project_env: Any) -> None:
+        """A range with only an upper bound must not emit an empty ``{}``."""
+        project_root, config, env = project_env
+        result = generate_database_model(
+            self._model({"type": "range", "max_ref": "QTY_MAX"}),
+            config,
+            env,
+            project_root,
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert 'f"stock <= {QTY_MAX}"' in content
+        # The empty-brace f-string bug would render this:
+        assert "{}" not in content
+
+    def test_range_min_only_emits_one_sided_check(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        result = generate_database_model(
+            self._model({"type": "range", "min_ref": "QTY_MIN"}),
+            config,
+            env,
+            project_root,
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert 'f"stock >= {QTY_MIN}"' in content
+        assert "{}" not in content
+
+    def test_range_or_null_max_only(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        result = generate_database_model(
+            self._model({"type": "range_or_null", "max_ref": "QTY_MAX"}),
+            config,
+            env,
+            project_root,
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert 'f"stock <= {QTY_MAX} OR stock IS NULL"' in content
+        assert "{}" not in content
+
+
+class TestDatabaseGeneratorPerEntity:
     def test_returns_list_of_dicts(
         self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
     ) -> None:
@@ -1112,8 +1261,52 @@ class TestApiTestsGeneratorPerEntity:
         assert "PostResponse" in by_name["test_post_api.py"]
         assert "AuthorResponse" not in by_name["test_post_api.py"]
 
+    def test_read_only_factory_import_is_layout_aware(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """Read-only get-by-id seeds via the per-entity factory module.
 
-class TestApiModelsGenerator:
+        The factory import must target ``{factories}/{entity_snake}.py`` in
+        per-entity layout (not ``{factories}/{domain}.py``, which only exists in
+        per-domain layout).
+        """
+        project_root, config, env = project_env_per_entity
+        model = {
+            "domain": "geo",
+            "entities": {
+                "Country": {
+                    "table": "countries",
+                    # Read-only, no required FK, no one_to_many → factory-seeded.
+                    "api": {"enabled": True, "endpoints": ["list", "get"]},
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "name": {
+                            "type": "text",
+                            "max_length": 100,
+                            "required": True,
+                            "unique": True,
+                        },
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                }
+            },
+        }
+        result = generate_api_tests(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, list)
+        content = result[0]["content"]
+        # Import targets the entity snake module, not the domain.
+        assert "factories.country import CountryFactory" in content
+        assert "factories.geo import" not in content
+        # Factory-seeded get-by-id test is emitted.
+        assert "def test_get_country_by_id_success" in content
+        assert "CountryFactory.create()" in content
+
     """Test API models (request/response) generation."""
 
     def test_generates_two_files(
@@ -3912,8 +4105,7 @@ class TestApiTestsEndpointGates:
         assert "def test_item_field_constraints" not in content
         assert "def test_timestamps_valid" not in content
 
-        # Seeding-required tests inside kept sections are also gone
-        assert "def test_get_item_by_id_success" not in content
+        # PUT/DELETE success still need a created row (no seeded variant) → gone
         assert "def test_put_item_success" not in content
         assert "def test_put_item_partial_update" not in content
         assert "def test_delete_item_success" not in content
@@ -3924,10 +4116,13 @@ class TestApiTestsEndpointGates:
         assert "def test_put_item_not_found" in content
         assert "def test_delete_item_not_found" in content
 
-        # Filtering is still emitted, but in a data-free form for entities with
-        # `list` and filterable fields but no `create`: it asserts each filter
-        # parameter is accepted (200) rather than POSTing seed data.
+        # Filtering and get-by-id ARE emitted, in data-free / factory-seeded
+        # forms, for read-only entities (list+get, no create, no required FK,
+        # no one_to_many): filtering asserts each param is accepted (200), and
+        # get-by-id seeds via the factory — so no POST seeding anywhere.
         assert "def test_get_items_list_filtering" in content
+        assert "def test_get_item_by_id_success" in content
+        assert "Factory.create()" in content
         assert "client.post(" not in content
 
     def test_skips_list_tests_when_list_endpoint_excluded(
@@ -3973,6 +4168,82 @@ class TestApiTestsEndpointGates:
         # Other sections unaffected
         assert "def test_post_item_success" in content
         assert "def test_delete_item_success" in content
+
+
+class TestApiTestsCounterRangeRefs:
+    """Contract test-data builder resolves counter range min_ref/max_ref.
+
+    A counter `range` constraint declared via min_ref/max_ref (no inline
+    min/max) previously crashed `_tests.j2` at `constraint.min | int` on an
+    Undefined value. The builder must resolve refs from the constraints dict.
+    """
+
+    def _counter_model(self) -> dict[str, Any]:
+        return {
+            "domain": "shop",
+            "entities": {
+                "Product": {
+                    "table": "products",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "stock": {
+                            "type": "counter",
+                            "required": True,
+                            "constraints": [
+                                {
+                                    "type": "range",
+                                    "min_ref": "QTY_MIN",
+                                    "max_ref": "QTY_MAX",
+                                }
+                            ],
+                        },
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                }
+            },
+        }
+
+    def test_counter_range_refs_resolve_to_midpoint(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        constraints = {"QTY_MIN": {"value": 1}, "QTY_MAX": {"value": 100}}
+        result = generate_api_tests(
+            self._counter_model(),
+            config,
+            env,
+            project_root,
+            enums={},
+            constraints=constraints,
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # (1 + 100) // 2 == 50 — refs resolved to a literal midpoint.
+        assert '"stock": 50,' in content
+        # No bare constant name leaks into the test-data value (the ref names
+        # legitimately appear in the constraint-doc docstring, so only the
+        # data-value form is asserted absent).
+        assert '"stock": QTY_MIN' not in content
+        assert '"stock": QTY_MAX' not in content
+
+    def test_counter_range_unresolved_refs_fall_back(self, project_env: Any) -> None:
+        """Unresolved refs fall back to a literal default (no crash, no names)."""
+        project_root, config, env = project_env
+        result = generate_api_tests(
+            self._counter_model(),
+            config,
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert '"stock": 10,' in content
+        assert '"stock": QTY_MIN' not in content
+        assert '"stock": QTY_MAX' not in content
 
 
 class TestApiTestsReferenceTextFiltering:
