@@ -4089,12 +4089,16 @@ class TestApiTestsReferenceTextFiltering:
                             "primary_key": True,
                             "auto_generate": True,
                         },
-                        # Nullable reference — must NOT get a created-value filter.
+                        # Nullable reference with an explicit null default —
+                        # must NOT get a created-value filter (`default is
+                        # defined` is true for None, so the guard also checks
+                        # `is not none`).
                         "owner_id": {
                             "type": "reference",
                             "reference_entity": "Owner",
                             "reference_table": "owners",
                             "required": False,
+                            "default": None,
                         },
                     },
                     "timestamps": {"created": True, "updated": True},
