@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from . import __version__
 from .generators import (
     generate_api_init,
     generate_api_models,
@@ -819,6 +820,11 @@ def _process_outputs(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate code from model definitions")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
     parser.add_argument(
         "model",
         type=Path,

@@ -1,27 +1,48 @@
 # Model Generator
 
-A **one-shot bootstrap code generator** that creates production-ready API backends from JSON specifications. Generates database models, API endpoints, tests, and migrations. Currently supports Python-FastAPI.
+A **one-shot bootstrap code generator** that turns JSON specifications into production-ready API backends — database models, API endpoints, tests, and migrations. The generator is stack-agnostic by design; it currently ships the **`python-fastapi`** stack (chosen with `--stack`, the default).
 
 ## What It Does
 
 - **Database models** — SQLAlchemy ORM with constraints, relationships, and indexes
 - **API models** — Pydantic request/response schemas with validators
 - **API routes** — FastAPI CRUD endpoints
-- **Tests** — pytest contract tests with FactoryBoy factories (143 tests in example project)
+- **Tests** — pytest contract tests with FactoryBoy factories (a full contract suite in the example project)
 - **Migrations** — Alembic infrastructure
+
+## Install
+
+`model-generator` is a build-time scaffolding tool, not a runtime dependency of
+the backends it generates. Install it as an isolated global CLI:
+
+```bash
+uv tool install model-generator-kit     # or: pipx install model-generator-kit
+```
+
+This puts `model-gen` and `model-val` on your PATH. For the interactive wizard,
+add the extra: `uv tool install "model-generator-kit[interactive]"`.
+
+> The PyPI package is `model-generator-kit` (the name `model-generator` was already
+> taken); the commands it installs are `model-gen` and `model-val`.
 
 ## Quick Start
 
 ```bash
-# Clone and install
-git clone <repo-url> && cd model-generator
-uv sync --extra dev
+# In any project directory, scaffold from your JSON specs
+model-gen models/ --target all
 
-# Try the example
+model-gen --version    # confirm the install
+```
+
+To try the bundled example from a clone of this repo:
+
+```bash
+git clone https://github.com/nuncaeslupus/model-generator && cd model-generator
+uv sync --extra dev
 cd examples/user-auth-project
 uv run model-gen models/ --target all
 uv venv && uv sync --extra dev
-uv run pytest  # 143 tests pass
+uv run pytest  # the generated contract suite passes
 ```
 
 For your own project, see the [Installation Guide](./docs/user/installation.md).
@@ -59,7 +80,7 @@ For your own project, see the [Installation Guide](./docs/user/installation.md).
 # Install in editable mode with dev dependencies
 uv sync --extra dev
 
-# Run the test suite (273 tests)
+# Run the test suite
 uv run pytest tests/ -v
 ```
 
