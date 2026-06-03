@@ -2,7 +2,7 @@
 
 ## Current State (2026-06-03, on `claude/wizardly-goodall-ftNAF`)
 
-PR C merged to `main` as **`786293d`** (#22). On top of it, a follow-up branch carries three consumer-surfaced template/generator fixes (alembic URL priority, unique-index fixtures, read-only filtering test — see "Recently Completed Fixes"). 445 model-generator tests pass; example suite 131/131 on Python 3.12.
+Consumer template fixes merged to `main` as **`eeff908`** (#23). On top of it, a follow-up branch backfills filter-test coverage for `reference` and unique-`text` fields in both contract-test branches (create-mode + read-only — see "Recently Completed Fixes"). 448 model-generator tests pass; example suite 131/131 on Python 3.12.
 
 **Active arc next session:** mutmut + test-suite refactor (re-queued, see "Other Possible Next Steps" below).
 
@@ -26,6 +26,17 @@ The consumer-addendum arc is closed. Next session picks up the two long-deferred
 ---
 
 ## Recently Completed Fixes
+
+### Filter-test coverage for reference + unique-text fields (2026-06-03)
+
+Branch `claude/wizardly-goodall-ftNAF`, off `main` at `eeff908` (post-PR #23). Follow-up to the consumer read-only filtering fix: `route.py.j2` generates exact-match filter params for `reference` and unique-`text` fields, but **neither** contract-test branch asserted them (both only handled enum/boolean/datetime/financial/percentage/counter). Closed the gap in both branches.
+
+- **`contract.py.j2` create-mode branch.** Added `reference` and unique-`text` cases that assert the **created** row's value filters correctly (`all(item[field] == val for item in items)`), mirroring the enum/boolean pattern. Both are gated `(field.required or field.default is defined)` — a nullable reference's created value can be `None`, which would render `?field=None` and 500 on the UUID column (caught during the example probe: `UserRole.granted_by`). The `ns_needs_created` flag uses the **same** guard so `created_X` is emitted iff at least one case consumes it (otherwise ruff F841 in the generated project).
+- **`contract.py.j2` read-only branch.** Added `reference` (literal `00000000-…-0` UUID) and unique-`text` (literal `test_value`) cases asserting HTTP 200 acceptance. No created value needed, so no required-guard — covers nullable references too.
+
+**Tests:** new `TestApiTestsReferenceTextFiltering` (3): create-mode required-reference uses created value; read-only reference+text use data-free literals (no `created_gadget`); nullable reference is skipped in create-mode. 445 → 448.
+
+**Verified:** `make lint` clean (ruff + mypy strict), 448/448 unit tests. Example regenerated end-to-end → 131/131 (Python 3.12, `APP_PASSWORD_PEPPER=test_pepper`); generated test suite `ruff check` clean (no unused `created_X`). Confirmed in generated output: `UserSession.user_id` (required ref) gets a created-value assertion, `User` (read-only) gets `?username=` / `?email=` text-filter assertions, `UserRole.granted_by` (nullable ref) is correctly absent.
 
 ### Consumer template fixes — alembic URL, unique-index fixtures, read-only filtering (2026-06-03)
 
