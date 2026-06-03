@@ -3975,6 +3975,146 @@ class TestApiTestsEndpointGates:
         assert "def test_delete_item_success" in content
 
 
+class TestApiTestsReferenceTextFiltering:
+    """Filter-test coverage for `reference` and unique `text` fields.
+
+    The list endpoint generates exact-match filter params for reference and
+    unique-text fields (route.py.j2), so the contract tests must exercise them
+    in both the create-mode branch (assert the created value filters) and the
+    read-only branch (assert the param is accepted).
+    """
+
+    def _read_only_model(self) -> dict[str, Any]:
+        """Maker (full CRUD) + read-only Gadget with reference + unique text."""
+        return {
+            "domain": "gadgets",
+            "entities": {
+                "Maker": {
+                    "table": "makers",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "name": {"type": "text", "max_length": 100, "required": True},
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                },
+                "Gadget": {
+                    "table": "gadgets",
+                    # Read-only: no create endpoint.
+                    "api": {"enabled": True, "endpoints": ["list", "get"]},
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "code": {
+                            "type": "text",
+                            "max_length": 50,
+                            "required": True,
+                            "unique": True,
+                        },
+                        "maker_id": {
+                            "type": "reference",
+                            "reference_entity": "Maker",
+                            "reference_table": "makers",
+                            "required": True,
+                        },
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                },
+            },
+        }
+
+    def test_create_mode_reference_filter_uses_created_value(
+        self, multi_entity_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """A required reference field filters by the created row's value."""
+        project_root, config, env = project_env
+        result = generate_api_tests(
+            multi_entity_model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # Post.author_id is a required reference → created-value assertion.
+        assert 'ref_val = created_post["author_id"]' in content
+        assert "?author_id={ref_val}" in content
+
+    def test_read_only_reference_and_text_filters_are_data_free(
+        self, project_env: Any
+    ) -> None:
+        """Read-only entity: reference + unique-text filters accept literals (200)."""
+        project_root, config, env = project_env
+        result = generate_api_tests(
+            self._read_only_model(), config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # Unique text filter: literal value, no seeding POST.
+        assert "/api/v1/gadgets?code=test_value" in content
+        # Reference filter: literal UUID, no seeding POST.
+        assert (
+            "/api/v1/gadgets?maker_id=00000000-0000-0000-0000-000000000000" in content
+        )
+        # The read-only filtering test must not POST seed data.
+        assert "created_gadget" not in content
+
+    def test_nullable_reference_filter_is_skipped_in_create_mode(
+        self, project_env: Any
+    ) -> None:
+        """A nullable reference is skipped (its created value may be None)."""
+        model = {
+            "domain": "things",
+            "entities": {
+                "Owner": {
+                    "table": "owners",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "name": {"type": "text", "max_length": 50, "required": True},
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                },
+                "Thing": {
+                    "table": "things",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        # Nullable reference with an explicit null default —
+                        # must NOT get a created-value filter (`default is
+                        # defined` is true for None, so the guard also checks
+                        # `is not none`).
+                        "owner_id": {
+                            "type": "reference",
+                            "reference_entity": "Owner",
+                            "reference_table": "owners",
+                            "required": False,
+                            "default": None,
+                        },
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                },
+            },
+        }
+        project_root, config, env = project_env
+        result = generate_api_tests(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # No created-value filter for the nullable reference (would 500 on None).
+        assert 'created_thing["owner_id"]' not in content
+
+
 class TestConftestGeneratorRateLimitReset:
     """Test the autouse rate-limiter reset fixture emission (§12.6)."""
 

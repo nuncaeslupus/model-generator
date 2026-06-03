@@ -141,7 +141,7 @@ class Test{{ entity_name }}sAPI:
 {% if not field.api_exclude_response | default(false) and not field.primary_key | default(false) %}
 {% if field.type in ['enum', 'boolean', 'datetime', 'financial', 'counter', 'percentage', 'reference'] or (field.type == 'text' and field.unique | default(false)) %}
 {% set _ = has_filterable_fields.append(field_name) %}
-{% if field.type in ['enum', 'boolean'] and (field.required or field.default is defined) %}
+{% if ((field.type in ['enum', 'boolean', 'reference']) or (field.type == 'text' and field.unique | default(false))) and (field.required or (field.default is defined and field.default is not none)) %}
 {% set ns_needs_created.found = true %}
 {% endif %}
 {% endif %}
@@ -165,7 +165,7 @@ class Test{{ entity_name }}sAPI:
         # Test filtering
 {% for field_name, field in entity.fields.items() %}
 {% if not field.api_exclude_response | default(false) and not field.primary_key | default(false) %}
-{% if field.type == 'enum' and (field.required or field.default is defined) %}
+{% if field.type == 'enum' and (field.required or (field.default is defined and field.default is not none)) %}
         # Filter by enum field: {{ field_name }}
         enum_val = created_{{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"]
         response = client.get(f"/api/v1/{{ entity_table_kebab }}?{{ field_name }}={enum_val}")
@@ -176,7 +176,7 @@ class Test{{ entity_name }}sAPI:
             for item in data["items"]
         )
 
-{% elif field.type == 'boolean' and (field.required or field.default is defined) %}
+{% elif field.type == 'boolean' and (field.required or (field.default is defined and field.default is not none)) %}
         # Filter by boolean field: {{ field_name }}
         bool_val = str(created_{{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"]).lower()
         response = client.get(f"/api/v1/{{ entity_table_kebab }}?{{ field_name }}={bool_val}")
@@ -208,6 +208,28 @@ class Test{{ entity_name }}sAPI:
         assert response.status_code == 200
         response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_max=100")
         assert response.status_code == 200
+
+{% elif field.type == 'reference' and (field.required or (field.default is defined and field.default is not none)) %}
+        # Filter by reference field: {{ field_name }}
+        ref_val = created_{{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"]
+        response = client.get(f"/api/v1/{{ entity_table_kebab }}?{{ field_name }}={ref_val}")
+        assert response.status_code == 200
+        data = response.json()
+        assert all(
+            item["{{ field.api_field_name | default(field_name) }}"] == ref_val
+            for item in data["items"]
+        )
+
+{% elif field.type == 'text' and field.unique | default(false) and (field.required or (field.default is defined and field.default is not none)) %}
+        # Filter by unique text field: {{ field_name }}
+        text_val = created_{{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"]
+        response = client.get(f"/api/v1/{{ entity_table_kebab }}?{{ field_name }}={text_val}")
+        assert response.status_code == 200
+        data = response.json()
+        assert all(
+            item["{{ field.api_field_name | default(field_name) }}"] == text_val
+            for item in data["items"]
+        )
 
 {% endif %}
 {% endif %}
@@ -251,6 +273,16 @@ class Test{{ entity_name }}sAPI:
         response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_min=0")
         assert response.status_code == 200
         response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}_max=100")
+        assert response.status_code == 200
+{% elif field.type == 'reference' %}
+        # Filter by reference field: {{ field_name }}
+        response = client.get(
+            "/api/v1/{{ entity_table_kebab }}?{{ field_name }}=00000000-0000-0000-0000-000000000000"
+        )
+        assert response.status_code == 200
+{% elif field.type == 'text' and field.unique | default(false) %}
+        # Filter by unique text field: {{ field_name }}
+        response = client.get("/api/v1/{{ entity_table_kebab }}?{{ field_name }}=test_value")
         assert response.status_code == 200
 {% endif %}
 {% endif %}
