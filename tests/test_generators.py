@@ -475,9 +475,85 @@ def project_env_per_entity(tmp_path: Path) -> tuple[Path, dict[str, Any], Any]:
     return tmp_path, config, env
 
 
-class TestDatabaseGeneratorPerEntity:
-    """Per-entity database model emission."""
+class TestDatabaseGeneratorRangeCheck:
+    """CHECK-constraint emission for range / range_or_null bounds."""
 
+    def _model(self, constraint: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "domain": "shop",
+            "entities": {
+                "Product": {
+                    "table": "products",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "stock": {
+                            "type": "counter",
+                            "required": True,
+                            "constraints": [constraint],
+                        },
+                    },
+                }
+            },
+        }
+
+    def test_range_both_bounds(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        result = generate_database_model(
+            self._model({"type": "range", "min_ref": "QTY_MIN", "max_ref": "QTY_MAX"}),
+            config,
+            env,
+            project_root,
+        )
+        assert isinstance(result, dict)
+        assert 'f"stock >= {QTY_MIN} AND stock <= {QTY_MAX}"' in result["content"]
+
+    def test_range_max_only_emits_one_sided_check(self, project_env: Any) -> None:
+        """A range with only an upper bound must not emit an empty ``{}``."""
+        project_root, config, env = project_env
+        result = generate_database_model(
+            self._model({"type": "range", "max_ref": "QTY_MAX"}),
+            config,
+            env,
+            project_root,
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert 'f"stock <= {QTY_MAX}"' in content
+        # The empty-brace f-string bug would render this:
+        assert "{}" not in content
+
+    def test_range_min_only_emits_one_sided_check(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        result = generate_database_model(
+            self._model({"type": "range", "min_ref": "QTY_MIN"}),
+            config,
+            env,
+            project_root,
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert 'f"stock >= {QTY_MIN}"' in content
+        assert "{}" not in content
+
+    def test_range_or_null_max_only(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        result = generate_database_model(
+            self._model({"type": "range_or_null", "max_ref": "QTY_MAX"}),
+            config,
+            env,
+            project_root,
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert 'f"stock <= {QTY_MAX} OR stock IS NULL"' in content
+        assert "{}" not in content
+
+
+class TestDatabaseGeneratorPerEntity:
     def test_returns_list_of_dicts(
         self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
     ) -> None:
