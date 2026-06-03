@@ -150,22 +150,22 @@ fake = Faker()
     {{ field_name }} = factory.LazyFunction(lambda: fake.paragraph(nb_sentences=5))
 {% elif field.type == 'financial' %}
 {%- if field.constraints is defined -%}
-{%- set min_val = 0 -%}
-{%- set max_val = 999999 -%}
+{%- set fin = namespace(min=0, max=999999) -%}
 {%- for constraint in field.constraints -%}
-{%- if constraint.min_ref is defined -%}
-{%- set min_val = constraint.min_ref -%}
+{%- if constraint.type == 'positive' -%}{%- set fin.min = 1 -%}{%- endif -%}
+{%- if constraint.type == 'range' -%}
+{%- if constraint.min is defined -%}{%- set fin.min = constraint.min -%}{%- endif -%}
+{%- if constraint.max is defined -%}{%- set fin.max = constraint.max -%}{%- endif -%}
 {%- endif -%}
-{%- if constraint.max_ref is defined -%}
-{%- set max_val = constraint.max_ref -%}
-{%- endif -%}
+{%- if constraint.min_ref is defined -%}{%- set fin.min = constraint.min_ref -%}{%- endif -%}
+{%- if constraint.max_ref is defined -%}{%- set fin.max = constraint.max_ref -%}{%- endif -%}
 {%- endfor %}
     {{ field_name }} = factory.LazyFunction(
-        lambda: Decimal(str(fake.pydecimal(left_digits=12, right_digits=8, min_value={{ min_val }}, max_value={{ max_val }}, positive=True)))
+        lambda: Decimal(str(fake.pydecimal(right_digits=8, min_value={{ fin.min }}, max_value={{ fin.max }})))
     )
 {% else %}
     {{ field_name }} = factory.LazyFunction(
-        lambda: Decimal(str(fake.pydecimal(left_digits=12, right_digits=8, min_value=0, max_value=999999, positive=True)))
+        lambda: Decimal(str(fake.pydecimal(left_digits=12, right_digits=8, positive=True)))
     )
 {% endif %}
 {% elif field.type == 'percentage' %}
@@ -174,17 +174,17 @@ fake = Faker()
     )
 {% elif field.type == 'counter' %}
 {%- if field.constraints is defined -%}
-{%- set min_val = 0 -%}
-{%- set max_val = 999999 -%}
+{%- set cnt = namespace(min=0, max=999999) -%}
 {%- for constraint in field.constraints -%}
-{%- if constraint.min_ref is defined -%}
-{%- set min_val = constraint.min_ref -%}
+{%- if constraint.type == 'positive' -%}{%- set cnt.min = 1 -%}{%- endif -%}
+{%- if constraint.type == 'range' -%}
+{%- if constraint.min is defined -%}{%- set cnt.min = constraint.min -%}{%- endif -%}
+{%- if constraint.max is defined -%}{%- set cnt.max = constraint.max -%}{%- endif -%}
 {%- endif -%}
-{%- if constraint.max_ref is defined -%}
-{%- set max_val = constraint.max_ref -%}
-{%- endif -%}
+{%- if constraint.min_ref is defined -%}{%- set cnt.min = constraint.min_ref -%}{%- endif -%}
+{%- if constraint.max_ref is defined -%}{%- set cnt.max = constraint.max_ref -%}{%- endif -%}
 {%- endfor %}
-    {{ field_name }} = factory.LazyFunction(lambda: fake.pyint(min_value={{ min_val }}, max_value={{ max_val }}))
+    {{ field_name }} = factory.LazyFunction(lambda: fake.pyint(min_value={{ cnt.min }}, max_value={{ cnt.max }}))
 {% else %}
     {{ field_name }} = factory.LazyFunction(lambda: fake.pyint(min_value=0, max_value=999999))
 {% endif %}

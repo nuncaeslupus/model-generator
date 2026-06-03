@@ -1112,8 +1112,52 @@ class TestApiTestsGeneratorPerEntity:
         assert "PostResponse" in by_name["test_post_api.py"]
         assert "AuthorResponse" not in by_name["test_post_api.py"]
 
+    def test_read_only_factory_import_is_layout_aware(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """Read-only get-by-id seeds via the per-entity factory module.
 
-class TestApiModelsGenerator:
+        The factory import must target ``{factories}/{entity_snake}.py`` in
+        per-entity layout (not ``{factories}/{domain}.py``, which only exists in
+        per-domain layout).
+        """
+        project_root, config, env = project_env_per_entity
+        model = {
+            "domain": "geo",
+            "entities": {
+                "Country": {
+                    "table": "countries",
+                    # Read-only, no required FK, no one_to_many → factory-seeded.
+                    "api": {"enabled": True, "endpoints": ["list", "get"]},
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "name": {
+                            "type": "text",
+                            "max_length": 100,
+                            "required": True,
+                            "unique": True,
+                        },
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                }
+            },
+        }
+        result = generate_api_tests(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, list)
+        content = result[0]["content"]
+        # Import targets the entity snake module, not the domain.
+        assert "factories.country import CountryFactory" in content
+        assert "factories.geo import" not in content
+        # Factory-seeded get-by-id test is emitted.
+        assert "def test_get_country_by_id_success" in content
+        assert "CountryFactory.create()" in content
+
     """Test API models (request/response) generation."""
 
     def test_generates_two_files(
@@ -3912,8 +3956,7 @@ class TestApiTestsEndpointGates:
         assert "def test_item_field_constraints" not in content
         assert "def test_timestamps_valid" not in content
 
-        # Seeding-required tests inside kept sections are also gone
-        assert "def test_get_item_by_id_success" not in content
+        # PUT/DELETE success still need a created row (no seeded variant) → gone
         assert "def test_put_item_success" not in content
         assert "def test_put_item_partial_update" not in content
         assert "def test_delete_item_success" not in content
@@ -3924,10 +3967,13 @@ class TestApiTestsEndpointGates:
         assert "def test_put_item_not_found" in content
         assert "def test_delete_item_not_found" in content
 
-        # Filtering is still emitted, but in a data-free form for entities with
-        # `list` and filterable fields but no `create`: it asserts each filter
-        # parameter is accepted (200) rather than POSTing seed data.
+        # Filtering and get-by-id ARE emitted, in data-free / factory-seeded
+        # forms, for read-only entities (list+get, no create, no required FK,
+        # no one_to_many): filtering asserts each param is accepted (200), and
+        # get-by-id seeds via the factory — so no POST seeding anywhere.
         assert "def test_get_items_list_filtering" in content
+        assert "def test_get_item_by_id_success" in content
+        assert "Factory.create()" in content
         assert "client.post(" not in content
 
     def test_skips_list_tests_when_list_endpoint_excluded(
