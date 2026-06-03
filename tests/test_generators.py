@@ -4094,6 +4094,82 @@ class TestApiTestsEndpointGates:
         assert "def test_delete_item_success" in content
 
 
+class TestApiTestsCounterRangeRefs:
+    """Contract test-data builder resolves counter range min_ref/max_ref.
+
+    A counter `range` constraint declared via min_ref/max_ref (no inline
+    min/max) previously crashed `_tests.j2` at `constraint.min | int` on an
+    Undefined value. The builder must resolve refs from the constraints dict.
+    """
+
+    def _counter_model(self) -> dict[str, Any]:
+        return {
+            "domain": "shop",
+            "entities": {
+                "Product": {
+                    "table": "products",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "stock": {
+                            "type": "counter",
+                            "required": True,
+                            "constraints": [
+                                {
+                                    "type": "range",
+                                    "min_ref": "QTY_MIN",
+                                    "max_ref": "QTY_MAX",
+                                }
+                            ],
+                        },
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                }
+            },
+        }
+
+    def test_counter_range_refs_resolve_to_midpoint(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        constraints = {"QTY_MIN": {"value": 1}, "QTY_MAX": {"value": 100}}
+        result = generate_api_tests(
+            self._counter_model(),
+            config,
+            env,
+            project_root,
+            enums={},
+            constraints=constraints,
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # (1 + 100) // 2 == 50 — refs resolved to a literal midpoint.
+        assert '"stock": 50,' in content
+        # No bare constant name leaks into the test-data value (the ref names
+        # legitimately appear in the constraint-doc docstring, so only the
+        # data-value form is asserted absent).
+        assert '"stock": QTY_MIN' not in content
+        assert '"stock": QTY_MAX' not in content
+
+    def test_counter_range_unresolved_refs_fall_back(self, project_env: Any) -> None:
+        """Unresolved refs fall back to a literal default (no crash, no names)."""
+        project_root, config, env = project_env
+        result = generate_api_tests(
+            self._counter_model(),
+            config,
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert '"stock": 10,' in content
+        assert '"stock": QTY_MIN' not in content
+        assert '"stock": QTY_MAX' not in content
+
+
 class TestApiTestsReferenceTextFiltering:
     """Filter-test coverage for `reference` and unique `text` fields.
 
