@@ -16,15 +16,19 @@ from __future__ import annotations
 
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 
 def get_version() -> str:
-    content = Path("pyproject.toml").read_text(encoding="utf-8")
-    match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
-    if not match:
-        raise ValueError("Could not find version in pyproject.toml")
-    return match.group(1)
+    # Parse the TOML properly (matching check_version_sync.py) rather than
+    # regex-matching a `version =` line that could also live in a [tool.*] table.
+    with Path("pyproject.toml").open("rb") as f:
+        data = tomllib.load(f)
+    try:
+        return str(data["project"]["version"])
+    except KeyError as exc:
+        raise ValueError("Could not find project.version in pyproject.toml") from exc
 
 
 def update_init(version: str) -> None:
