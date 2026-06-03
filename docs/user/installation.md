@@ -3,13 +3,33 @@
 ## Prerequisites
 
 - Python 3.11 or later
-- uv
+- uv (recommended) or pipx
+
+## Install from PyPI (recommended)
+
+`model-generator` is a build-time scaffolding tool, not a runtime dependency of
+the backends it generates. Install it as an isolated global CLI so it stays off
+your project's dependency graph:
+
+```bash
+uv tool install model-generator-kit     # or: pipx install model-generator-kit
+```
+
+The PyPI package is named `model-generator-kit` (the name `model-generator` was
+already taken on PyPI); it installs the `model-gen` and `model-val` commands.
+For the interactive wizard, include the optional extra:
+
+```bash
+uv tool install "model-generator-kit[interactive]"
+```
 
 ## Install from Source
 
+For contributing to model-generator itself, or to run the bundled example:
+
 ```bash
 # Clone and navigate to the model-generator directory
-cd model-generator
+git clone https://github.com/nuncaeslupus/model-generator && cd model-generator
 
 # Install with uv
 uv sync
@@ -48,7 +68,7 @@ model-gen models/ --target all
 uv venv && uv sync --extra dev
 uv run pytest
 
-# Result: 149 tests pass, ruff clean, mypy clean
+# Result: generated contract suite passes, ruff clean, mypy clean
 ```
 
 ---

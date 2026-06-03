@@ -18,6 +18,8 @@ from typing import Any, cast
 
 from jsonschema import Draft7Validator
 
+from . import __version__
+
 
 def load_schema() -> dict[str, Any]:
     """Load the model schema from the skill directory."""
@@ -164,6 +166,11 @@ def validate_semantics(model: dict[str, Any]) -> list[str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate model JSON files")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
     parser.add_argument(
         "path",
         type=Path,

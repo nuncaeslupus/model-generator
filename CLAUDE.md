@@ -42,13 +42,13 @@ model-generator/
 │   ├── wizard/                         # Interactive CLI mode
 │   ├── schema/model.schema.json        # JSON Schema for model definitions
 │   └── stacks/python-fastapi/          # Jinja2 templates for FastAPI stack
-├── tests/                              # 273 tests
-├── docs/                               # 14 documentation files
+├── tests/                              # pytest suite (run: make test)
+├── docs/                               # user, agent, contributor, deep-dive docs
 │   ├── user/                           # Installation, usage, model design
 │   ├── agent/                          # JSON reference, template extension
 │   ├── contributor/                    # Reusability, coding rules
 │   └── deep-dives/                     # Constraints, completeness, custom tests
-├── examples/user-auth-project/         # Example project (generates 143 tests)
+├── examples/user-auth-project/         # Example project (generates a full contract suite)
 │   ├── models/                         # Input specifications
 │   └── .model-generator.yaml           # Generator config
 └── tmp/                                # Ephemeral files (gitignored)
@@ -91,7 +91,7 @@ uv run model-gen --interactive   # Interactive wizard
 uv run model-gen examples/user-auth-project/models --target all
 cd examples/user-auth-project
 uv venv && uv sync --extra dev
-uv run pytest                    # 143 tests
+uv run pytest                    # generated contract suite
 ```
 
 ---
