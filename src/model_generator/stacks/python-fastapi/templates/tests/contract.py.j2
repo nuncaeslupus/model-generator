@@ -40,7 +40,7 @@ from fastapi.testclient import TestClient
 {#- Factory module is layout-aware: per-entity layout (the default) keeps one
     factory file per entity at {factories}/{entity_snake}.py; per-domain layout
     groups them in {factories}/{domain}.py. -#}
-{% set _factory_module = (entity_name | snake_case) if (config.generation.layout | default('per-entity')) == 'per-entity' else model.domain %}
+{% set _factory_module = (entity_name | snake_case) if (config.get('generation', {}).get('layout', 'per-entity')) == 'per-entity' else model.domain %}
 from {{ config.paths.factories | path_to_import }}.{{ _factory_module }} import {{ entity_name }}Factory
 {% endif %}
 {% endfor %}

@@ -157,8 +157,10 @@ fake = Faker()
 {%- if constraint.min is defined -%}{%- set fin.min = constraint.min -%}{%- endif -%}
 {%- if constraint.max is defined -%}{%- set fin.max = constraint.max -%}{%- endif -%}
 {%- endif -%}
-{%- if constraint.min_ref is defined -%}{%- set fin.min = constraint.min_ref -%}{%- endif -%}
-{%- if constraint.max_ref is defined -%}{%- set fin.max = constraint.max_ref -%}{%- endif -%}
+{#- min_ref/max_ref name a shared constraint constant; resolve it to a literal
+    here since the factory module never imports the constraints module. -#}
+{%- if constraint.min_ref is defined and constraints is defined and constraint.min_ref in constraints -%}{%- set fin.min = constraints[constraint.min_ref].value -%}{%- endif -%}
+{%- if constraint.max_ref is defined and constraints is defined and constraint.max_ref in constraints -%}{%- set fin.max = constraints[constraint.max_ref].value -%}{%- endif -%}
 {%- endfor %}
     {{ field_name }} = factory.LazyFunction(
         lambda: Decimal(str(fake.pydecimal(right_digits=8, min_value={{ fin.min }}, max_value={{ fin.max }})))
@@ -181,8 +183,9 @@ fake = Faker()
 {%- if constraint.min is defined -%}{%- set cnt.min = constraint.min -%}{%- endif -%}
 {%- if constraint.max is defined -%}{%- set cnt.max = constraint.max -%}{%- endif -%}
 {%- endif -%}
-{%- if constraint.min_ref is defined -%}{%- set cnt.min = constraint.min_ref -%}{%- endif -%}
-{%- if constraint.max_ref is defined -%}{%- set cnt.max = constraint.max_ref -%}{%- endif -%}
+{#- Resolve min_ref/max_ref to literal constants (see financial note above). -#}
+{%- if constraint.min_ref is defined and constraints is defined and constraint.min_ref in constraints -%}{%- set cnt.min = constraints[constraint.min_ref].value -%}{%- endif -%}
+{%- if constraint.max_ref is defined and constraints is defined and constraint.max_ref in constraints -%}{%- set cnt.max = constraints[constraint.max_ref].value -%}{%- endif -%}
 {%- endfor %}
     {{ field_name }} = factory.LazyFunction(lambda: fake.pyint(min_value={{ cnt.min }}, max_value={{ cnt.max }}))
 {% else %}

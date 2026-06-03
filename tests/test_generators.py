@@ -294,6 +294,79 @@ class TestFactoryGenerator:
         db_models_dir = project_root / config["paths"]["database_models"]
         assert result["path"] == db_models_dir / "factories" / "models.py"
 
+    def test_ref_constraints_resolve_to_literals(self, project_env: Any) -> None:
+        """financial/counter min_ref/max_ref resolve to literal constant values.
+
+        The factory module never imports the constraints module, so emitting the
+        bare constant name (e.g. ``PRICE_MAX``) would NameError at create() time.
+        """
+        project_root, config, env = project_env
+        model = {
+            "domain": "shop",
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "price": {
+                            "type": "financial",
+                            "constraints": [{"type": "range", "max_ref": "PRICE_MAX"}],
+                        },
+                        "qty": {
+                            "type": "counter",
+                            "constraints": [{"type": "range", "min_ref": "QTY_MIN"}],
+                        },
+                    },
+                }
+            },
+        }
+        constraints = {
+            "PRICE_MAX": {"value": "5000.00"},
+            "QTY_MIN": {"value": 1},
+        }
+        result = generate_factories(
+            model, config, env, project_root, constraints=constraints
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # Literal values, not bare constant names.
+        assert "max_value=5000.00" in content
+        assert "min_value=1," in content
+        assert "PRICE_MAX" not in content
+        assert "QTY_MIN" not in content
+
+    def test_ref_constraints_fall_back_when_unresolved(self, project_env: Any) -> None:
+        """An unresolved ref falls back to default bounds (no bare name leaks)."""
+        project_root, config, env = project_env
+        model = {
+            "domain": "shop",
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "qty": {
+                            "type": "counter",
+                            "constraints": [{"type": "range", "max_ref": "MISSING"}],
+                        },
+                    },
+                }
+            },
+        }
+        result = generate_factories(model, config, env, project_root, constraints={})
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "max_value=999999" in content
+        assert "MISSING" not in content
+
 
 @pytest.fixture
 def multi_entity_model() -> dict[str, Any]:
