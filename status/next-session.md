@@ -27,6 +27,16 @@ The consumer-addendum arc is closed. Next session picks up the two long-deferred
 
 ## Recently Completed Fixes
 
+### CORS scaffold hardening — drop wildcard+credentials default (2026-06-10)
+
+Branch `claude/funny-brahmagupta-dpjh6j`. Out-of-band security fix from a downstream review (Finding F2): the generated `main.py` shipped the textbook CORS hole — `allow_origins=os.getenv("CORS_ORIGINS", "*")` paired with `allow_credentials=True`. With a wildcard + credentials, Starlette reflects the caller's `Origin` and returns `Access-Control-Allow-Credentials: true`. Two downstream projects (oms, ml-engine) carried the byte-identical generated block.
+
+- **`templates/infrastructure/main.py.j2`.** CORS default is now a concrete localhost dev origin (`http://localhost:3000`), never `*`. `CORS_ORIGINS` is parsed into a stripped, non-empty list. `allow_credentials` is computed as `"*" not in cors_origins` — credentials switch **off** automatically if any deployment sets a wildcard, so the dangerous pairing can't recur. `allow_methods` narrowed from `["*"]` to the CRUD verbs the generated routes use (`GET/POST/PUT/DELETE/OPTIONS`); `allow_headers` narrowed from `["*"]` to `Content-Type` plus `X-CSRF-Token` (the latter emitted only when `csrf_module_import` is set, i.e. auth/CSRF is wired). A comment explains the credentials gating so adopters don't "simplify" it back to `True`.
+
+**Tests:** 4 new in `TestInfrastructureGenerators` — no wildcard default + credentials decoupled; methods/headers narrowed; `X-CSRF-Token` present iff auth/CSRF is wired (per-entity auth config) and absent otherwise. 457 → 461.
+
+**Verified:** `make lint` clean (ruff + mypy strict), 461/461 unit tests, generated `main.py` `ast.parse`s and ruff-checks clean (only the pre-existing I001 import-sort quirk). Example regenerated end-to-end with auth on → 131/131 on Python 3.12 (`APP_PASSWORD_PEPPER=test_pepper`); confirmed in generated output: `allow_credentials="*" not in cors_origins`, `allow_headers` carries `X-CSRF-Token`, CSRF still added before CORS.
+
 ### Factory constraint fix + factory-seeded read-only get-by-id (2026-06-03)
 
 Branch `claude/wizardly-goodall-ftNAF`, off `main` at `eec462f` (post-PR #24). Consumer patch (factory + seeding) plus one correctness fix I added on top.

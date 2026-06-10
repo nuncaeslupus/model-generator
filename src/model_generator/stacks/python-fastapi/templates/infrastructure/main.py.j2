@@ -67,14 +67,36 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(CsrfMiddleware)
 
 {% endif %}
-# CORS middleware - set CORS_ORIGINS env var for production (comma-separated)
-cors_origins = os.getenv("CORS_ORIGINS", "*").split(",")
+# CORS middleware.
+#
+# Set CORS_ORIGINS to a comma-separated allowlist per deployment, e.g.
+#   CORS_ORIGINS="https://app.example.com,https://admin.example.com"
+# The default is a localhost dev origin; never ship a wildcard to production.
+#
+# Credentials are gated on the absence of a wildcard on purpose: pairing a
+# wildcard origin with credentials makes Starlette reflect the caller's Origin
+# and echo an Access-Control-Allow-Credentials header — the textbook CORS hole.
+# Credentials therefore stay off unless an explicit allowlist is configured.
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials="*" not in cors_origins,
+    # Narrowed to the methods the generated routes serve. FastAPI answers
+    # HEAD on every GET route, so HEAD is included to keep preflight happy.
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
+    # Narrowed to the headers the generated routes need; add others (e.g.
+    # "Authorization") if you layer on token auth.
+    allow_headers=[
+        "Content-Type",
+        {% if csrf_module_import %}
+        "X-CSRF-Token",
+        {% endif %}
+    ],
 )
 
 
