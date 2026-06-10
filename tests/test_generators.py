@@ -3318,6 +3318,63 @@ class TestInfrastructureGenerators:
         assert "RateLimitExceeded" not in content
         assert "app.state.limiter" not in content
 
+    def test_generate_main_cors_no_wildcard_default(self, project_env: Any) -> None:
+        """CORS default is a concrete dev origin, never the wildcard."""
+        project_root, config, env = project_env
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # No wildcard default, and credentials are never hardcoded on.
+        assert 'os.getenv("CORS_ORIGINS", "*")' not in content
+        assert "allow_credentials=True" not in content
+        assert 'os.getenv("CORS_ORIGINS", "http://localhost:3000")' in content
+        # Credentials are decoupled from a wildcard origin (the actual
+        # CVE-class misconfiguration): they switch off when "*" is configured.
+        assert 'allow_credentials="*" not in cors_origins' in content
+
+    def test_generate_main_cors_methods_and_headers_narrowed(
+        self, project_env: Any
+    ) -> None:
+        """CORS methods/headers are narrowed from the old ["*"] wildcards."""
+        project_root, config, env = project_env
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert 'allow_methods=["*"]' not in content
+        assert 'allow_headers=["*"]' not in content
+        assert 'allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]' in content
+        assert '"Content-Type",' in content
+
+    def test_generate_main_cors_allows_csrf_header_when_auth_set(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """When CSRF middleware is wired, CORS allows its X-CSRF-Token header."""
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        assert isinstance(result, dict)
+        assert '"X-CSRF-Token",' in result["content"]
+
+    def test_generate_main_cors_omits_csrf_header_when_no_auth(
+        self, project_env: Any
+    ) -> None:
+        """No auth/CSRF → the X-CSRF-Token header is absent from the allowlist."""
+        project_root, config, env = project_env
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        assert isinstance(result, dict)
+        assert "X-CSRF-Token" not in result["content"]
+
     def test_generate_test_conftest_root(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_test_conftest_root(
