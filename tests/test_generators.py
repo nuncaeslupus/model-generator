@@ -3346,7 +3346,10 @@ class TestInfrastructureGenerators:
         content = result["content"]
         assert 'allow_methods=["*"]' not in content
         assert 'allow_headers=["*"]' not in content
-        assert 'allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]' in content
+        assert (
+            'allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"]'
+            in content
+        )
         assert '"Content-Type",' in content
 
     def test_generate_main_cors_allows_csrf_header_when_auth_set(

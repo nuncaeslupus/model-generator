@@ -86,8 +86,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials="*" not in cors_origins,
-    # Narrowed to the verbs the generated CRUD routes use.
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    # Narrowed to the methods the generated routes serve. FastAPI answers
+    # HEAD on every GET route, so HEAD is included to keep preflight happy.
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
     # Narrowed to the headers the generated routes need; add others (e.g.
     # "Authorization") if you layer on token auth.
     allow_headers=[
