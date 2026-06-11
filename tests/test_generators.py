@@ -3808,8 +3808,8 @@ class TestRequestLimitGenerator:
         result = generate_request_limit(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
-        # Template-level guard.
-        assert "return n if n >= 0 else None" in content
+        # Template-level guard: a negative declared length is invalid.
+        assert "if n < 0:" in content
 
         # Runtime probe: drive the middleware with a lying Content-Length: -100
         # and an oversized body; the cap must still produce a 413. starlette is
@@ -3832,6 +3832,64 @@ class TestRequestLimitGenerator:
 
         mw = middleware_cls(app, max_body_bytes=10)
         scope = {"type": "http", "headers": [(b"content-length", b"-100")]}
+
+        async def receive() -> dict[str, Any]:
+            return {"type": "http.request", "body": b"x" * 100, "more_body": False}
+
+        sent: list[dict[str, Any]] = []
+
+        async def send(message: dict[str, Any]) -> None:
+            sent.append(message)
+
+        asyncio.run(mw(scope, receive, send))
+
+        start = next(m for m in sent if m["type"] == "http.response.start")
+        assert start["status"] == 413
+
+    def test_duplicate_content_length_treated_as_invalid(
+        self, project_env: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Defense-in-depth: duplicate Content-Length headers must not bypass the cap.
+
+        Returning the first header's value lets a smuggling pair (small + large)
+        slip an oversized body past a guard keyed on the small one if a
+        downstream server honors the other. Two Content-Length headers are now
+        treated as invalid, forcing the chunked byte-counting path → 413.
+        """
+        import asyncio
+        import sys
+        import types as types_module
+
+        project_root, config, env = project_env
+        result = generate_request_limit(config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+
+        starlette = types_module.ModuleType("starlette")
+        starlette_types = types_module.ModuleType("starlette.types")
+        for name in ("ASGIApp", "Message", "Receive", "Scope", "Send"):
+            setattr(starlette_types, name, Any)
+        starlette.types = starlette_types  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "starlette", starlette)
+        monkeypatch.setitem(sys.modules, "starlette.types", starlette_types)
+
+        ns: dict[str, Any] = {}
+        exec(content, ns)
+        middleware_cls = ns["RequestBodySizeLimitMiddleware"]
+
+        async def app(scope: Any, receive: Any, send: Any) -> None:
+            raise AssertionError("oversized body reached the app")
+
+        mw = middleware_cls(app, max_body_bytes=10)
+        # Smuggling pair: a small declared length the guard would accept, plus a
+        # second header. The middleware must distrust both and count bytes.
+        scope = {
+            "type": "http",
+            "headers": [
+                (b"content-length", b"5"),
+                (b"content-length", b"100"),
+            ],
+        }
 
         async def receive() -> dict[str, Any]:
             return {"type": "http.request", "body": b"x" * 100, "more_body": False}
