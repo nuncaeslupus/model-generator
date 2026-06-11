@@ -37,6 +37,7 @@ from model_generator.generators.infrastructure import (
     generate_infrastructure,
     generate_main,
     generate_pyproject,
+    generate_request_limit,
     generate_test_conftest_root,
     generate_types,
     generate_utils,
@@ -1553,6 +1554,102 @@ class TestApiRoutesGeneratorScope:
         assert isinstance(result, dict)
         assert "from fastapi import HTTPException" in result["content"]
         assert "status_code=403" in result["content"]
+
+
+@pytest.fixture
+def filter_model() -> dict[str, Any]:
+    """Model exercising every numeric/date list-filter param type."""
+    return {
+        "domain": "metrics",
+        "entities": {
+            "Metric": {
+                "table": "metrics",
+                "fields": {
+                    "id": {
+                        "type": "uuid",
+                        "primary_key": True,
+                        "auto_generate": True,
+                    },
+                    "threshold_usd": {
+                        "type": "financial",
+                        "precision": 18,
+                        "scale": 8,
+                    },
+                    "ratio": {"type": "percentage"},
+                    "observed_at": {"type": "datetime"},
+                    "retries": {"type": "counter"},
+                },
+                "timestamps": {"created": True, "updated": True},
+            }
+        },
+    }
+
+
+class TestApiRoutesFilterCoercion:
+    """P1: numeric/date list filters are typed so FastAPI validates them.
+
+    Previously these params were ``str | None`` and coerced inside the handler
+    (``Decimal(...)`` / ``datetime.fromisoformat(...)``), so a malformed value
+    raised an unhandled 500. Emitting the real types moves validation to the
+    framework boundary (422) and drops the manual coercion entirely.
+    """
+
+    def _render(self, model: dict[str, Any], project_env: Any) -> str:
+        project_root, config, env = project_env
+        result = generate_api_routes(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        return str(result["content"])
+
+    def test_financial_and_percentage_filters_typed_as_decimal(
+        self, filter_model: dict[str, Any], project_env: Any
+    ) -> None:
+        content = self._render(filter_model, project_env)
+        assert "threshold_usd_min: Decimal | None = Query(None" in content
+        assert "threshold_usd_max: Decimal | None = Query(None" in content
+        assert "ratio_min: Decimal | None = Query(None" in content
+        assert "ratio_max: Decimal | None = Query(None" in content
+        # No str-typed numeric filter params remain.
+        assert "threshold_usd_min: str | None" not in content
+        assert "ratio_min: str | None" not in content
+
+    def test_datetime_filters_typed_as_datetime(
+        self, filter_model: dict[str, Any], project_env: Any
+    ) -> None:
+        content = self._render(filter_model, project_env)
+        assert "observed_at_after: datetime | None = Query(None" in content
+        assert "observed_at_before: datetime | None = Query(None" in content
+        assert "observed_at_after: str | None" not in content
+
+    def test_no_manual_coercion_in_handler_body(
+        self, filter_model: dict[str, Any], project_env: Any
+    ) -> None:
+        content = self._render(filter_model, project_env)
+        # The unguarded coercions that produced 500s are gone.
+        assert "Decimal(threshold_usd_min)" not in content
+        assert "Decimal(ratio_min)" not in content
+        assert "datetime.fromisoformat(" not in content
+        # Filters compare against the validated param directly.
+        assert "Metric.threshold_usd >= threshold_usd_min" in content
+        assert "Metric.observed_at >= observed_at_after" in content
+
+    def test_counter_filters_stay_int_typed(
+        self, filter_model: dict[str, Any], project_env: Any
+    ) -> None:
+        content = self._render(filter_model, project_env)
+        # Counters were already int-typed (FastAPI validates them); unchanged.
+        assert "retries_min: int | None = Query(None" in content
+        assert "retries_max: int | None = Query(None" in content
+
+    def test_generated_route_compiles_with_required_imports(
+        self, filter_model: dict[str, Any], project_env: Any
+    ) -> None:
+        content = self._render(filter_model, project_env)
+        compile(content, "<metric_route>", "exec")
+        # Decimal / datetime imports remain — now used in the signatures.
+        assert "from decimal import Decimal" in content
+        assert "from datetime import datetime" in content
 
 
 class TestValidateAuthConfig:
@@ -3400,6 +3497,134 @@ class TestInfrastructureGenerators:
         )
         assert result is None
 
+    def test_generate_errors_generic_duplicate_message_by_default(
+        self, project_env: Any
+    ) -> None:
+        """P2: the 409 duplicate message omits the parsed DB column name."""
+        project_root, config, env = project_env
+        result = generate_errors(config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        # Generic message; no column-name extraction.
+        assert "with these values already exists" in content
+        assert "with this {field} already exists" not in content
+        assert 'split("UNIQUE constraint failed:")' not in content
+        # Structured shape preserved.
+        assert '"error": "duplicate_value"' in content
+
+    def test_generate_errors_exposes_field_when_opted_in(
+        self, project_env: Any
+    ) -> None:
+        """P2: app.expose_integrity_error_fields restores the field-named 409."""
+        project_root, config, env = project_env
+        config = {
+            **config,
+            "app": {**config.get("app", {}), "expose_integrity_error_fields": True},
+        }
+        result = generate_errors(config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "with this {field} already exists" in content
+        assert 'split("UNIQUE constraint failed:")' in content
+
+    def test_generate_errors_validation_handler_trims_raw_errors(
+        self, project_env: Any
+    ) -> None:
+        """P4: a validation handler summarizes errors to field + message."""
+        project_root, config, env = project_env
+        result = generate_errors(config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "async def validation_exception_handler(" in content
+        assert "RequestValidationError" in content
+        assert "JSONResponse" in content
+        # Trimmed to a field + message summary, structured shape.
+        assert '"error": "validation_error"' in content
+        assert '"field":' in content
+        assert '"message":' in content
+        # Never returns the raw exc.errors() list verbatim.
+        assert "content=exc.errors()" not in content
+
+    def test_generate_errors_strips_only_leading_locator(
+        self, project_env: Any
+    ) -> None:
+        """Review follow-up: only the leading loc source marker is stripped.
+
+        Filtering every occurrence would mangle a field legitimately named
+        'body'/'query'/etc.; only loc[0] is the source marker.
+        """
+        project_root, config, env = project_env
+        result = generate_errors(config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "loc[0] in (" in content
+        assert "loc[1:]" in content
+
+    def test_generate_errors_handles_non_dict_app_config(
+        self, project_env: Any
+    ) -> None:
+        """Review follow-up: a non-dict app: value doesn't raise AttributeError."""
+        project_root, config, env = project_env
+        config = {**config, "app": True}
+        result = generate_errors(config, env, project_root)
+        assert isinstance(result, dict)
+        assert "with these values already exists" in result["content"]
+
+    def test_generate_main_registers_validation_handler(self, project_env: Any) -> None:
+        """P4: main imports and registers the trimmed validation handler."""
+        project_root, config, env = project_env
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "from fastapi.exceptions import RequestValidationError" in content
+        assert "import validation_exception_handler" in content
+        assert (
+            "app.add_exception_handler("
+            "RequestValidationError, validation_exception_handler)" in content
+        )
+
+    def test_generate_main_wires_request_body_limit(self, project_env: Any) -> None:
+        """P3: main imports and installs the body-size middleware by default."""
+        project_root, config, env = project_env
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "import RequestBodySizeLimitMiddleware" in content
+        assert "RequestBodySizeLimitMiddleware, max_body_bytes=" in content
+        # Default generous cap (10 MiB) is emitted.
+        assert "max_body_bytes=10485760" in content
+
+    def test_generate_main_no_body_limit_when_disabled(self, project_env: Any) -> None:
+        """P3: setting the cap to 0 omits the middleware and its import."""
+        project_root, config, env = project_env
+        config = {
+            **config,
+            "app": {**config.get("app", {}), "max_request_body_bytes": 0},
+        }
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        assert isinstance(result, dict)
+        assert "RequestBodySizeLimitMiddleware" not in result["content"]
+
+    def test_generate_main_body_limit_before_cors(self, project_env: Any) -> None:
+        """P3: body limit is added before CORS so CORS stays outermost."""
+        project_root, config, env = project_env
+        result = generate_main(
+            config, env, project_root, domains=["users"], project_config=config
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        body_idx = content.index(
+            "app.add_middleware(\n    RequestBodySizeLimitMiddleware"
+        )
+        cors_idx = content.index("app.add_middleware(\n    CORSMiddleware")
+        assert body_idx < cors_idx, "body-limit must be added before CORS"
+
     def test_generate_infrastructure_creates_all(self, project_env: Any) -> None:
         project_root, config, env = project_env
         files = generate_infrastructure(
@@ -3416,6 +3641,7 @@ class TestInfrastructureGenerators:
         assert "base.py" in file_names
         assert "main.py" in file_names
         assert "pyproject.toml" in file_names
+        assert "request_limit.py" in file_names
 
     def test_infrastructure_skips_existing(self, project_env: Any) -> None:
         """Infrastructure: some files skip if existing, others always regenerate."""
@@ -3452,9 +3678,65 @@ class TestInfrastructureGenerators:
             "conftest.py",
             "validators.py",
             "utils.py",
+            "request_limit.py",
         }
         new_infra = [f for f in files2 if f.name in skipped_infra]
         assert len(new_infra) == 0
+
+
+class TestRequestLimitGenerator:
+    """P3: request-body size-limit ASGI middleware generation."""
+
+    def test_emits_middleware_module_by_default(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        result = generate_request_limit(config, env, project_root)
+        assert isinstance(result, dict)
+        assert "request_limit.py" in str(result["path"])
+        content = result["content"]
+        assert "class RequestBodySizeLimitMiddleware" in content
+        assert '"status": 413' in content
+        compile(content, "<request_limit>", "exec")
+
+    def test_skips_when_disabled(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        config = {
+            **config,
+            "app": {**config.get("app", {}), "max_request_body_bytes": 0},
+        }
+        assert generate_request_limit(config, env, project_root) is None
+
+    def test_skips_existing(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        api_dir = Path(config["paths"]["api_models"]).parent
+        output_path = project_root / api_dir / "request_limit.py"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("existing")
+        assert generate_request_limit(config, env, project_root) is None
+
+    def test_uses_deque_for_o1_replay(self, project_env: Any) -> None:
+        """Review follow-up: replay buffer is a deque (O(1) popleft), not a list."""
+        project_root, config, env = project_env
+        result = generate_request_limit(config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "from collections import deque" in content
+        assert "deque[Message] = deque()" in content
+        assert "buffered.popleft()" in content
+        assert "buffered.pop(0)" not in content
+
+    def test_returns_on_client_disconnect(self, project_env: Any) -> None:
+        """Review follow-up: disconnect mid-body returns without invoking the app."""
+        project_root, config, env = project_env
+        result = generate_request_limit(config, env, project_root)
+        assert isinstance(result, dict)
+        assert 'elif message["type"] == "http.disconnect":' in result["content"]
+
+    def test_handles_non_dict_app_config(self, project_env: Any) -> None:
+        """Review follow-up: a non-dict app: value falls back, no AttributeError."""
+        project_root, config, env = project_env
+        config = {**config, "app": "not-a-dict"}
+        # Default cap (>0) still applies -> middleware still emitted, no crash.
+        assert isinstance(generate_request_limit(config, env, project_root), dict)
 
 
 class TestImmutableEntityGeneration:
