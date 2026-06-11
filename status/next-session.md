@@ -78,6 +78,17 @@ the repros: `?balance_min=abc` → 422 (input value not echoed),
 `?last_login_at_after=notadate` → 422, valid filters → 200, 11 MiB body → 413,
 small invalid body → 422.
 
+**Gemini review (PR #29) — all 7 comments applied.** `request_limit.py.j2`:
+`deque` + `popleft` for O(1) replay (a list's `pop(0)` is O(N), so replaying
+many small chunks was O(N²) — a DoS footgun in the DoS-defense middleware);
+`return` immediately on `http.disconnect` instead of replaying a half-body
+downstream. `errors.py.j2`: strip only the leading `loc` source marker
+(`body`/`query`/…), not every occurrence, so a field legitimately named "body"
+isn't mangled. `infrastructure.py`: `_app_config()` helper resolves `app` to
+`{}` when misconfigured as a non-dict (avoids `AttributeError`). +5 tests
+(→ 481); a runtime ASGI probe confirms the chunked deque-replay, disconnect,
+and Content-Length paths. CI green (lint + test 3.11/3.12).
+
 ### CORS scaffold hardening — drop wildcard+credentials default (2026-06-10)
 
 Branch `claude/funny-brahmagupta-dpjh6j`. Out-of-band security fix from a downstream review (Finding F2): the generated `main.py` shipped the textbook CORS hole — `allow_origins=os.getenv("CORS_ORIGINS", "*")` paired with `allow_credentials=True`. With a wildcard + credentials, Starlette reflects the caller's `Origin` and returns `Access-Control-Allow-Credentials: true`. Two downstream projects (oms, ml-engine) carried the byte-identical generated block.

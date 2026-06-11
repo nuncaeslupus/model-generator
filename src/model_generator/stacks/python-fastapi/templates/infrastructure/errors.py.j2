@@ -85,14 +85,15 @@ async def validation_exception_handler(
     fields: list[dict[str, str]] = []
     if isinstance(exc, RequestValidationError):
         for err in exc.errors():
-            location = [
-                str(part)
-                for part in err.get("loc", ())
-                if part not in ("body", "query", "path", "header", "cookie")
-            ]
+            loc = err.get("loc", ())
+            # Strip only the leading source marker (body/query/path/...), not
+            # every occurrence — a real field may legitimately be named "body".
+            if loc and loc[0] in ("body", "query", "path", "header", "cookie"):
+                loc = loc[1:]
+            field = ".".join(str(part) for part in loc)
             fields.append(
                 {
-                    "field": ".".join(location) or "request",
+                    "field": field or "request",
                     "message": str(err.get("msg", "Invalid input")),
                 }
             )

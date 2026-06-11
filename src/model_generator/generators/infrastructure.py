@@ -15,6 +15,17 @@ from ..utils.templates import path_to_import
 DEFAULT_MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
 
 
+def _app_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Return the ``app`` config section as a dict.
+
+    Falls back to an empty dict when the key is absent or misconfigured as a
+    non-mapping value (e.g. ``app: true``), so callers can ``.get()`` without
+    risking an ``AttributeError``.
+    """
+    app_config = config.get("app")
+    return app_config if isinstance(app_config, dict) else {}
+
+
 def _max_request_body_bytes(config: dict[str, Any]) -> int:
     """Resolve the configured request-body cap in bytes.
 
@@ -22,7 +33,7 @@ def _max_request_body_bytes(config: dict[str, Any]) -> int:
     default). A non-positive value disables the limit: the middleware is not
     emitted and ``main.py`` does not wire it.
     """
-    value = (config.get("app") or {}).get(
+    value = _app_config(config).get(
         "max_request_body_bytes", DEFAULT_MAX_REQUEST_BODY_BYTES
     )
     try:
@@ -109,7 +120,7 @@ def generate_errors(
         return None
 
     expose_integrity_error_fields = bool(
-        (config.get("app") or {}).get("expose_integrity_error_fields", False)
+        _app_config(config).get("expose_integrity_error_fields", False)
     )
 
     template = env.get_template("infrastructure/errors.py.j2")

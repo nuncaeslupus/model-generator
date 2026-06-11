@@ -3545,6 +3545,31 @@ class TestInfrastructureGenerators:
         # Never returns the raw exc.errors() list verbatim.
         assert "content=exc.errors()" not in content
 
+    def test_generate_errors_strips_only_leading_locator(
+        self, project_env: Any
+    ) -> None:
+        """Review follow-up: only the leading loc source marker is stripped.
+
+        Filtering every occurrence would mangle a field legitimately named
+        'body'/'query'/etc.; only loc[0] is the source marker.
+        """
+        project_root, config, env = project_env
+        result = generate_errors(config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "loc[0] in (" in content
+        assert "loc[1:]" in content
+
+    def test_generate_errors_handles_non_dict_app_config(
+        self, project_env: Any
+    ) -> None:
+        """Review follow-up: a non-dict app: value doesn't raise AttributeError."""
+        project_root, config, env = project_env
+        config = {**config, "app": True}
+        result = generate_errors(config, env, project_root)
+        assert isinstance(result, dict)
+        assert "with these values already exists" in result["content"]
+
     def test_generate_main_registers_validation_handler(self, project_env: Any) -> None:
         """P4: main imports and registers the trimmed validation handler."""
         project_root, config, env = project_env
@@ -3687,6 +3712,31 @@ class TestRequestLimitGenerator:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("existing")
         assert generate_request_limit(config, env, project_root) is None
+
+    def test_uses_deque_for_o1_replay(self, project_env: Any) -> None:
+        """Review follow-up: replay buffer is a deque (O(1) popleft), not a list."""
+        project_root, config, env = project_env
+        result = generate_request_limit(config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "from collections import deque" in content
+        assert "deque[Message] = deque()" in content
+        assert "buffered.popleft()" in content
+        assert "buffered.pop(0)" not in content
+
+    def test_returns_on_client_disconnect(self, project_env: Any) -> None:
+        """Review follow-up: disconnect mid-body returns without invoking the app."""
+        project_root, config, env = project_env
+        result = generate_request_limit(config, env, project_root)
+        assert isinstance(result, dict)
+        assert 'elif message["type"] == "http.disconnect":' in result["content"]
+
+    def test_handles_non_dict_app_config(self, project_env: Any) -> None:
+        """Review follow-up: a non-dict app: value falls back, no AttributeError."""
+        project_root, config, env = project_env
+        config = {**config, "app": "not-a-dict"}
+        # Default cap (>0) still applies -> middleware still emitted, no crash.
+        assert isinstance(generate_request_limit(config, env, project_root), dict)
 
 
 class TestImmutableEntityGeneration:

@@ -14,6 +14,7 @@ defense-in-depth against large-body memory pressure / soft denial-of-service.
 """
 
 import json
+from collections import deque
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -48,7 +49,10 @@ class RequestBodySizeLimitMiddleware:
 
         # No Content-Length (e.g. chunked): buffer up to the cap, counting
         # bytes as they arrive and rejecting before the limit is exceeded.
-        buffered: list[Message] = []
+        # A deque gives O(1) popleft on replay — a list's pop(0) is O(N), so
+        # replaying many small chunks would be O(N^2), a DoS footgun in the
+        # very middleware meant to blunt one.
+        buffered: deque[Message] = deque()
         total = 0
         while True:
             message = await receive()
@@ -60,14 +64,13 @@ class RequestBodySizeLimitMiddleware:
                 buffered.append(message)
                 if not message.get("more_body", False):
                     break
-            else:
-                buffered.append(message)
-                if message["type"] == "http.disconnect":
-                    break
+            elif message["type"] == "http.disconnect":
+                # Client went away mid-body; nothing to forward downstream.
+                return
 
         async def replay() -> Message:
             if buffered:
-                return buffered.pop(0)
+                return buffered.popleft()
             return await receive()
 
         await self.app(scope, replay, send)
