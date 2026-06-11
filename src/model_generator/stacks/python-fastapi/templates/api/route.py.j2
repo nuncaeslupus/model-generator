@@ -75,7 +75,7 @@ All endpoints follow RESTful conventions and return standardized error responses
 import bcrypt
 {% endif %}
 {% if ns.has_datetime %}
-from datetime import datetime
+from datetime import datetime, timezone
 {% endif %}
 {% if ns.has_financial or ns.has_percentage %}
 from decimal import Decimal
@@ -225,9 +225,15 @@ async def list_{{ entity_plural }}(
         count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} == {{ field_name }})
 {% elif field.type == 'datetime' %}
     if {{ field_name }}_after is not None:
+        # Localize a naive value to UTC: the column is tz-aware, and comparing
+        # it against a naive datetime raises on strict drivers (asyncpg/psycopg2).
+        if {{ field_name }}_after.tzinfo is None:
+            {{ field_name }}_after = {{ field_name }}_after.replace(tzinfo=timezone.utc)
         stmt = stmt.where({{ entity_name }}.{{ field_name }} >= {{ field_name }}_after)
         count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} >= {{ field_name }}_after)
     if {{ field_name }}_before is not None:
+        if {{ field_name }}_before.tzinfo is None:
+            {{ field_name }}_before = {{ field_name }}_before.replace(tzinfo=timezone.utc)
         stmt = stmt.where({{ entity_name }}.{{ field_name }} <= {{ field_name }}_before)
         count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} <= {{ field_name }}_before)
 {% elif field.type in ['financial', 'percentage'] %}

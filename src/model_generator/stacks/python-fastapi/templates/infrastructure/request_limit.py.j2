@@ -97,11 +97,19 @@ class RequestBodySizeLimitMiddleware:
 
 
 def _content_length(scope: Scope) -> int | None:
-    """Return the request's Content-Length as an int, or None if absent/invalid."""
+    """Return the request's Content-Length as an int, or None if absent/invalid.
+
+    A negative declared length is treated as invalid (returns None) so the
+    caller falls through to the chunked byte-counting path rather than trusting
+    a header that would slip past the ``> max_body_bytes`` guard. Compliant
+    servers reject a negative Content-Length at the protocol layer, but the
+    middleware must not rely on that pre-filtering — defense-in-depth.
+    """
     for name, value in scope.get("headers", []):
         if name == b"content-length":
             try:
-                return int(value)
+                n = int(value)
             except ValueError:
                 return None
+            return n if n >= 0 else None
     return None
