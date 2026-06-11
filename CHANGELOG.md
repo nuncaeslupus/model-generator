@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-06-11
+
 ### Security
 
 Hardened the generated FastAPI CRUD surface (follow-ups from a downstream
@@ -67,5 +69,6 @@ First public release on PyPI.
   stack-agnostic by design — FastAPI is the first stack, selected via
   `--stack` (default `python-fastapi`), not a hard dependency of the tool.
 
-[Unreleased]: https://github.com/nuncaeslupus/model-generator/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nuncaeslupus/model-generator/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/nuncaeslupus/model-generator/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nuncaeslupus/model-generator/releases/tag/v0.1.0
