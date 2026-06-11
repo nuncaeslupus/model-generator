@@ -6,6 +6,33 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-06-11
+
+### Security
+
+Two template fixes surfaced by a downstream PR-review pass over the 0.1.1
+adoption. **Adopters built from generator output (e.g. `oms`, `ml-engine`)
+should regenerate to pick these up.** No wire contract changed — field names,
+enums, and happy-path status codes are identical.
+
+- **Request-body size limit: negative `Content-Length` bypass (defense-in-depth).**
+  The `request_limit.py` middleware read `Content-Length` with `int(value)`
+  verbatim, so a client sending `Content-Length: -100` produced `-100`, which
+  passed the `> max_body_bytes` guard and took the "stream through untouched"
+  fast-path — skipping the byte-counting entirely. `_content_length` now treats
+  a negative declared length as invalid (returns `None`), so the request falls
+  through to the chunked-counting path and is still rejected with a 413 on
+  overflow. Compliant servers reject a negative `Content-Length` at the protocol
+  layer; the middleware no longer relies on that pre-filtering.
+- **List filters: naive vs. tz-aware datetime comparison.** A `datetime | None`
+  list filter parses input without an offset (e.g. `2026-06-11T12:00:00`) as a
+  naive datetime, then compared it directly against a tz-aware
+  `DateTime(timezone=True)` column — which raises `TypeError`/`DataError` on
+  strict drivers (asyncpg/psycopg2) at query time. The generated handler now
+  localizes a naive value to UTC (`v.replace(tzinfo=timezone.utc)`) before the
+  comparison, applied uniformly to every `_after` and `_before` datetime filter.
+  Latent (SQLite suites don't enforce tz-awareness), not a regression from 0.1.1.
+
 ## [0.1.1] — 2026-06-11
 
 ### Security

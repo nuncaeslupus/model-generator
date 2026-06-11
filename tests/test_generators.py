@@ -1652,6 +1652,58 @@ class TestApiRoutesFilterCoercion:
         assert "from datetime import datetime" in content
 
 
+class TestApiRoutesDatetimeFilterTzAware:
+    """Naive datetime filter values are localized to UTC before comparison.
+
+    A ``datetime | None`` filter parses input without a tz offset (e.g.
+    ``2026-06-11T12:00:00``) as a naive datetime; compared against a tz-aware
+    ``DateTime(timezone=True)`` column it raises ``TypeError``/``DataError`` on
+    strict drivers (asyncpg/psycopg2). The handler localizes a naive value to
+    UTC first. Latent (SQLite suites don't enforce tz-awareness), not a
+    regression — fixed uniformly for both ``_after`` and ``_before``.
+    """
+
+    def _render(self, model: dict[str, Any], project_env: Any) -> str:
+        project_root, config, env = project_env
+        result = generate_api_routes(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        return str(result["content"])
+
+    def test_imports_timezone(
+        self, filter_model: dict[str, Any], project_env: Any
+    ) -> None:
+        content = self._render(filter_model, project_env)
+        assert "from datetime import datetime, timezone" in content
+
+    def test_naive_after_localized_to_utc(
+        self, filter_model: dict[str, Any], project_env: Any
+    ) -> None:
+        content = self._render(filter_model, project_env)
+        assert "if observed_at_after.tzinfo is None:" in content
+        assert (
+            "observed_at_after = observed_at_after.replace(tzinfo=timezone.utc)"
+            in content
+        )
+
+    def test_naive_before_localized_to_utc(
+        self, filter_model: dict[str, Any], project_env: Any
+    ) -> None:
+        content = self._render(filter_model, project_env)
+        assert "if observed_at_before.tzinfo is None:" in content
+        assert (
+            "observed_at_before = observed_at_before.replace(tzinfo=timezone.utc)"
+            in content
+        )
+
+    def test_route_still_compiles(
+        self, filter_model: dict[str, Any], project_env: Any
+    ) -> None:
+        content = self._render(filter_model, project_env)
+        compile(content, "<metric_route>", "exec")
+
+
 class TestValidateAuthConfig:
     """Test the _validate_auth_config helper."""
 
@@ -3737,6 +3789,120 @@ class TestRequestLimitGenerator:
         config = {**config, "app": "not-a-dict"}
         # Default cap (>0) still applies -> middleware still emitted, no crash.
         assert isinstance(generate_request_limit(config, env, project_root), dict)
+
+    def test_negative_content_length_treated_as_invalid(
+        self, project_env: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Defense-in-depth: a negative Content-Length must not bypass the cap.
+
+        ``int(b"-100")`` used to be returned verbatim, so ``-100 > max`` was
+        False and the request streamed through uncounted. Now a negative length
+        is invalid (``None``), so the request falls through to the chunked
+        byte-counting path and is still rejected on overflow.
+        """
+        import asyncio
+        import sys
+        import types as types_module
+
+        project_root, config, env = project_env
+        result = generate_request_limit(config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        # Template-level guard: a negative declared length is invalid.
+        assert "if n < 0:" in content
+
+        # Runtime probe: drive the middleware with a lying Content-Length: -100
+        # and an oversized body; the cap must still produce a 413. starlette is
+        # not a generator dependency, so stub its type-only import (auto-undone
+        # by the monkeypatch fixture).
+        starlette = types_module.ModuleType("starlette")
+        starlette_types = types_module.ModuleType("starlette.types")
+        for name in ("ASGIApp", "Message", "Receive", "Scope", "Send"):
+            setattr(starlette_types, name, Any)
+        starlette.types = starlette_types  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "starlette", starlette)
+        monkeypatch.setitem(sys.modules, "starlette.types", starlette_types)
+
+        ns: dict[str, Any] = {}
+        exec(content, ns)
+        middleware_cls = ns["RequestBodySizeLimitMiddleware"]
+
+        async def app(scope: Any, receive: Any, send: Any) -> None:
+            raise AssertionError("oversized body reached the app")
+
+        mw = middleware_cls(app, max_body_bytes=10)
+        scope = {"type": "http", "headers": [(b"content-length", b"-100")]}
+
+        async def receive() -> dict[str, Any]:
+            return {"type": "http.request", "body": b"x" * 100, "more_body": False}
+
+        sent: list[dict[str, Any]] = []
+
+        async def send(message: dict[str, Any]) -> None:
+            sent.append(message)
+
+        asyncio.run(mw(scope, receive, send))
+
+        start = next(m for m in sent if m["type"] == "http.response.start")
+        assert start["status"] == 413
+
+    def test_duplicate_content_length_treated_as_invalid(
+        self, project_env: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Defense-in-depth: duplicate Content-Length headers must not bypass the cap.
+
+        Returning the first header's value lets a smuggling pair (small + large)
+        slip an oversized body past a guard keyed on the small one if a
+        downstream server honors the other. Two Content-Length headers are now
+        treated as invalid, forcing the chunked byte-counting path → 413.
+        """
+        import asyncio
+        import sys
+        import types as types_module
+
+        project_root, config, env = project_env
+        result = generate_request_limit(config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+
+        starlette = types_module.ModuleType("starlette")
+        starlette_types = types_module.ModuleType("starlette.types")
+        for name in ("ASGIApp", "Message", "Receive", "Scope", "Send"):
+            setattr(starlette_types, name, Any)
+        starlette.types = starlette_types  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "starlette", starlette)
+        monkeypatch.setitem(sys.modules, "starlette.types", starlette_types)
+
+        ns: dict[str, Any] = {}
+        exec(content, ns)
+        middleware_cls = ns["RequestBodySizeLimitMiddleware"]
+
+        async def app(scope: Any, receive: Any, send: Any) -> None:
+            raise AssertionError("oversized body reached the app")
+
+        mw = middleware_cls(app, max_body_bytes=10)
+        # Smuggling pair: a small declared length the guard would accept, plus a
+        # second header. The middleware must distrust both and count bytes.
+        scope = {
+            "type": "http",
+            "headers": [
+                (b"content-length", b"5"),
+                (b"content-length", b"100"),
+            ],
+        }
+
+        async def receive() -> dict[str, Any]:
+            return {"type": "http.request", "body": b"x" * 100, "more_body": False}
+
+        sent: list[dict[str, Any]] = []
+
+        async def send(message: dict[str, Any]) -> None:
+            sent.append(message)
+
+        asyncio.run(mw(scope, receive, send))
+
+        start = next(m for m in sent if m["type"] == "http.response.start")
+        assert start["status"] == 413
 
 
 class TestImmutableEntityGeneration:

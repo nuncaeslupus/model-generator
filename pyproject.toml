@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "model-generator-kit"
-version = "0.1.1"
+version = "0.1.2"
 description = "One-shot bootstrap generator for database models, API models, routes, and tests"
 readme = "README.md"
 license = {text = "MIT"}

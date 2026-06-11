@@ -97,11 +97,28 @@ class RequestBodySizeLimitMiddleware:
 
 
 def _content_length(scope: Scope) -> int | None:
-    """Return the request's Content-Length as an int, or None if absent/invalid."""
+    """Return the request's Content-Length as an int, or None if absent/invalid.
+
+    A declared length is treated as invalid (returns None) — forcing the caller
+    onto the chunked byte-counting path, which is safe regardless of any header
+    — when it is negative or when *more than one* Content-Length header is
+    present. Multiple Content-Length headers are a request-smuggling signal: a
+    downstream server or proxy might honor a different one than this middleware,
+    so an oversized request could slip past a guard keyed on the first value.
+    Compliant servers reject both cases at the protocol layer, but the
+    middleware must not rely on that pre-filtering — defense-in-depth.
+    """
+    found: int | None = None
     for name, value in scope.get("headers", []):
         if name == b"content-length":
+            if found is not None:
+                # Duplicate Content-Length headers: force the chunked path.
+                return None
             try:
-                return int(value)
+                n = int(value)
             except ValueError:
                 return None
-    return None
+            if n < 0:
+                return None
+            found = n
+    return found
