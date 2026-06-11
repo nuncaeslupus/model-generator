@@ -179,11 +179,11 @@ async def list_{{ entity_plural }}(
 {% elif field.type == 'boolean' %}
     {{ field_name }}: bool | None = Query(None, description="Filter by {{ field_name }}"),
 {% elif field.type == 'datetime' %}
-    {{ field_name }}_after: str | None = Query(None, description="Filter {{ field_name }} after this datetime (ISO 8601)"),
-    {{ field_name }}_before: str | None = Query(None, description="Filter {{ field_name }} before this datetime (ISO 8601)"),
+    {{ field_name }}_after: datetime | None = Query(None, description="Filter {{ field_name }} after this datetime (ISO 8601)"),
+    {{ field_name }}_before: datetime | None = Query(None, description="Filter {{ field_name }} before this datetime (ISO 8601)"),
 {% elif field.type in ['financial', 'percentage'] %}
-    {{ field_name }}_min: str | None = Query(None, description="Filter {{ field_name }} minimum value"),
-    {{ field_name }}_max: str | None = Query(None, description="Filter {{ field_name }} maximum value"),
+    {{ field_name }}_min: Decimal | None = Query(None, description="Filter {{ field_name }} minimum value"),
+    {{ field_name }}_max: Decimal | None = Query(None, description="Filter {{ field_name }} maximum value"),
 {% elif field.type == 'counter' %}
     {{ field_name }}_min: int | None = Query(None, description="Filter {{ field_name }} minimum value"),
     {{ field_name }}_max: int | None = Query(None, description="Filter {{ field_name }} maximum value"),
@@ -225,20 +225,18 @@ async def list_{{ entity_plural }}(
         count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} == {{ field_name }})
 {% elif field.type == 'datetime' %}
     if {{ field_name }}_after is not None:
-        dt_after = datetime.fromisoformat({{ field_name }}_after.replace('Z', '+00:00'))
-        stmt = stmt.where({{ entity_name }}.{{ field_name }} >= dt_after)
-        count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} >= dt_after)
+        stmt = stmt.where({{ entity_name }}.{{ field_name }} >= {{ field_name }}_after)
+        count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} >= {{ field_name }}_after)
     if {{ field_name }}_before is not None:
-        dt_before = datetime.fromisoformat({{ field_name }}_before.replace('Z', '+00:00'))
-        stmt = stmt.where({{ entity_name }}.{{ field_name }} <= dt_before)
-        count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} <= dt_before)
+        stmt = stmt.where({{ entity_name }}.{{ field_name }} <= {{ field_name }}_before)
+        count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} <= {{ field_name }}_before)
 {% elif field.type in ['financial', 'percentage'] %}
     if {{ field_name }}_min is not None:
-        stmt = stmt.where({{ entity_name }}.{{ field_name }} >= Decimal({{ field_name }}_min))
-        count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} >= Decimal({{ field_name }}_min))
+        stmt = stmt.where({{ entity_name }}.{{ field_name }} >= {{ field_name }}_min)
+        count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} >= {{ field_name }}_min)
     if {{ field_name }}_max is not None:
-        stmt = stmt.where({{ entity_name }}.{{ field_name }} <= Decimal({{ field_name }}_max))
-        count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} <= Decimal({{ field_name }}_max))
+        stmt = stmt.where({{ entity_name }}.{{ field_name }} <= {{ field_name }}_max)
+        count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} <= {{ field_name }}_max)
 {% elif field.type == 'counter' %}
     if {{ field_name }}_min is not None:
         stmt = stmt.where({{ entity_name }}.{{ field_name }} >= {{ field_name }}_min)

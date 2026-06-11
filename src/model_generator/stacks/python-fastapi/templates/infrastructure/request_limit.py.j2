@@ -1,0 +1,104 @@
+{#-
+  Request Body Size-Limit Middleware Template
+  Pure-ASGI middleware that rejects oversized request bodies with 413.
+-#}
+{% from "_shared/_base.j2" import generated_marker %}
+{{ generated_marker() }}
+
+"""
+Request body size-limit middleware.
+
+Rejects HTTP requests whose body exceeds a configured maximum with a 413
+response before the body is read into memory by route handlers. This is
+defense-in-depth against large-body memory pressure / soft denial-of-service.
+"""
+
+import json
+
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+
+class RequestBodySizeLimitMiddleware:
+    """ASGI middleware that caps the size of incoming request bodies.
+
+    When the client declares a ``Content-Length`` larger than
+    ``max_body_bytes`` the request is rejected immediately. For requests
+    without a ``Content-Length`` (e.g. chunked transfer-encoding) the body
+    is counted as it streams and rejected once it crosses the cap, so no
+    more than ``max_body_bytes`` is ever buffered.
+    """
+
+    def __init__(self, app: ASGIApp, max_body_bytes: int) -> None:
+        self.app = app
+        self.max_body_bytes = max_body_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or self.max_body_bytes <= 0:
+            await self.app(scope, receive, send)
+            return
+
+        content_length = _content_length(scope)
+        if content_length is not None:
+            if content_length > self.max_body_bytes:
+                await self._reject(send)
+                return
+            # Content-Length within the cap: stream through untouched.
+            await self.app(scope, receive, send)
+            return
+
+        # No Content-Length (e.g. chunked): buffer up to the cap, counting
+        # bytes as they arrive and rejecting before the limit is exceeded.
+        buffered: list[Message] = []
+        total = 0
+        while True:
+            message = await receive()
+            if message["type"] == "http.request":
+                total += len(message.get("body", b""))
+                if total > self.max_body_bytes:
+                    await self._reject(send)
+                    return
+                buffered.append(message)
+                if not message.get("more_body", False):
+                    break
+            else:
+                buffered.append(message)
+                if message["type"] == "http.disconnect":
+                    break
+
+        async def replay() -> Message:
+            if buffered:
+                return buffered.pop(0)
+            return await receive()
+
+        await self.app(scope, replay, send)
+
+    async def _reject(self, send: Send) -> None:
+        """Send a structured 413 response without invoking the app."""
+        body = json.dumps(
+            {
+                "error": "request_too_large",
+                "message": "Request body exceeds the maximum allowed size",
+            }
+        ).encode("utf-8")
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode("latin-1")),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
+
+
+def _content_length(scope: Scope) -> int | None:
+    """Return the request's Content-Length as an int, or None if absent/invalid."""
+    for name, value in scope.get("headers", []):
+        if name == b"content-length":
+            try:
+                return int(value)
+            except ValueError:
+                return None
+    return None

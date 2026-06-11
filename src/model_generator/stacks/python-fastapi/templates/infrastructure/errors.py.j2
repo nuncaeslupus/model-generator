@@ -10,10 +10,15 @@ API error formatting utilities.
 
 Provides consistent error response formatting for:
 - Database integrity errors (unique constraints, foreign keys)
+- Request validation errors (trimmed pydantic errors)
 - Not found errors
 """
 
-from fastapi import HTTPException, status
+from typing import Any
+
+from fastapi import HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 
@@ -32,12 +37,18 @@ def format_integrity_error(error: IntegrityError, entity_name: str = "Record") -
 
     # Check for unique constraint violation
     if "UNIQUE constraint failed" in error_str or "duplicate key" in error_str.lower():
-        # Extract field name if possible
+{% if expose_integrity_error_fields %}
+        # Field-name exposure is opt-in (app.expose_integrity_error_fields).
         if "UNIQUE constraint failed:" in error_str:
             field = error_str.split("UNIQUE constraint failed:")[-1].strip()
             message = f"A {entity_name} with this {field} already exists"
         else:
             message = f"A {entity_name} with these values already exists"
+{% else %}
+        # Generic message: the parsed column name is withheld so the error
+        # body never leaks internal schema details.
+        message = f"A {entity_name} with these values already exists"
+{% endif %}
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"error": "duplicate_value", "message": message},
@@ -54,6 +65,48 @@ def format_integrity_error(error: IntegrityError, entity_name: str = "Record") -
     return HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail={"error": "integrity_error", "message": "Database constraint violation"},
+    )
+
+
+async def validation_exception_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """Return a trimmed 422 body for request-validation failures.
+
+    FastAPI's default handler serializes ``exc.errors()`` verbatim, which
+    echoes the submitted input values and internal locator detail. This
+    summarizes each error to its field path and message so neither the
+    submitted values nor internal locators leak into the response.
+
+    Registered in the app via::
+
+        app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    """
+    fields: list[dict[str, str]] = []
+    if isinstance(exc, RequestValidationError):
+        for err in exc.errors():
+            location = [
+                str(part)
+                for part in err.get("loc", ())
+                if part not in ("body", "query", "path", "header", "cookie")
+            ]
+            fields.append(
+                {
+                    "field": ".".join(location) or "request",
+                    "message": str(err.get("msg", "Invalid input")),
+                }
+            )
+    payload: dict[str, Any] = {
+        "error": "validation_error",
+        "message": "Request validation failed",
+        "fields": fields,
+    }
+    return JSONResponse(
+        # 422 Unprocessable Entity. Literal rather than status.HTTP_422_* to
+        # avoid the Starlette constant rename churn (ENTITY -> CONTENT) across
+        # versions, which would otherwise emit a DeprecationWarning.
+        status_code=422,
+        content=payload,
     )
 
 

@@ -10,6 +10,26 @@ from jinja2 import Environment
 from ..utils.constants import GENERATED_MARKER
 from ..utils.templates import path_to_import
 
+# Generous default request-body cap (10 MiB) — large enough that normal JSON /
+# base64 payloads are never affected, small enough to blunt large-body soft-DoS.
+DEFAULT_MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
+
+
+def _max_request_body_bytes(config: dict[str, Any]) -> int:
+    """Resolve the configured request-body cap in bytes.
+
+    Reads ``app.max_request_body_bytes`` (falling back to the generous
+    default). A non-positive value disables the limit: the middleware is not
+    emitted and ``main.py`` does not wire it.
+    """
+    value = (config.get("app") or {}).get(
+        "max_request_body_bytes", DEFAULT_MAX_REQUEST_BODY_BYTES
+    )
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_MAX_REQUEST_BODY_BYTES
+
 
 def generate_base(
     config: dict[str, Any], env: Environment, project_root: Path
@@ -88,8 +108,14 @@ def generate_errors(
     if output_path.exists():
         return None
 
+    expose_integrity_error_fields = bool(
+        (config.get("app") or {}).get("expose_integrity_error_fields", False)
+    )
+
     template = env.get_template("infrastructure/errors.py.j2")
-    content = template.render()
+    content = template.render(
+        expose_integrity_error_fields=expose_integrity_error_fields
+    )
 
     return {"path": output_path, "content": content}
 
@@ -130,6 +156,31 @@ def generate_utils(
         return None
 
     template = env.get_template("infrastructure/utils.py.j2")
+    content = template.render()
+
+    return {"path": output_path, "content": content}
+
+
+def generate_request_limit(
+    config: dict[str, Any], env: Environment, project_root: Path
+) -> dict[str, Any] | None:
+    """Generate the request-body size-limit ASGI middleware.
+
+    Bootstrap-only. Emitted by default (when ``app.max_request_body_bytes``
+    is a positive integer); setting it to 0 disables the limit and skips
+    emission. Lives next to the other API-layer infrastructure files.
+    """
+    if _max_request_body_bytes(config) <= 0:
+        return None
+
+    api_models_path = config["paths"].get("api_models", "backend/src/api/models")
+    api_dir = str(Path(api_models_path).parent)
+    output_path = project_root / api_dir / "request_limit.py"
+
+    if output_path.exists():
+        return None
+
+    template = env.get_template("infrastructure/request_limit.py.j2")
     content = template.render()
 
     return {"path": output_path, "content": content}
@@ -280,6 +331,19 @@ def generate_main(
     main_dir = str(Path(main_path).parent)
     main_module = path_to_import(main_dir, "main", python_root=python_root)
 
+    errors_path = config["paths"].get("errors", "backend/src/api/errors.py")
+    errors_module = errors_path[:-3] if errors_path.endswith(".py") else errors_path
+    errors_import = path_to_import(errors_module, python_root=python_root)
+
+    max_request_body_bytes = _max_request_body_bytes(config)
+    request_limit_module_import = None
+    if max_request_body_bytes > 0:
+        api_models_path = config["paths"].get("api_models", "backend/src/api/models")
+        api_dir = str(Path(api_models_path).parent)
+        request_limit_module_import = path_to_import(
+            str(Path(api_dir) / "request_limit"), python_root=python_root
+        )
+
     auth_router_import = None
     auth = config.get("auth") or {}
     if auth.get("strategy"):
@@ -313,6 +377,9 @@ def generate_main(
         auth_router_import=auth_router_import,
         csrf_module_import=csrf_module_import,
         rate_limit_module_import=rate_limit_module_import,
+        errors_import=errors_import,
+        request_limit_module_import=request_limit_module_import,
+        max_request_body_bytes=max_request_body_bytes,
     )
 
     return {"path": output_path, "content": content}
@@ -629,6 +696,7 @@ def generate_infrastructure(
         generate_errors(config, env, project_root),
         generate_validators(config, env, project_root),
         generate_utils(config, env, project_root),
+        generate_request_limit(config, env, project_root),
         generate_main(
             config,
             env,

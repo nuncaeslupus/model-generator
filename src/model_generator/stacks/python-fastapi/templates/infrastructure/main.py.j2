@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 {% for domain in domains %}
@@ -35,7 +36,11 @@ from slowapi.errors import RateLimitExceeded
 
 from {{ rate_limit_module_import }} import limiter
 {% endif %}
+{% if request_limit_module_import %}
+from {{ request_limit_module_import }} import RequestBodySizeLimitMiddleware
+{% endif %}
 from {{ db_import }}.engine import engine
+from {{ errors_import }} import validation_exception_handler
 
 
 @asynccontextmanager
@@ -52,6 +57,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Validation errors: trim FastAPI's default 422 body (which echoes the
+# submitted values and internal locator detail) to a field + message summary.
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+
+{% if request_limit_module_import %}
+# Request-body size limit (defense-in-depth against large-body memory
+# pressure). Added before CORS/CSRF so it sits closest to the route handlers
+# and rejects oversized bodies with 413 before they are read into memory;
+# CORS therefore stays the outermost middleware.
+app.add_middleware(
+    RequestBodySizeLimitMiddleware, max_body_bytes={{ max_request_body_bytes }}
+)
+
+{% endif %}
 {% if rate_limit_module_import %}
 # Rate limiting (slowapi) — wire the shared limiter onto app.state and
 # register the 429 exception handler. Per-endpoint @limiter.limit(...)

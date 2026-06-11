@@ -27,6 +27,57 @@ The consumer-addendum arc is closed. Next session picks up the two long-deferred
 
 ## Recently Completed Fixes
 
+### Generated CRUD hardening — P1–P4 from downstream audit (2026-06-11)
+
+Branch `claude/gallant-heisenberg-86x7iq`. Four security follow-ups from a
+`trading.kit` audit (services `oms`, `ml-engine`), all fixed in TEMPLATES so
+adopters regenerate rather than hand-patch. No wire contract changed (field
+names / enums / happy-path status codes identical); behavior changes are
+malformed-input / error-path only. New `app:` config section in the stack
+`config.yaml`.
+
+- **P1 — `route.py.j2` typed list filters.** Numeric/date filter params were
+  `str | None` then coerced unguarded in the handler (`Decimal(...)` /
+  `datetime.fromisoformat(...)`), so `?<field>_min=abc` / `?<field>_after=notadate`
+  raised an unhandled 500. Now emitted as `Decimal | None` / `datetime | None`
+  so FastAPI validates at the boundary → 422; the manual coercion is dropped.
+  Counter filters were already `int | None` (unchanged). `Decimal`/`datetime`
+  imports remain (now used in the signatures, not the body).
+- **P2 — `errors.py.j2` generic 409.** `format_integrity_error` no longer
+  echoes the parsed DB column name by default ("…with these values already
+  exists"). Opt back in via `app.expose_integrity_error_fields: true` (threaded
+  through `generate_errors`). Structured shape unchanged.
+- **P3 — request-body size limit.** New `infrastructure/request_limit.py.j2`
+  (pure-ASGI `RequestBodySizeLimitMiddleware`: Content-Length fast-path +
+  buffer-and-replay for chunked bodies, 413 on overflow) + `generate_request_limit`
+  (bootstrap-only, gated on `app.max_request_body_bytes > 0`, default 10 MiB).
+  Wired into `generate_infrastructure`; `main.py.j2` installs it innermost so
+  CORS stays outermost. Disabled (0) → not emitted, not wired.
+- **P4 — `errors.py.j2` trimmed validation errors.** New
+  `validation_exception_handler` summarizes `exc.errors()` to a `field` +
+  `message` list (drops submitted values + internal locators); registered in
+  `main.py.j2` via `app.add_exception_handler(RequestValidationError, …)`. Uses
+  a literal `422` to dodge the Starlette `HTTP_422_UNPROCESSABLE_ENTITY` →
+  `_CONTENT` rename DeprecationWarning.
+
+**Tests (+15 → 476).** `TestApiRoutesFilterCoercion` (5); errors P2/P4 (3) +
+main P3/P4 (4) in `TestInfrastructureGenerators`; `TestRequestLimitGenerator`
+(3); `test_generate_infrastructure_creates_all` / `test_infrastructure_skips_existing`
+updated for `request_limit.py`. RED→GREEN verified (8 fail with the three
+templates reverted, all pass restored).
+
+**Verified:** `make lint` clean (ruff + mypy strict), 476/476 unit tests.
+Example regenerated end-to-end **from inside the example dir** (so the project
+`.model-generator.yaml` auth config is picked up — `load_config` reads
+`.model-generator.yaml` from CWD, so a repo-root invocation silently drops the
+project config) → 131/131 on Python 3.12 (`APP_PASSWORD_PEPPER=test_pepper`).
+Generated tree is ruff-clean after the standard `--fix` (only the pre-existing
+pagination PEP695-vs-3.11-target quirk remains); my generated files add zero
+new mypy errors vs a stashed-changes baseline. Live TestClient probe confirms
+the repros: `?balance_min=abc` → 422 (input value not echoed),
+`?last_login_at_after=notadate` → 422, valid filters → 200, 11 MiB body → 413,
+small invalid body → 422.
+
 ### CORS scaffold hardening — drop wildcard+credentials default (2026-06-10)
 
 Branch `claude/funny-brahmagupta-dpjh6j`. Out-of-band security fix from a downstream review (Finding F2): the generated `main.py` shipped the textbook CORS hole — `allow_origins=os.getenv("CORS_ORIGINS", "*")` paired with `allow_credentials=True`. With a wildcard + credentials, Starlette reflects the caller's `Origin` and returns `Access-Control-Allow-Credentials: true`. Two downstream projects (oms, ml-engine) carried the byte-identical generated block.
