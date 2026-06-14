@@ -3104,6 +3104,40 @@ class TestMigrationGenerator:
         assert '"+aiosqlite": "",' in content
         # get_url returns the coerced URL, not the raw one.
         assert "return _coerce_sync_driver(url)" in content
+        # Only the scheme is rewritten, so credentials/db names are never mangled.
+        assert 'scheme, sep, rest = url.partition("://")' in content
+        assert "scheme.endswith(async_driver)" in content
+
+    def test_coerce_sync_driver_behaviour(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """Exercise the generated _coerce_sync_driver in isolation (executing
+        the whole module would run migrations)."""
+        import ast
+
+        content = self._env_py(minimal_model, project_env)
+        tree = ast.parse(content)
+        wanted = {"_ASYNC_TO_SYNC_DRIVERS", "_coerce_sync_driver"}
+        nodes: list[ast.stmt] = [
+            n
+            for n in tree.body
+            if (isinstance(n, ast.FunctionDef) and n.name in wanted)
+            or (
+                isinstance(n, ast.Assign)
+                and any(getattr(t, "id", None) in wanted for t in n.targets)
+            )
+        ]
+        ns: dict[str, Any] = {}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), "<env>", "exec"), ns)
+        coerce = ns["_coerce_sync_driver"]
+        assert (
+            coerce("postgresql+asyncpg://u:p@h/db") == "postgresql+psycopg2://u:p@h/db"
+        )
+        assert coerce("sqlite+aiosqlite:///x.db") == "sqlite:///x.db"
+        # A driver substring inside credentials must NOT be rewritten.
+        assert coerce("postgresql://u:+asyncpg@h/db") == "postgresql://u:+asyncpg@h/db"
+        # Already-sync URLs pass through untouched.
+        assert coerce("postgresql://u:p@h/db") == "postgresql://u:p@h/db"
 
     def test_env_py_renders_custom_types_with_import(
         self, minimal_model: dict[str, Any], project_env: Any
