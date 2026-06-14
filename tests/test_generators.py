@@ -1160,7 +1160,9 @@ class TestFinancialValidatorSelection:
         project_root, config, env = env_fixture
         result = generate_api_models(model, config, env, project_root)
         assert isinstance(result, list)
-        return next(r["content"] for r in result if r["path"].name.endswith(suffix))
+        content = next(r["content"] for r in result if r["path"].name.endswith(suffix))
+        assert isinstance(content, str)
+        return content
 
     def test_response_signed_financial_uses_validate_decimal(
         self, financial_model: dict[str, Any], project_env_per_entity: Any
@@ -1239,6 +1241,56 @@ class TestFinancialValidatorSelection:
         result = generate_validators(config, env, project_root)
         assert result is not None
         assert "def validate_decimal(value: Any) -> str | None:" in result["content"]
+
+    def test_validate_decimal_rejects_non_finite(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """The emitted validate_decimal must reject NaN/Infinity, not just
+        malformed strings (financial fields cannot store non-finite values)."""
+        project_root, config, env = project_env_per_entity
+        result = generate_validators(config, env, project_root)
+        assert result is not None
+        ns: dict[str, Any] = {}
+        exec(result["content"], ns)
+        validate_decimal = ns["validate_decimal"]
+        # Signed finite values pass.
+        assert validate_decimal("-12.5") == "-12.5"
+        assert validate_decimal(None) is None
+        # Non-finite values are rejected.
+        for bad in ("NaN", "Infinity", "-Infinity", "sNaN"):
+            with pytest.raises(ValueError):
+                validate_decimal(bad)
+        with pytest.raises(ValueError):
+            validate_decimal("not-a-number")
+
+    def test_empty_constraints_fall_back_to_signed(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """A financial field with an empty (falsy) `constraints` list falls
+        back to the signed default rather than crashing on the `map` filter."""
+        model = {
+            "domain": "ledger",
+            "entities": {
+                "Account": {
+                    "table": "accounts",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "pnl": {
+                            "type": "financial",
+                            "required": True,
+                            "constraints": [],
+                        },
+                    },
+                }
+            },
+        }
+        for suffix in ("account_response.py", "account_requests.py"):
+            content = self._content(model, project_env_per_entity, suffix)
+            assert '_validate_pnl = field_validator("pnl")(validate_decimal)' in content
 
 
 class TestGenerateApiInitPerEntity:

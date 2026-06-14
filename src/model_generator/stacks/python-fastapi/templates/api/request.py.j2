@@ -59,7 +59,7 @@ This module contains:
 {% if not field.api_exclude_create | default(false) or not field.api_exclude_update | default(false) %}
 {% if field.type == 'financial' %}
 {#- Choose validator by declared constraint: non-negative when constrained, signed otherwise -#}
-{% set ctypes = (field.constraints | map(attribute='type') | list) if field.constraints is defined else [] %}
+{% set ctypes = (field.constraints | map(attribute='type') | list) if (field.constraints is defined and field.constraints) else [] %}
 {% if 'non_negative' in ctypes or 'non_negative_or_null' in ctypes %}{% set fin_validator = 'validate_non_negative_decimal' %}
 {% elif 'positive' in ctypes or 'positive_or_null' in ctypes %}{% set fin_validator = 'validate_positive_decimal' %}
 {% else %}{% set fin_validator = 'validate_decimal' %}{% endif %}
@@ -275,7 +275,7 @@ class Create{{ entity_name }}Request(BaseModel):
 {% set field = item.field %}
 {% if field.type == 'financial' %}
 {#- Choose validator by declared constraint: non-negative when constrained, signed otherwise -#}
-{% set ctypes = (field.constraints | map(attribute='type') | list) if field.constraints is defined else [] %}
+{% set ctypes = (field.constraints | map(attribute='type') | list) if (field.constraints is defined and field.constraints) else [] %}
 {% if 'non_negative' in ctypes or 'non_negative_or_null' in ctypes %}{% set fin_validator = 'validate_non_negative_decimal' %}
 {% elif 'positive' in ctypes or 'positive_or_null' in ctypes %}{% set fin_validator = 'validate_positive_decimal' %}
 {% else %}{% set fin_validator = 'validate_decimal' %}{% endif %}
@@ -419,7 +419,7 @@ class Update{{ entity_name }}Request(BaseModel):
 {% set field = item.field %}
 {% if field.type == 'financial' %}
 {#- Choose validator by declared constraint: non-negative when constrained, signed otherwise -#}
-{% set ctypes = (field.constraints | map(attribute='type') | list) if field.constraints is defined else [] %}
+{% set ctypes = (field.constraints | map(attribute='type') | list) if (field.constraints is defined and field.constraints) else [] %}
 {% if 'non_negative' in ctypes or 'non_negative_or_null' in ctypes %}{% set fin_validator = 'validate_non_negative_decimal' %}
 {% elif 'positive' in ctypes or 'positive_or_null' in ctypes %}{% set fin_validator = 'validate_positive_decimal' %}
 {% else %}{% set fin_validator = 'validate_decimal' %}{% endif %}

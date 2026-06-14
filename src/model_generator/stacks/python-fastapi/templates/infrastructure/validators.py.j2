@@ -32,10 +32,12 @@ def validate_decimal(value: Any) -> str | None:
     if value is None:
         return value
     try:
-        Decimal(str(value))
-        return str(value)
+        decimal_value = Decimal(str(value))
     except InvalidOperation:
         raise ValueError("Invalid decimal value") from None
+    if not decimal_value.is_finite():
+        raise ValueError("Value must be a finite decimal")
+    return str(value)
 
 
 def validate_non_negative_decimal(value: Any) -> str | None:
