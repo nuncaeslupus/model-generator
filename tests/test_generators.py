@@ -1156,9 +1156,7 @@ class TestFinancialValidatorSelection:
     legitimately negative value (PnL, returns) failed validation.
     """
 
-    def _content(
-        self, model: dict[str, Any], env_fixture: Any, suffix: str
-    ) -> str:
+    def _content(self, model: dict[str, Any], env_fixture: Any, suffix: str) -> str:
         project_root, config, env = env_fixture
         result = generate_api_models(model, config, env, project_root)
         assert isinstance(result, list)
