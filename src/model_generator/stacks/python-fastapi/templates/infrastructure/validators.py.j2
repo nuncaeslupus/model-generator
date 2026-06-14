@@ -23,6 +23,23 @@ from typing import Any
 {{ section_divider('DECIMAL VALIDATORS') }}
 
 
+def validate_decimal(value: Any) -> str | None:
+    """Validate that a value is a well-formed decimal (sign-agnostic).
+
+    Accepts negative, zero, and positive values. Use this for signed
+    financial fields (e.g. PnL, returns) that may legitimately be negative.
+    """
+    if value is None:
+        return value
+    try:
+        decimal_value = Decimal(str(value))
+    except InvalidOperation:
+        raise ValueError("Invalid decimal value") from None
+    if not decimal_value.is_finite():
+        raise ValueError("Value must be a finite decimal")
+    return str(value)
+
+
 def validate_non_negative_decimal(value: Any) -> str | None:
     """Validate that a decimal value is non-negative (>= 0)."""
     if value is None:
