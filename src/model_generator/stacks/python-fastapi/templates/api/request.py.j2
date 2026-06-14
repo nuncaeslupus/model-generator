@@ -57,11 +57,13 @@ This module contains:
 {% endif %}
 {#- Check for financial/counter fields with constraints needing validators -#}
 {% if not field.api_exclude_create | default(false) or not field.api_exclude_update | default(false) %}
-{% if field.type == 'financial' and field.constraints is defined %}
-{% for c in field.constraints %}
-{% if c.type in ['non_negative', 'non_negative_or_null'] and 'validate_non_negative_decimal' not in ns.needs_validators %}{% set _ = ns.needs_validators.append('validate_non_negative_decimal') %}{% endif %}
-{% if c.type in ['positive', 'positive_or_null'] and 'validate_positive_decimal' not in ns.needs_validators %}{% set _ = ns.needs_validators.append('validate_positive_decimal') %}{% endif %}
-{% endfor %}
+{% if field.type == 'financial' %}
+{#- Choose validator by declared constraint: non-negative when constrained, signed otherwise -#}
+{% set ctypes = (field.constraints | map(attribute='type') | list) if field.constraints is defined else [] %}
+{% if 'non_negative' in ctypes or 'non_negative_or_null' in ctypes %}{% set fin_validator = 'validate_non_negative_decimal' %}
+{% elif 'positive' in ctypes or 'positive_or_null' in ctypes %}{% set fin_validator = 'validate_positive_decimal' %}
+{% else %}{% set fin_validator = 'validate_decimal' %}{% endif %}
+{% if fin_validator not in ns.needs_validators %}{% set _ = ns.needs_validators.append(fin_validator) %}{% endif %}
 {% elif field.type == 'percentage' %}
 {% if 'validate_percentage' not in ns.needs_validators %}{% set _ = ns.needs_validators.append('validate_percentage') %}{% endif %}
 {% elif field.type == 'counter' and field.constraints is defined %}
@@ -271,14 +273,13 @@ class Create{{ entity_name }}Request(BaseModel):
 {#- Collect constraint-driven validators (financial, percentage, counter) -#}
 {% for item in create_fields %}
 {% set field = item.field %}
-{% if field.type == 'financial' and field.constraints is defined %}
-{% for c in field.constraints %}
-{% if c.type in ['non_negative', 'non_negative_or_null'] %}
-{% set _ = field_validators.append({'name': item.name, 'validator': 'validate_non_negative_decimal'}) %}
-{% elif c.type in ['positive', 'positive_or_null'] %}
-{% set _ = field_validators.append({'name': item.name, 'validator': 'validate_positive_decimal'}) %}
-{% endif %}
-{% endfor %}
+{% if field.type == 'financial' %}
+{#- Choose validator by declared constraint: non-negative when constrained, signed otherwise -#}
+{% set ctypes = (field.constraints | map(attribute='type') | list) if field.constraints is defined else [] %}
+{% if 'non_negative' in ctypes or 'non_negative_or_null' in ctypes %}{% set fin_validator = 'validate_non_negative_decimal' %}
+{% elif 'positive' in ctypes or 'positive_or_null' in ctypes %}{% set fin_validator = 'validate_positive_decimal' %}
+{% else %}{% set fin_validator = 'validate_decimal' %}{% endif %}
+{% set _ = field_validators.append({'name': item.name, 'validator': fin_validator}) %}
 {% elif field.type == 'percentage' %}
 {% set _ = field_validators.append({'name': item.name, 'validator': 'validate_percentage'}) %}
 {% elif field.type == 'counter' and field.constraints is defined %}
@@ -416,14 +417,13 @@ class Update{{ entity_name }}Request(BaseModel):
 {% set update_validators = [] %}
 {% for item in update_fields %}
 {% set field = item.field %}
-{% if field.type == 'financial' and field.constraints is defined %}
-{% for c in field.constraints %}
-{% if c.type in ['non_negative', 'non_negative_or_null'] %}
-{% set _ = update_validators.append({'name': item.name, 'validator': 'validate_non_negative_decimal'}) %}
-{% elif c.type in ['positive', 'positive_or_null'] %}
-{% set _ = update_validators.append({'name': item.name, 'validator': 'validate_positive_decimal'}) %}
-{% endif %}
-{% endfor %}
+{% if field.type == 'financial' %}
+{#- Choose validator by declared constraint: non-negative when constrained, signed otherwise -#}
+{% set ctypes = (field.constraints | map(attribute='type') | list) if field.constraints is defined else [] %}
+{% if 'non_negative' in ctypes or 'non_negative_or_null' in ctypes %}{% set fin_validator = 'validate_non_negative_decimal' %}
+{% elif 'positive' in ctypes or 'positive_or_null' in ctypes %}{% set fin_validator = 'validate_positive_decimal' %}
+{% else %}{% set fin_validator = 'validate_decimal' %}{% endif %}
+{% set _ = update_validators.append({'name': item.name, 'validator': fin_validator}) %}
 {% elif field.type == 'percentage' %}
 {% set _ = update_validators.append({'name': item.name, 'validator': 'validate_percentage'}) %}
 {% elif field.type == 'counter' and field.constraints is defined %}

@@ -6,6 +6,33 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-06-14
+
+### Fixed
+
+Signed financial fields no longer fail validation on legitimate negative
+values. **Adopters built from generator output (e.g. `oms`, trading stacks)
+should regenerate to pick this up.** No wire contract changed — field names,
+types, and status codes are identical.
+
+- **`financial` field validator selection is now constraint-aware.** The API
+  response template (`api/response.py.j2`) hardcoded
+  `validate_non_negative_decimal` for *every* `financial` field, so any field
+  that can legitimately be negative (PnL, realized/unrealized PnL, returns,
+  Sharpe ratio, slippage bps, balance deltas) was rejected with HTTP 422 on a
+  valid negative value. A `financial` field now maps to
+  `validate_non_negative_decimal` only when it declares a `non_negative` /
+  `non_negative_or_null` constraint, `validate_positive_decimal` for a
+  `positive` / `positive_or_null` constraint, and the new signed
+  `validate_decimal` (the safe default) otherwise. The chosen validator is
+  imported to match. The same constraint-aware logic now also drives the
+  unconstrained-`financial` default in the request template
+  (`api/request.py.j2`) for create/update models, so they accept negatives
+  where the spec allows them.
+- **New `validate_decimal` validator.** `infrastructure/validators.py.j2` now
+  emits a sign-agnostic `validate_decimal` that accepts negative, zero, and
+  positive well-formed decimals.
+
 ## [0.1.2] — 2026-06-11
 
 ### Security

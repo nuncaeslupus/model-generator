@@ -1106,6 +1106,143 @@ class TestApiModelsGeneratorPerEntity:
         assert "CreatePostRequest" not in author_req
 
 
+@pytest.fixture
+def financial_model() -> dict[str, Any]:
+    """Single entity exercising signed vs constrained financial fields.
+
+    - unrealized_pnl: no constraint  -> signed -> validate_decimal
+    - balance:        non_negative   -> validate_non_negative_decimal
+    - deposit:        positive       -> validate_positive_decimal
+    """
+    return {
+        "domain": "ledger",
+        "description": "Ledger domain with signed and constrained money",
+        "entities": {
+            "Account": {
+                "table": "accounts",
+                "description": "Trading account",
+                "fields": {
+                    "id": {
+                        "type": "uuid",
+                        "primary_key": True,
+                        "auto_generate": True,
+                    },
+                    "unrealized_pnl": {
+                        "type": "financial",
+                        "required": True,
+                    },
+                    "balance": {
+                        "type": "financial",
+                        "required": True,
+                        "constraints": [{"type": "non_negative"}],
+                    },
+                    "deposit": {
+                        "type": "financial",
+                        "required": True,
+                        "constraints": [{"type": "positive"}],
+                    },
+                },
+                "timestamps": {"created": True, "updated": True},
+            },
+        },
+    }
+
+
+class TestFinancialValidatorSelection:
+    """Signed financial fields must not be forced non-negative.
+
+    Regression: the response/request templates hardcoded
+    validate_non_negative_decimal for every financial field, so any
+    legitimately negative value (PnL, returns) failed validation.
+    """
+
+    def _content(
+        self, model: dict[str, Any], env_fixture: Any, suffix: str
+    ) -> str:
+        project_root, config, env = env_fixture
+        result = generate_api_models(model, config, env, project_root)
+        assert isinstance(result, list)
+        return next(r["content"] for r in result if r["path"].name.endswith(suffix))
+
+    def test_response_signed_financial_uses_validate_decimal(
+        self, financial_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
+        content = self._content(
+            financial_model, project_env_per_entity, "account_response.py"
+        )
+        # Unconstrained financial -> signed validator
+        assert (
+            '_validate_unrealized_pnl = field_validator("unrealized_pnl")'
+            "(validate_decimal)" in content
+        )
+        # Constrained financial -> stays non-negative / positive
+        assert (
+            '_validate_balance = field_validator("balance")'
+            "(validate_non_negative_decimal)" in content
+        )
+        assert (
+            '_validate_deposit = field_validator("deposit")'
+            "(validate_positive_decimal)" in content
+        )
+
+    def test_response_imports_match_validators_used(
+        self, financial_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
+        content = self._content(
+            financial_model, project_env_per_entity, "account_response.py"
+        )
+        import_line = next(
+            line
+            for line in content.splitlines()
+            if line.startswith("from") and "validators import" in line
+        )
+        assert "validate_decimal" in import_line
+        assert "validate_non_negative_decimal" in import_line
+        assert "validate_positive_decimal" in import_line
+
+    def test_request_signed_financial_uses_validate_decimal(
+        self, financial_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
+        content = self._content(
+            financial_model, project_env_per_entity, "account_requests.py"
+        )
+        assert (
+            '_validate_unrealized_pnl = field_validator("unrealized_pnl")'
+            "(validate_decimal)" in content
+        )
+        assert (
+            '_validate_balance = field_validator("balance")'
+            "(validate_non_negative_decimal)" in content
+        )
+        assert (
+            '_validate_deposit = field_validator("deposit")'
+            "(validate_positive_decimal)" in content
+        )
+
+    def test_request_imports_match_validators_used(
+        self, financial_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
+        content = self._content(
+            financial_model, project_env_per_entity, "account_requests.py"
+        )
+        import_line = next(
+            line
+            for line in content.splitlines()
+            if line.startswith("from") and "validators import" in line
+        )
+        assert "validate_decimal" in import_line
+        assert "validate_non_negative_decimal" in import_line
+        assert "validate_positive_decimal" in import_line
+
+    def test_validators_module_defines_validate_decimal(
+        self, project_env_per_entity: Any
+    ) -> None:
+        project_root, config, env = project_env_per_entity
+        result = generate_validators(config, env, project_root)
+        assert result is not None
+        assert "def validate_decimal(value: Any) -> str | None:" in result["content"]
+
+
 class TestGenerateApiInitPerEntity:
     """Per-entity api __init__.py emission."""
 

@@ -26,7 +26,14 @@ This module contains:
 {% if not field.api_exclude_response | default(false) %}
 {% if field.type in ['json_object', 'json_array'] %}{% set ns.has_any = true %}{% endif %}
 {% if field.type == 'enum' and field.enum_name not in ns.enum_imports %}{% set _ = ns.enum_imports.append(field.enum_name) %}{% endif %}
-{% if field.type == 'financial' and 'validate_non_negative_decimal' not in ns.needs_validators %}{% set _ = ns.needs_validators.append('validate_non_negative_decimal') %}{% endif %}
+{% if field.type == 'financial' %}
+{#- Choose validator by declared constraint: non-negative when constrained, signed otherwise -#}
+{% set ctypes = (field.constraints | map(attribute='type') | list) if field.constraints is defined else [] %}
+{% if 'non_negative' in ctypes or 'non_negative_or_null' in ctypes %}{% set fin_validator = 'validate_non_negative_decimal' %}
+{% elif 'positive' in ctypes or 'positive_or_null' in ctypes %}{% set fin_validator = 'validate_positive_decimal' %}
+{% else %}{% set fin_validator = 'validate_decimal' %}{% endif %}
+{% if fin_validator not in ns.needs_validators %}{% set _ = ns.needs_validators.append(fin_validator) %}{% endif %}
+{% endif %}
 {% if field.type == 'percentage' and 'validate_percentage' not in ns.needs_validators %}{% set _ = ns.needs_validators.append('validate_percentage') %}{% endif %}
 {% if field.type == 'counter' and 'validate_non_negative_int' not in ns.needs_validators %}{% set _ = ns.needs_validators.append('validate_non_negative_int') %}{% endif %}
 {% endif %}
@@ -173,7 +180,12 @@ class {{ entity_name }}Response(BaseModel):
 {% for field_name, field in entity.fields.items() %}
 {% if not field.api_exclude_response | default(false) %}
 {% if field.type == 'financial' %}
-{% set _ = validated_fields.append({'name': field_name, 'validator': 'validate_non_negative_decimal'}) %}
+{#- Choose validator by declared constraint: non-negative when constrained, signed otherwise -#}
+{% set ctypes = (field.constraints | map(attribute='type') | list) if field.constraints is defined else [] %}
+{% if 'non_negative' in ctypes or 'non_negative_or_null' in ctypes %}{% set fin_validator = 'validate_non_negative_decimal' %}
+{% elif 'positive' in ctypes or 'positive_or_null' in ctypes %}{% set fin_validator = 'validate_positive_decimal' %}
+{% else %}{% set fin_validator = 'validate_decimal' %}{% endif %}
+{% set _ = validated_fields.append({'name': field_name, 'validator': fin_validator}) %}
 {% elif field.type == 'percentage' %}
 {% set _ = validated_fields.append({'name': field_name, 'validator': 'validate_percentage'}) %}
 {% elif field.type == 'counter' %}
