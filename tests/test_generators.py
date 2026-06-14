@@ -1105,6 +1105,36 @@ class TestApiModelsGeneratorPerEntity:
         assert "class UpdateAuthorRequest(BaseModel):" in author_req
         assert "CreatePostRequest" not in author_req
 
+    def test_password_example_is_not_a_secret(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """The OpenAPI example for a password field must be a non-secret
+        placeholder so secret scanners (GitGuardian) don't flag generated repos."""
+        project_root, config, env = project_env_per_entity
+        model = {
+            "domain": "accounts",
+            "entities": {
+                "User": {
+                    "table": "users",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "password": {"type": "text", "required": True},
+                    },
+                }
+            },
+        }
+        result = generate_api_models(model, config, env, project_root)
+        assert isinstance(result, list)
+        content = next(
+            r["content"] for r in result if r["path"].name == "user_requests.py"
+        )
+        assert "SecureP@ssw0rd!" not in content
+        assert '"password": "your-password-here"' in content
+
 
 @pytest.fixture
 def financial_model() -> dict[str, Any]:
@@ -3044,6 +3074,81 @@ class TestMigrationGenerator:
         env_py = next(r for r in result if r["path"] == migrations_dir / "env.py")
         # config.paths.database_models is used in the import path
         assert "src.database.models" in env_py["content"]
+
+    def _env_py(self, minimal_model: dict[str, Any], project_env: Any) -> str:
+        project_root, config, env = project_env
+        result = generate_migration_init(minimal_model, config, env, project_root)
+        assert isinstance(result, list)
+        env_py = next(
+            r for r in result if r["path"] == project_root / "alembic" / "env.py"
+        )
+        content = env_py["content"]
+        assert isinstance(content, str)
+        return content
+
+    def test_env_py_is_valid_python(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """The rendered env.py must parse — guards the new helper blocks."""
+        import ast
+
+        ast.parse(self._env_py(minimal_model, project_env))
+
+    def test_env_py_coerces_async_drivers_to_sync(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """Alembic runs sync, so get_url() must coerce async drivers."""
+        content = self._env_py(minimal_model, project_env)
+        assert "def _coerce_sync_driver(url: str) -> str:" in content
+        assert '"+asyncpg": "+psycopg2",' in content
+        assert '"+aiosqlite": "",' in content
+        # get_url returns the coerced URL, not the raw one.
+        assert "return _coerce_sync_driver(url)" in content
+        # Only the scheme is rewritten, so credentials/db names are never mangled.
+        assert 'scheme, sep, rest = url.partition("://")' in content
+        assert "scheme.endswith(async_driver)" in content
+
+    def test_coerce_sync_driver_behaviour(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """Exercise the generated _coerce_sync_driver in isolation (executing
+        the whole module would run migrations)."""
+        import ast
+
+        content = self._env_py(minimal_model, project_env)
+        tree = ast.parse(content)
+        wanted = {"_ASYNC_TO_SYNC_DRIVERS", "_coerce_sync_driver"}
+        nodes: list[ast.stmt] = [
+            n
+            for n in tree.body
+            if (isinstance(n, ast.FunctionDef) and n.name in wanted)
+            or (
+                isinstance(n, ast.Assign)
+                and any(getattr(t, "id", None) in wanted for t in n.targets)
+            )
+        ]
+        ns: dict[str, Any] = {}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), "<env>", "exec"), ns)
+        coerce = ns["_coerce_sync_driver"]
+        assert (
+            coerce("postgresql+asyncpg://u:p@h/db") == "postgresql+psycopg2://u:p@h/db"
+        )
+        assert coerce("sqlite+aiosqlite:///x.db") == "sqlite:///x.db"
+        # A driver substring inside credentials must NOT be rewritten.
+        assert coerce("postgresql://u:+asyncpg@h/db") == "postgresql://u:+asyncpg@h/db"
+        # Already-sync URLs pass through untouched.
+        assert coerce("postgresql://u:p@h/db") == "postgresql://u:p@h/db"
+
+    def test_env_py_renders_custom_types_with_import(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """render_item must be wired into both configure() calls and import
+        the project's custom column types into generated migrations."""
+        content = self._env_py(minimal_model, project_env)
+        assert "def render_item(type_: str, obj: Any, autogen_context: Any)" in content
+        assert '_CUSTOM_TYPE_MODULE = "src.database.types"' in content
+        # Wired into offline and online configure() calls.
+        assert content.count("render_item=render_item,") == 2
 
     def test_custom_migrations_path(
         self, minimal_model: dict[str, Any], project_env: Any
