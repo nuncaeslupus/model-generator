@@ -45,14 +45,24 @@ make check-version-sync       # sanity check
 #    - rename the [Unreleased] section to [X.Y.Z] — YYYY-MM-DD
 #    - add a fresh empty [Unreleased] section on top
 
-# 3. Commit the bump + changelog
+# 3. Commit the bump + changelog (on a branch -> PR -> merge to main)
 git add -u && git commit -m "chore(release): bump to X.Y.Z"
 git push
 
-# 4. Tag the release commit on main and push the tag
-git tag -a vX.Y.Z -m "model-generator vX.Y.Z"
-git push origin vX.Y.Z
+# 4. Once the bump has merged, tag main HEAD and push the tag.
+#    Run this from an up-to-date main:
+git checkout main && git pull
+make tag-release
 ```
+
+> **Always use `make tag-release` for step 4.** It tags the *current main
+> HEAD* with `v<pyproject-version>` and refuses to run unless you are on a
+> clean `main` that is in sync with `origin/main`, version strings are
+> consistent, and the tag does not already exist. This makes the most common
+> release mistake — **tagging the wrong commit** (e.g. an older release commit
+> whose `pyproject.toml` still says the previous version) — impossible. If you
+> tag by hand and point at the wrong commit, the `build` job fails on the
+> tag↔version check and nothing is published; see *Failure recovery* below.
 
 Pushing the tag triggers `release.yml`:
 
@@ -75,9 +85,17 @@ exists"). Use `make publish-force` only when the workflow is genuinely broken.
 
 ## Failure recovery
 
-- **Tag ↔ version mismatch**: the `build` job fails early. Delete the tag
-  locally and on origin (`git tag -d vX.Y.Z && git push origin :vX.Y.Z`), fix
-  `pyproject.toml` + `make version-sync`, commit, and re-tag.
+- **Tag ↔ version mismatch / tag on the wrong commit**: the `build` job fails
+  early on the "Verify tag matches pyproject.toml version" step, so nothing is
+  published. Move the tag onto the correct commit:
+  ```bash
+  git push origin :refs/tags/vX.Y.Z   # delete the bad remote tag
+  git tag -d vX.Y.Z                    # delete locally
+  git checkout main && git pull        # the commit whose pyproject == X.Y.Z
+  make tag-release                     # re-tag main HEAD and push
+  ```
+  (`make tag-release` would have prevented this — prefer it over a manual
+  `git tag`.)
 - **PyPI upload fails after build succeeded**: `dist/` artifacts are retained
   for 7 days on the build job. Re-run the `publish-pypi` job from the Actions
   UI.

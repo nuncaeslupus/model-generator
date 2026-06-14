@@ -6,6 +6,37 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-06-14
+
+### Fixed
+
+Two generator-template fixes surfaced by the 0.1.3 downstream regen.
+**Adopters should regenerate to pick these up.** No wire contract changed.
+
+- **Alembic `env.py`: async driver + custom-type autogenerate.** The generated
+  `migrations/env.py` built a synchronous Alembic engine straight from
+  `DATABASE_URL`, so an async URL (`postgresql+asyncpg://`, `sqlite+aiosqlite://`,
+  `mysql+aiomysql://`, …) broke `alembic upgrade`/autogenerate. `get_url()` now
+  coerces a known async driver to its sync equivalent. Separately, autogenerate
+  emitted the project's custom column types (`PortableUuid`, `PortableNumeric`)
+  into migrations without importing them, so the migration failed with
+  `NameError`; a `render_item` hook (wired into both the offline and online
+  `context.configure(...)` calls) now renders those types and adds the matching
+  import. These were previously carried as hand-edits in downstream repos.
+- **Password field OpenAPI example is no longer a secret-like value.** The
+  request-model example for any `password`-named field was hardcoded to
+  `SecureP@ssw0rd!`, which secret scanners (GitGuardian) flagged in every
+  generated repository. It is now the non-secret placeholder
+  `your-password-here`.
+
+### Changed
+
+- **Release tooling.** Added `make tag-release`, which tags the current `main`
+  HEAD with `v<pyproject-version>` and pushes it (triggering the PyPI publish
+  workflow) only when on a clean, in-sync `main` with consistent version
+  strings and no pre-existing tag — making it impossible to tag the wrong
+  commit. `RELEASE.md` now documents it as the canonical release step.
+
 ## [0.1.3] — 2026-06-14
 
 ### Fixed

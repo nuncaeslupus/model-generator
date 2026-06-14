@@ -210,7 +210,7 @@ class Create{{ entity_name }}Request(BaseModel):
 {% elif field.type == 'text' and db_name == 'username' %}
                 "{{ field_name }}": "john_doe",
 {% elif field.type == 'text' and 'password' in db_name.lower() %}
-                "{{ field_name }}": "SecureP@ssw0rd!",
+                "{{ field_name }}": "your-password-here",
 {% elif field.type == 'text' and 'name' in db_name.lower() %}
                 "{{ field_name }}": "{{ db_name.replace('_', ' ').title() }}",
 {% elif field.type == 'text' %}

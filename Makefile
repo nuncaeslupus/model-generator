@@ -1,4 +1,4 @@
-.PHONY: lint format test test-all clean sync build publish publish-force version-sync check-version-sync update-skills
+.PHONY: lint format test test-all clean sync build publish publish-force version-sync check-version-sync tag-release update-skills
 
 sync:
 	uv sync --extra dev
@@ -30,6 +30,42 @@ publish:
 
 publish-force: build
 	uv run twine upload dist/*
+
+# Cut a release: tag the CURRENT main HEAD with v<pyproject-version> and push,
+# which triggers .github/workflows/release.yml (build -> PyPI -> GitHub release).
+# Guards make it impossible to tag the wrong commit — the most common release
+# mistake. Run this after the version-bump commit has merged to main.
+tag-release:
+	@VER=$$(uv run python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])"); \
+	TAG="v$$VER"; \
+	BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
+	if [ "$$BRANCH" != "main" ]; then \
+		echo "ERROR: releases are tagged from main, but you are on '$$BRANCH'."; \
+		echo "       Run: git checkout main && git pull"; \
+		exit 1; \
+	fi; \
+	if [ -n "$$(git status --porcelain)" ]; then \
+		echo "ERROR: working tree is dirty; commit or stash before releasing."; \
+		exit 1; \
+	fi; \
+	git fetch --quiet origin main; \
+	if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
+		echo "ERROR: local main is not in sync with origin/main."; \
+		echo "       The bump commit must be pushed/merged first. Run: git pull"; \
+		exit 1; \
+	fi; \
+	$(MAKE) check-version-sync; \
+	if git ls-remote --exit-code --tags origin "$$TAG" >/dev/null 2>&1; then \
+		echo "ERROR: tag $$TAG already exists on origin (version $$VER already released?)."; \
+		echo "       Bump [project].version, run 'make version-sync', commit, merge, retry."; \
+		exit 1; \
+	fi; \
+	echo "Tagging $$(git rev-parse --short HEAD) on main as $$TAG ..."; \
+	git tag -a "$$TAG" -m "model-generator $$TAG"; \
+	git push origin "$$TAG"; \
+	echo ""; \
+	echo "Pushed $$TAG. release.yml will build, publish model-generator-kit==$$VER"; \
+	echo "to PyPI, and cut the GitHub release. Watch: gh run watch (or the Actions tab)."
 
 version-sync:
 	uv run scripts/sync_version.py
