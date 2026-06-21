@@ -5630,6 +5630,9 @@ class TestConftestGeneratorDefaultAuth:
         assert "app.dependency_overrides[get_current_user]" in content
         assert "app.dependency_overrides.pop(get_current_user, None)" in content
         assert "from collections.abc import Iterator" in content
+        # A non-UUID PK (int -> AttributeError, None -> TypeError, bad str ->
+        # ValueError) must fall back to the raw id rather than crash at startup.
+        assert "except (ValueError, TypeError, AttributeError):" in content
 
 
 class TestComputeAuthExtra:

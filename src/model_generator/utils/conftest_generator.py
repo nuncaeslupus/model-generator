@@ -629,9 +629,16 @@ def generate_conftest(
         lines.append(
             "    # would fail the Python-level owner check on get/update/delete)."
         )
+        lines.append(
+            "    # A non-UUID PK (e.g. an int) falls back to the raw id: uuid.UUID"
+        )
+        lines.append(
+            "    # raises ValueError on a bad str, AttributeError on an int, and"
+        )
+        lines.append("    # TypeError on None.")
         lines.append("    try:")
         lines.append(f"        owner_id: object = uuid.UUID({user_fixture})")
-        lines.append("    except ValueError:")
+        lines.append("    except (ValueError, TypeError, AttributeError):")
         lines.append(f"        owner_id = {user_fixture}")
         lines.append("")
         lines.append("    class _DefaultUser:")
