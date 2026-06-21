@@ -3960,7 +3960,10 @@ class TestInfrastructureGenerators:
         assert result["path"] == project_root / ".env.example"
         content = result["content"]
         assert "APP_ENV=development" in content
-        assert "DATABASE_URL=sqlite+aiosqlite:///./app.db" in content
+        # DATABASE_URL ships commented so it stays unset by default — keeps the
+        # production guard armed while the dev SQLite fallback still works.
+        assert "# DATABASE_URL=sqlite+aiosqlite:///./app.db" in content
+        assert "\nDATABASE_URL=" not in content
         assert "ALEMBIC_DATABASE_URL" in content
         assert "CORS_ORIGINS" in content
         # No auth section without an auth strategy.
