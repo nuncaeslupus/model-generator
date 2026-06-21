@@ -1,4 +1,4 @@
-.PHONY: lint format test test-all clean sync build publish publish-force version-sync check-version-sync tag-release update-skills
+.PHONY: lint format test test-all smoke-example clean sync build publish publish-force version-sync check-version-sync tag-release update-skills
 
 sync:
 	uv sync --extra dev
@@ -84,6 +84,11 @@ test:
 
 test-all:
 	uv run pytest tests/ -v
+
+# Regenerate the bundled example into a temp tree and run its emitted contract
+# suite (requires Python 3.12 for the generated PEP 695 generics).
+smoke-example:
+	./scripts/smoke_generated_example.sh
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

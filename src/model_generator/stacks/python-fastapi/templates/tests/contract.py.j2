@@ -615,9 +615,11 @@ class Test{{ entity_name }}sAPI:
         unique_suffix = str(uuid.uuid4())[:8]
 {% endif %}
 
+{% set _miss_scope = entity.api.scope if entity.api is defined else none %}
+{% set _miss_owner = _miss_scope.owner_field if _miss_scope else none %}
 {% set required_fields = [] %}
 {% for field_name, field in entity.fields.items() %}
-{% if (field.required or (field.primary_key | default(false) and not field.auto_generate | default(false))) and not field.api_exclude_request | default(false) %}
+{% if (field.required or (field.primary_key | default(false) and not field.auto_generate | default(false))) and not field.api_exclude_request | default(false) and field_name != _miss_owner %}
 {% set _ = required_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'type': field.type, 'unique': field.unique | default(false)}) %}
 {% endif %}
 {% endfor %}

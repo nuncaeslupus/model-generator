@@ -33,10 +33,40 @@ clusters are listed under "Part D — Working this backlog" in the review doc).
   `pyproject.toml` (missing bcrypt/itsdangerous) for auth projects generated via
   the wizard.
 
-### Next: P1 cluster
+### P1 in progress — TST-1 + scoped-example regression (PR pending)
 
-Consult the review doc (`status/code-review-2026-06-21.md`, Part D) for P1
-cluster definitions and sequencing. 512 tests pass, `make lint` clean.
+**Discovery:** the SEC-1 P0 (PR #35) added `api.scope` to four example entities
+but did **not** make the generated contract tests auth-aware — so the flagship
+example suite has been **silently red since SEC-1** (scoped CRUD → 401; the
+`missing_required_fields` test omitted the now-injected owner field and expected
+422). Exactly what TST-1 exists to catch.
+
+**Shipped this PR (branch `claude/continuation-bg9kvu`):**
+- **Scoped contract suite green.** `conftest_generator.py` emits an autouse
+  `_default_authenticated_user` fixture (gated on auth + any `api.scope` entity +
+  a `User` entity) that registers a persisted owner via the existing `user_id`
+  fixture and overrides `get_current_user`, coercing the id to `uuid.UUID` so the
+  route's Python-level owner check (`row.owner != current_user.id`) matches.
+  `generate.py` computes the `auth.router` / `main` import paths
+  (`_compute_auth_router_import` / `_compute_main_import`). `contract.py.j2`'s
+  missing-required loop now skips the scope owner field.
+- **TST-1 — CI runs the emitted suite.** New `generated-example` CI job +
+  `make smoke-example` + `scripts/smoke_generated_example.sh`: regenerates the
+  example into a temp tree and runs its contract suite under Python 3.12 (the
+  generated PEP 695 generics need 3.12).
+- **Verified:** 519 unit tests (+7), `make lint` clean, `make smoke-example` →
+  **135/135** generated contract tests pass.
+
+### Next: remaining P1 clusters
+
+Consult the review doc (`status/code-review-2026-06-21.md`, Part D). Still open
+P1: the **green-out-of-box** template trio (TPL-3 E402 per-file-ignore, TPL-4
+prod `DATABASE_URL` guard, TPL-9 `.env.example`); the **template-correctness**
+trio (TPL-5 `Mapped[...]`, TPL-14 UUID/ref filters → 422, TPL-16 nullable-default
+scalars); the **docs sweep** (DOC-2,4,5,6,…); the **tooling** PR (TOOL-1, TOOL-3,
+GEN-8). Note: the generated tree still has the pre-existing lint quirks (alembic
+E402, main/auth I001, pagination PEP695-on-py311) — TPL-3/TPL-22 territory, not
+gated by the new smoke job.
 
 ### Working method (apply to every fix)
 

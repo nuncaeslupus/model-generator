@@ -313,6 +313,8 @@ def generate_conftest(
         models_dir,
         auth_strategy=auth_strategy,
         rate_limiter_import=rate_limiter_import,
+        auth_router_import=_compute_auth_router_import(config),
+        main_import=_compute_main_import(config),
     )
     output_dir = project_root / config["paths"]["api_tests"]
     output_file = output_dir / "conftest.py"
@@ -337,6 +339,35 @@ def _compute_rate_limiter_import(config: dict[str, Any]) -> str | None:
     rate_limit_module_path = str(Path(auth_path).parent / "rate_limit")
     python_root = config.get("python_root", "")
     return path_to_import(rate_limit_module_path, python_root=python_root)
+
+
+def _compute_auth_router_import(config: dict[str, Any]) -> str | None:
+    """Return the import path to the auth router module, or None when auth is off.
+
+    The default-auth contract fixture imports ``get_current_user`` from here to
+    override the owner identity. Mirrors the route template's
+    ``from <auth.path> import get_current_user``.
+    """
+    auth = config.get("auth") or {}
+    if not auth.get("strategy"):
+        return None
+    auth_path = auth.get("path", "backend/src/auth/router.py")
+    module = str(Path(auth_path).with_suffix(""))
+    return path_to_import(module, python_root=config.get("python_root", ""))
+
+
+def _compute_main_import(config: dict[str, Any]) -> str | None:
+    """Return the import path to the FastAPI app module, or None when auth is off.
+
+    The default-auth contract fixture imports ``app`` from here to register a
+    dependency override. Only needed alongside the auth router import.
+    """
+    auth = config.get("auth") or {}
+    if not auth.get("strategy"):
+        return None
+    main_path = config.get("paths", {}).get("main", "backend/src/main.py")
+    module = str(Path(main_path).with_suffix(""))
+    return path_to_import(module, python_root=config.get("python_root", ""))
 
 
 def _compute_auth_extra(config: dict[str, Any]) -> list[str]:

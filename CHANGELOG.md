@@ -6,6 +6,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Generated contract suite is green for owner-scoped entities.** When
+  `auth.strategy` is on and an entity declares `api.scope`, its CRUD endpoints
+  require an authenticated `current_user` and inject the owner from it. The
+  generated contract fixtures created such entities unauthenticated (401), and
+  the `missing_required_fields` test still omitted the (now injected) owner
+  field and expected 422 — so the suite was red out of the box. The API
+  `conftest.py` now emits an autouse fixture that authenticates every test as a
+  persisted owner user (overriding `get_current_user`, coercing the id to the
+  owner column's `uuid.UUID` type), and the missing-required test no longer
+  treats the scope owner field as a required request field.
+
+### Added
+
+- **CI runs the generated example end-to-end.** A new `generated-example` CI
+  job (and `make smoke-example` / `scripts/smoke_generated_example.sh`)
+  regenerates the bundled example into a throwaway tree and runs its emitted
+  contract suite under Python 3.12 — catching template changes that ship
+  importable-but-broken code, which the mocked/string-matched unit suite cannot.
+
 ## [0.1.4] — 2026-06-14
 
 ### Fixed

@@ -2497,6 +2497,77 @@ class TestApiTestsGeneratorScope:
         assert "from src.app import app" in result["content"]
         assert "from src.main import app" not in result["content"]
 
+    def test_missing_required_skips_owner_field(
+        self, scoped_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """The owner field is injected/excluded under scope, so the missing-
+
+        required-fields test must not omit it and expect 422 (it would now 201).
+        """
+        project_root, config, env = project_env
+        config_with_auth = {
+            **config,
+            "auth": {"dependency_path": self.AUTH_PATH},
+        }
+        result = generate_api_tests(
+            scoped_model,
+            config_with_auth,
+            env,
+            project_root,
+            enums={},
+            constraints={},
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # The required non-owner field still gets a missing-field sub-case...
+        assert "# Missing name" in content
+        # ...but the owner field does not (it's injected from current_user).
+        assert "# Missing owner_id" not in content
+
+
+class TestComputeConftestAuthImports:
+    """The conftest orchestrator's auth-router / main import-path helpers."""
+
+    def test_returns_none_when_auth_off(self) -> None:
+        from model_generator.generate import (
+            _compute_auth_router_import,
+            _compute_main_import,
+        )
+
+        assert _compute_auth_router_import({}) is None
+        assert _compute_main_import({}) is None
+        assert _compute_auth_router_import({"auth": {}}) is None
+
+    def test_derives_dotted_paths_from_config(self) -> None:
+        from model_generator.generate import (
+            _compute_auth_router_import,
+            _compute_main_import,
+        )
+
+        config = {
+            "auth": {
+                "strategy": "bcrypt-session",
+                "path": "backend/src/auth/router.py",
+            },
+            "paths": {"main": "backend/src/main.py"},
+        }
+        assert _compute_auth_router_import(config) == "backend.src.auth.router"
+        assert _compute_main_import(config) == "backend.src.main"
+
+    def test_honors_python_root(self) -> None:
+        from model_generator.generate import (
+            _compute_auth_router_import,
+            _compute_main_import,
+        )
+
+        config = {
+            "auth": {"strategy": "bcrypt-session", "path": "src/auth/router.py"},
+            "paths": {"main": "src/main.py"},
+            "python_root": "src",
+        }
+        assert _compute_auth_router_import(config) == "auth.router"
+        assert _compute_main_import(config) == "main"
+
 
 class TestApiEnabledFiltering:
     """Test that api.enabled: false skips API generation."""
@@ -5432,6 +5503,136 @@ class TestConftestGeneratorRateLimitReset:
         assert "@pytest.fixture(autouse=True)" in content
         assert "def _reset_rate_limiter() -> None:" in content
         assert "limiter.reset()" in content
+
+
+class TestConftestGeneratorDefaultAuth:
+    """Autouse default-authenticated-user fixture for owner-scoped entities.
+
+    When auth is on and any API-enabled entity declares ``api.scope``, the
+    generated API conftest must authenticate every test as a persisted owner
+    user (overriding ``get_current_user``); otherwise scoped CRUD returns 401
+    and the whole contract suite cascades.
+    """
+
+    @staticmethod
+    def _models_dir(tmp_path: Path, *, scoped: bool) -> Path:
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        portfolio_api: dict[str, Any] = {"enabled": True, "prefix": "portfolios"}
+        if scoped:
+            portfolio_api["scope"] = {"owner_field": "user_id"}
+        (models_dir / "users.model.json").write_text(
+            json.dumps(
+                {
+                    "domain": "users",
+                    "entities": {
+                        "User": {
+                            "table": "users",
+                            "fields": {
+                                "id": {
+                                    "type": "uuid",
+                                    "primary_key": True,
+                                    "auto_generate": True,
+                                },
+                                "username": {
+                                    "type": "text",
+                                    "max_length": 50,
+                                    "required": True,
+                                    "unique": True,
+                                },
+                                "email": {
+                                    "type": "text",
+                                    "max_length": 255,
+                                    "required": True,
+                                    "unique": True,
+                                },
+                                "password_hash": {
+                                    "type": "text",
+                                    "max_length": 255,
+                                    "required": True,
+                                    "api_field_name": "password",
+                                    "api_exclude_response": True,
+                                },
+                            },
+                            "api": {"enabled": True, "endpoints": ["list", "get"]},
+                        },
+                        "Portfolio": {
+                            "table": "portfolios",
+                            "fields": {
+                                "id": {
+                                    "type": "uuid",
+                                    "primary_key": True,
+                                    "auto_generate": True,
+                                },
+                                "user_id": {
+                                    "type": "reference",
+                                    "reference_table": "users",
+                                    "required": True,
+                                },
+                                "name": {
+                                    "type": "text",
+                                    "max_length": 100,
+                                    "required": True,
+                                },
+                            },
+                            "api": portfolio_api,
+                        },
+                    },
+                }
+            )
+        )
+        return models_dir
+
+    def test_no_default_auth_fixture_when_no_scoped_entity(
+        self, tmp_path: Path
+    ) -> None:
+        from model_generator.utils.conftest_generator import (
+            generate_conftest_content,
+        )
+
+        content, _ = generate_conftest_content(
+            self._models_dir(tmp_path, scoped=False),
+            auth_strategy="bcrypt-session",
+            auth_router_import="backend.src.auth.router",
+            main_import="backend.src.main",
+        )
+        assert "_default_authenticated_user" not in content
+        assert "dependency_overrides" not in content
+
+    def test_no_default_auth_fixture_when_auth_off(self, tmp_path: Path) -> None:
+        from model_generator.utils.conftest_generator import (
+            generate_conftest_content,
+        )
+
+        content, _ = generate_conftest_content(
+            self._models_dir(tmp_path, scoped=True),
+            auth_strategy=None,
+            auth_router_import="backend.src.auth.router",
+            main_import="backend.src.main",
+        )
+        assert "_default_authenticated_user" not in content
+
+    def test_emits_default_auth_fixture_when_scoped(self, tmp_path: Path) -> None:
+        from model_generator.utils.conftest_generator import (
+            generate_conftest_content,
+        )
+
+        content, _ = generate_conftest_content(
+            self._models_dir(tmp_path, scoped=True),
+            auth_strategy="bcrypt-session",
+            auth_router_import="backend.src.auth.router",
+            main_import="backend.src.main",
+        )
+        assert "@pytest.fixture(autouse=True)" in content
+        assert "def _default_authenticated_user(user_id: str)" in content
+        assert "from backend.src.auth.router import get_current_user" in content
+        assert "from backend.src.main import app" in content
+        assert "app.dependency_overrides[get_current_user]" in content
+        assert "app.dependency_overrides.pop(get_current_user, None)" in content
+        assert "from collections.abc import Iterator" in content
+        # A non-UUID PK (int -> AttributeError, None -> TypeError, bad str ->
+        # ValueError) must fall back to the raw id rather than crash at startup.
+        assert "except (ValueError, TypeError, AttributeError):" in content
 
 
 class TestComputeAuthExtra:
