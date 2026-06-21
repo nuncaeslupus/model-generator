@@ -635,6 +635,19 @@ class TestDatabaseGeneratorNullability:
         content = result["content"]
         assert "note: Mapped[str | None] = mapped_column(String(50))" in content
 
+    def test_explicit_null_default_stays_nullable(self, project_env: Any) -> None:
+        """An explicit `default: null` is `is defined` but must stay Optional and
+        must not emit a bogus `default="None"` column parameter."""
+        project_root, config, env = project_env
+        model = self._model(
+            {"note": {"type": "text", "max_length": 50, "default": None}}
+        )
+        result = generate_database_model(model, config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "note: Mapped[str | None] = mapped_column(String(50))" in content
+        assert 'default="None"' not in content
+
 
 class TestApiRoutesUuidReferenceFilter:
     """TPL-14: reference filters on an id column are typed UUID → 422, not 500."""

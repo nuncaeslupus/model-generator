@@ -238,21 +238,25 @@ class {{ entity_name }}(Base):
 {% set field = item.value %}
 {% set field_name = item.key %}
 {#- A field with a default (explicit, or the implicit False the boolean branch
-    always emits) is never NULL at rest, so it must not be typed Optional. -#}
-{% set has_default = field.default is defined or field.type == 'boolean' %}
+    always emits) is never NULL at rest, so it must not be typed Optional. An
+    explicit `default: null` is the exception: it is defined yet keeps the field
+    nullable, so guard with `is not none` (a bare `is defined` would catch it). -#}
+{% set explicit_null = field.default is defined and field.default is none %}
+{% set has_explicit_default = field.default is defined and field.default is not none %}
+{% set has_default = has_explicit_default or (field.type == 'boolean' and not explicit_null) %}
 {% set optional = '' if (field.required | default(false) or has_default) else ' | None' %}
 {% if field.type == 'text' %}
-    {{ field_name }}: Mapped[str{{ optional }}] = mapped_column(String({{ field.max_length }}){% if field.unique | default(false) %}, unique=True{% endif %}{% if field.default is defined %}, default="{{ field.default }}"{% endif %})
+    {{ field_name }}: Mapped[str{{ optional }}] = mapped_column(String({{ field.max_length }}){% if field.unique | default(false) %}, unique=True{% endif %}{% if has_explicit_default %}, default="{{ field.default }}"{% endif %})
 {% elif field.type == 'longtext' %}
     {{ field_name }}: Mapped[str{{ optional }}] = mapped_column(Text)
 {% elif field.type == 'uuid' %}
     {{ field_name }}: Mapped[uuid.UUID{{ optional }}] = mapped_column(PortableUuid{% if field.unique | default(false) %}, unique=True{% endif %})
 {% elif field.type == 'counter' %}
-    {{ field_name }}: Mapped[int{{ optional }}] = mapped_column(Integer{% if field.default is defined %}, default={{ field.default }}{% endif %})
+    {{ field_name }}: Mapped[int{{ optional }}] = mapped_column(Integer{% if has_explicit_default %}, default={{ field.default }}{% endif %})
 {% elif field.type == 'financial' %}
-    {{ field_name }}: Mapped[Decimal{{ optional }}] = mapped_column(SqliteNumeric({{ field.precision | default(28) }}, {{ field.scale | default(18) }}){% if field.default is defined %}, default=Decimal("{{ field.default }}"){% endif %})
+    {{ field_name }}: Mapped[Decimal{{ optional }}] = mapped_column(SqliteNumeric({{ field.precision | default(28) }}, {{ field.scale | default(18) }}){% if has_explicit_default %}, default=Decimal("{{ field.default }}"){% endif %})
 {% elif field.type == 'percentage' %}
-    {{ field_name }}: Mapped[Decimal{{ optional }}] = mapped_column(SqliteNumeric(5, 4){% if field.default is defined %}, default=Decimal("{{ field.default }}"){% endif %})
+    {{ field_name }}: Mapped[Decimal{{ optional }}] = mapped_column(SqliteNumeric(5, 4){% if has_explicit_default %}, default=Decimal("{{ field.default }}"){% endif %})
 {% elif field.type == 'boolean' %}
     {{ field_name }}: Mapped[bool{{ optional }}] = mapped_column(Boolean, default={{ field.default | default(false) | title }})
 {% elif field.type == 'binary' %}
@@ -270,18 +274,18 @@ class {{ entity_name }}(Base):
 {% elif field.type == 'enum' %}
     {{ field_name }}: Mapped[{{ field.enum_name }}{{ optional }}] = mapped_column(
         SQLEnum({{ field.enum_name }}, native_enum=False),
-{% if field.default is defined %}
+{% if has_explicit_default %}
         default={{ field.enum_name }}.{{ field.default | upper }},
 {% endif %}
     )
 {% elif field.type == 'json_object' %}
-{% if field.default is defined %}
+{% if has_explicit_default %}
     {{ field_name }}: Mapped[dict[str, Any]{{ optional }}] = mapped_column(JSON, default=lambda: {{ field.default }})
 {% else %}
     {{ field_name }}: Mapped[dict[str, Any]{{ optional }}] = mapped_column(JSON)
 {% endif %}
 {% elif field.type == 'json_array' %}
-{% if field.default is defined %}
+{% if has_explicit_default %}
     {{ field_name }}: Mapped[list[Any]{{ optional }}] = mapped_column(JSON, default=lambda: {{ field.default }})
 {% else %}
     {{ field_name }}: Mapped[list[Any]{{ optional }}] = mapped_column(JSON)
