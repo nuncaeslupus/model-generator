@@ -6127,3 +6127,56 @@ class TestPythonRootIntegration:
         # types-module parent="src/database" → import base="database".
         assert "from database.types import" in content
         assert "from src.database.types import" not in content
+
+
+class TestConftestLoadAllModelsComments:
+    """GEN-2: conftest model loading accepts the // -comment JSON dialect."""
+
+    def test_load_all_models_strips_comments(self, tmp_path: Path) -> None:
+        from model_generator.utils.conftest_generator import load_all_models
+
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        (models_dir / "items.model.json").write_text(
+            "{\n"
+            "  // a leading comment the rest of the pipeline tolerates\n"
+            '  "domain": "items",\n'
+            '  "entities": {\n'
+            '    "Item": {\n'
+            '      "table": "items",  // inline comment\n'
+            '      "fields": {"id": {"type": "uuid", "primary_key": true}}\n'
+            "    }\n"
+            "  }\n"
+            "}\n"
+        )
+
+        # Raw json.load would raise on the // comments; the shared parser must not.
+        models = load_all_models(models_dir)
+        assert "items" in models
+        assert models["items"]["entities"]["Item"]["table"] == "items"
+
+    def test_load_all_models_normalizes_integer_alias(self, tmp_path: Path) -> None:
+        from model_generator.utils.conftest_generator import load_all_models
+
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        (models_dir / "items.model.json").write_text(
+            json.dumps(
+                {
+                    "domain": "items",
+                    "entities": {
+                        "Item": {
+                            "table": "items",
+                            "fields": {
+                                "id": {"type": "uuid", "primary_key": True},
+                                "qty": {"type": "integer", "default": 0},
+                            },
+                        }
+                    },
+                }
+            )
+        )
+
+        models = load_all_models(models_dir)
+        qty = models["items"]["entities"]["Item"]["fields"]["qty"]
+        assert qty["type"] == "counter"  # integer alias normalized

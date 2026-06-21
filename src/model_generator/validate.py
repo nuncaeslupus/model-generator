@@ -19,6 +19,7 @@ from typing import Any, cast
 from jsonschema import Draft7Validator
 
 from . import __version__
+from .utils.loaders import parse_model_file
 
 
 def load_schema() -> dict[str, Any]:
@@ -46,8 +47,10 @@ def validate_model(model_path: Path, schema: dict[str, Any]) -> list[str]:
         return [f"File not found: {model_path}"]
 
     try:
-        with model_path.open(encoding="utf-8") as f:
-            model = json.load(f)
+        # Parse via the shared loader so model-val accepts the same dialect as
+        # model-gen: // comments stripped, "integer"→"counter" alias, and legacy
+        # index shapes normalized to the canonical form before schema checks.
+        model = parse_model_file(model_path)
     except json.JSONDecodeError as e:
         return [f"Invalid JSON: {e}"]
 

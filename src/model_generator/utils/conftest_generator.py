@@ -11,17 +11,16 @@ from pathlib import Path
 from typing import Any, cast
 
 from .constants import GENERATED_MARKER
-from .loaders import load_shared_constraints
+from .loaders import load_shared_constraints, parse_model_file, strip_json_comments
 
 
 def load_all_models(models_dir: Path) -> dict[str, dict[str, Any]]:
-    """Load all model JSON files."""
+    """Load all model JSON files (same // -comment + normalization as model-gen)."""
     models = {}
     for json_file in sorted(models_dir.glob("*.model.json")):
-        with json_file.open(encoding="utf-8") as f:
-            data = json.load(f)
-            domain = data["domain"]
-            models[domain] = data
+        data = parse_model_file(json_file)
+        domain = data["domain"]
+        models[domain] = data
     return models
 
 
@@ -32,7 +31,7 @@ def load_enums(models_dir: Path) -> dict[str, str]:
         return {}
 
     with enums_file.open(encoding="utf-8") as f:
-        data = json.load(f)
+        data = json.loads(strip_json_comments(f.read()))
         enums: dict[str, str] = {}
         for enum_name, enum_def in data.get("enums", {}).items():
             values = enum_def.get("values", [])

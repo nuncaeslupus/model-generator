@@ -54,6 +54,66 @@ class TestValidateModel:
         assert len(errors) == 1
         assert "File not found" in errors[0]
 
+    def test_accepts_json_comments(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
+        """GEN-3: model-val parses the same // -comment dialect as model-gen."""
+        path = tmp_path / "users.model.json"
+        path.write_text(
+            "{\n"
+            "  // domain comment\n"
+            '  "domain": "users",\n'
+            '  "entities": {\n'
+            '    "User": {\n'
+            '      "table": "users",\n'
+            '      "fields": {"id": {"type": "uuid", "primary_key": true}}\n'
+            "    }\n"
+            "  }\n"
+            "}\n"
+        )
+        assert validate_model(path, schema) == []
+
+    def test_accepts_legacy_index_shape(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
+        """GEN-3: legacy index shapes model-gen normalizes must pass model-val."""
+        model = {
+            "domain": "users",
+            "entities": {
+                "User": {
+                    "table": "users",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                        "email": {"type": "text", "max_length": 100},
+                    },
+                    "indexes": [{"type": "unique", "field": "email"}],
+                }
+            },
+        }
+        path = tmp_path / "users.model.json"
+        path.write_text(json.dumps(model))
+        assert validate_model(path, schema) == []
+
+    def test_accepts_integer_alias(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
+        """GEN-3: the `integer` alias model-gen normalizes must pass model-val."""
+        model = {
+            "domain": "users",
+            "entities": {
+                "User": {
+                    "table": "users",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                        "login_count": {"type": "integer", "default": 0},
+                    },
+                }
+            },
+        }
+        path = tmp_path / "users.model.json"
+        path.write_text(json.dumps(model))
+        assert validate_model(path, schema) == []
+
     def test_invalid_json(self, tmp_path: Path, schema: dict[str, Any]) -> None:
         path = tmp_path / "bad.model.json"
         path.write_text("{not valid json")

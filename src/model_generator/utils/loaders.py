@@ -14,6 +14,38 @@ import yaml
 from .templates import path_to_import
 
 
+def strip_json_comments(text: str) -> str:
+    """Strip ``//`` line and inline comments from JSON text.
+
+    Naive (does not skip over string literals), matching the model JSON dialect
+    the rest of the pipeline accepts. Shared so every reader (generator,
+    validator, conftest generation) parses the same dialect.
+    """
+    # Strip whole-line // comments
+    text = re.sub(r"^\s*//.*$", "", text, flags=re.MULTILINE)
+    # Strip inline // comments (naive approach - doesn't handle strings)
+    text = re.sub(r"\s+//.*$", "", text, flags=re.MULTILINE)
+    return text
+
+
+def parse_model_file(model_path: Path) -> dict[str, Any]:
+    """Read, comment-strip, parse and *normalize* a model file (no validation).
+
+    Applies the same comment handling and alias/index normalization as
+    :func:`load_model` but does **not** validate against the schema and does
+    **not** exit on error — it raises ``json.JSONDecodeError`` so callers can
+    decide how to report. Use this anywhere that needs the canonical model dict
+    without the generator's print-and-exit behaviour (e.g. ``model-val``).
+    """
+    with model_path.open(encoding="utf-8") as f:
+        json_content = strip_json_comments(f.read())
+
+    data = json.loads(json_content)
+    _normalize_field_types(data)
+    _normalize_indexes(data)
+    return cast(dict[str, Any], data)
+
+
 def load_model(model_path: Path) -> dict[str, Any]:
     """
     Load and parse model JSON file.
@@ -24,27 +56,18 @@ def load_model(model_path: Path) -> dict[str, Any]:
 
     Validates the model against the schema definition.
     """
-    with model_path.open(encoding="utf-8") as f:
-        json_content = f.read()
-
-    # Strip // comments
-    json_content = re.sub(r"^\s*//.*$", "", json_content, flags=re.MULTILINE)
-    # Strip inline // comments (naive approach - doesn't handle strings)
-    json_content = re.sub(r"\s+//.*$", "", json_content, flags=re.MULTILINE)
-
     try:
-        data = json.loads(json_content)
+        data = parse_model_file(model_path)
     except json.JSONDecodeError as e:
         print(f"Error parsing JSON in {model_path}: {e}")
-        lines = json_content.splitlines()
+        with model_path.open(encoding="utf-8") as f:
+            lines = strip_json_comments(f.read()).splitlines()
         if e.lineno <= len(lines):
             print(f"Line {e.lineno}: {lines[e.lineno - 1]}")
         sys.exit(1)
 
-    _normalize_field_types(data)
-    _normalize_indexes(data)
     _validate_model_schema(data, model_path)
-    return cast(dict[str, Any], data)
+    return data
 
 
 def _normalize_indexes(data: dict[str, Any]) -> None:
