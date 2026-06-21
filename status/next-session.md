@@ -61,12 +61,41 @@ example suite has been **silently red since SEC-1** (scoped CRUD → 401; the
 
 Consult the review doc (`status/code-review-2026-06-21.md`, Part D). Still open
 P1: the **green-out-of-box** template trio (TPL-3 E402 per-file-ignore, TPL-4
-prod `DATABASE_URL` guard, TPL-9 `.env.example`); the **template-correctness**
-trio (TPL-5 `Mapped[...]`, TPL-14 UUID/ref filters → 422, TPL-16 nullable-default
-scalars); the **docs sweep** (DOC-2,4,5,6,…); the **tooling** PR (TOOL-1, TOOL-3,
-GEN-8). Note: the generated tree still has the pre-existing lint quirks (alembic
-E402, main/auth I001, pagination PEP695-on-py311) — TPL-3/TPL-22 territory, not
-gated by the new smoke job.
+prod `DATABASE_URL` guard, TPL-9 `.env.example`); the **docs sweep**
+(DOC-2,4,5,6,…); the **tooling** PR (TOOL-1, TOOL-3, GEN-8). Note: the generated
+tree still has the pre-existing lint quirks (alembic E402, main/auth I001,
+pagination PEP695-on-py311) — TPL-3/TPL-22 territory, not gated by the new smoke
+job.
+
+### P1 template-correctness trio shipped — TPL-5 + TPL-14 + TPL-16 (PR pending)
+
+Branch `claude/nifty-franklin-33emxr`. Completes the template-correctness cluster
+that TPL-1/TPL-2 (P0) started.
+
+- **TPL-5 — relationships emit `Mapped[...]`.** `model.py.j2` annotates each
+  relationship: `one_to_many` → `Mapped[list["Target"]]`, scalar rels
+  (`many_to_one`/`one_to_one`/`one_to_one_inverse`) → `Mapped["Target | None"]`.
+  Gated on `rel.target in sibling_entities` so only same-module targets are
+  annotated (cross-domain targets aren't importable here → stay unannotated to
+  avoid an undefined name under mypy). In per-entity layout, sibling targets get
+  an `if TYPE_CHECKING:` import block (combined `from typing import …` with the
+  pre-existing `Any` import). `Mapped` was already imported unconditionally.
+- **TPL-14 — UUID/`reference` filters typed `UUID`.** `route.py.j2` types a
+  reference filter param as `UUID | None` when its `reference_column` is `id`
+  (the uuid PK), so `?ref=notauuid` → FastAPI 422 instead of an asyncpg 500. Non-
+  `id` (string FK) refs stay `str | None`. New `ns.needs_uuid_filter` scan flag
+  drives `from uuid import UUID` (was gated only on a uuid PK).
+- **TPL-16 — scalar-with-default is NOT NULL.** `model.py.j2`'s `optional`
+  computation now treats a field with a default (explicit, or the implicit
+  `False` the boolean branch always emits) as non-Optional `Mapped[T]`. Fixes
+  booleans/scalars that had a Python default but were typed `Mapped[T | None]`.
+
+**Verified:** 527 unit tests (+8: `TestDatabaseGeneratorTypedRelationships`,
+`TestDatabaseGeneratorNullability`, `TestApiRoutesUuidReferenceFilter`), RED→GREEN
+confirmed (5 fail with templates stashed). `make lint` clean,
+`make smoke-example` → 135/135. Generated tree ast-parses + `ruff check` clean;
+`mypy` on a generated model file shows no `name-defined` errors for the typed
+forward refs.
 
 ### Working method (apply to every fix)
 

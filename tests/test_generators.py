@@ -518,6 +518,206 @@ def project_env_per_entity(tmp_path: Path) -> tuple[Path, dict[str, Any], Any]:
     return tmp_path, config, env
 
 
+class TestDatabaseGeneratorTypedRelationships:
+    """TPL-5: relationships emit Mapped[...] for same-module (sibling) targets."""
+
+    def test_per_domain_relationships_are_typed(
+        self, multi_entity_model: dict[str, Any], project_env: Any
+    ) -> None:
+        project_root, config, env = project_env  # per-domain
+        result = generate_database_model(multi_entity_model, config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert 'posts: Mapped[list["Post"]] = relationship(' in content
+        assert 'author: Mapped["Author | None"] = relationship(' in content
+        # Same module → forward refs resolve without TYPE_CHECKING imports.
+        assert "TYPE_CHECKING" not in content
+
+    def test_per_entity_relationships_typed_with_type_checking_imports(
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
+        project_root, config, env = project_env_per_entity
+        result = generate_database_model(multi_entity_model, config, env, project_root)
+        assert isinstance(result, list)
+        by_name = {r["path"].name: r["content"] for r in result}
+        author = by_name["author.py"]
+        post = by_name["post.py"]
+        assert 'posts: Mapped[list["Post"]] = relationship(' in author
+        assert "if TYPE_CHECKING:" in author
+        assert "from .post import Post" in author
+        assert 'author: Mapped["Author | None"] = relationship(' in post
+        assert "if TYPE_CHECKING:" in post
+        assert "from .author import Author" in post
+
+    def test_cross_module_relationship_is_unannotated(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """A relationship target outside the model's entities (cross-domain)
+        can't be imported here, so it stays unannotated — annotating it would
+        emit an undefined name under mypy."""
+        project_root, config, env = project_env_per_entity
+        model = {
+            "domain": "blog",
+            "entities": {
+                "Post": {
+                    "table": "posts",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                    },
+                    "relationships": {
+                        "comments": {
+                            "type": "one_to_many",
+                            "target": "Comment",
+                            "back_populates": "post",
+                        },
+                    },
+                },
+            },
+        }
+        result = generate_database_model(model, config, env, project_root)
+        assert isinstance(result, list)
+        content = result[0]["content"]
+        assert "comments = relationship(" in content
+        assert 'Mapped[list["Comment"]]' not in content
+        assert "from .comment import Comment" not in content
+
+
+class TestDatabaseGeneratorNullability:
+    """TPL-16: scalar fields with a default are NOT NULL (non-Optional Mapped)."""
+
+    def _model(self, fields: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "domain": "shop",
+            "entities": {
+                "Widget": {
+                    "table": "widgets",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        **fields,
+                    },
+                },
+            },
+        }
+
+    def test_boolean_without_default_is_not_optional(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        model = self._model({"active": {"type": "boolean"}})
+        result = generate_database_model(model, config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "active: Mapped[bool] = mapped_column(Boolean, default=False)" in content
+        assert "active: Mapped[bool | None]" not in content
+
+    def test_scalar_with_default_is_not_optional(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        model = self._model(
+            {"label": {"type": "text", "max_length": 50, "default": "x"}}
+        )
+        result = generate_database_model(model, config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert 'label: Mapped[str] = mapped_column(String(50), default="x")' in content
+        assert "label: Mapped[str | None]" not in content
+
+    def test_optional_without_default_stays_nullable(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        model = self._model({"note": {"type": "text", "max_length": 50}})
+        result = generate_database_model(model, config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "note: Mapped[str | None] = mapped_column(String(50))" in content
+
+    def test_explicit_null_default_stays_nullable(self, project_env: Any) -> None:
+        """An explicit `default: null` is `is defined` but must stay Optional and
+        must not emit a bogus `default="None"` column parameter."""
+        project_root, config, env = project_env
+        model = self._model(
+            {"note": {"type": "text", "max_length": 50, "default": None}}
+        )
+        result = generate_database_model(model, config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "note: Mapped[str | None] = mapped_column(String(50))" in content
+        assert 'default="None"' not in content
+
+
+class TestApiRoutesUuidReferenceFilter:
+    """TPL-14: reference filters on an id column are typed UUID → 422, not 500."""
+
+    def _model(self, ref_field: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "domain": "blog",
+            "entities": {
+                "Post": {
+                    "table": "posts",
+                    "api": {"endpoints": ["list", "get", "create", "update", "delete"]},
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "title": {
+                            "type": "text",
+                            "max_length": 100,
+                            "required": True,
+                        },
+                        **ref_field,
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                },
+            },
+        }
+
+    def test_id_reference_filter_typed_uuid(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        model = self._model(
+            {
+                "author_id": {
+                    "type": "reference",
+                    "reference_table": "authors",
+                    "required": True,
+                }
+            }
+        )
+        result = generate_api_routes(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "author_id: UUID | None = Query(" in content
+        assert "author_id: str | None = Query(" not in content
+        assert "from uuid import UUID" in content
+
+    def test_non_id_reference_filter_stays_str(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        model = self._model(
+            {
+                "slug_ref": {
+                    "type": "reference",
+                    "reference_table": "slugs",
+                    "reference_column": "slug",
+                    "required": True,
+                }
+            }
+        )
+        result = generate_api_routes(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "slug_ref: str | None = Query(" in content
+        assert "slug_ref: UUID | None = Query(" not in content
+
+
 class TestDatabaseGeneratorRangeCheck:
     """CHECK-constraint emission for range / range_or_null bounds."""
 
