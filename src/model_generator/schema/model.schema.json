@@ -359,6 +359,18 @@
                         }
                     }
                 }
+            },
+            "dependencies": {
+                "encrypt": {
+                    "properties": {
+                        "type": {
+                            "enum": [
+                                "binary"
+                            ]
+                        }
+                    },
+                    "description": "encrypt is only valid on binary fields"
+                }
             }
         },
         "field_constraint": {
