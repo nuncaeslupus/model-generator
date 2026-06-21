@@ -2172,6 +2172,64 @@ class TestValidateAuthStrategy:
         assert missing in out
 
 
+class TestValidateAuthScopeCoverage:
+    """Tests for _validate_auth_scope_coverage."""
+
+    def test_no_auth_strategy_passes(self) -> None:
+        from model_generator.generate import _validate_auth_scope_coverage
+
+        models = [{"entities": {"Widget": {"api": {"enabled": True}}}}]
+        _validate_auth_scope_coverage(models, config={})  # must not print/exit
+
+    def test_auth_with_scoped_entity_passes(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from model_generator.generate import _validate_auth_scope_coverage
+
+        models = [
+            {"entities": {"Widget": {"api": {"scope": {"owner_field": "user_id"}}}}}
+        ]
+        _validate_auth_scope_coverage(models, {"auth": {"strategy": "bcrypt-session"}})
+        assert capsys.readouterr().out == ""
+
+    def test_auth_no_scoped_entities_warns(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from model_generator.generate import _validate_auth_scope_coverage
+
+        models = [{"entities": {"Widget": {"api": {"enabled": True}}}}]
+        _validate_auth_scope_coverage(models, {"auth": {"strategy": "bcrypt-session"}})
+        out = capsys.readouterr().out
+        assert "Warning" in out
+        assert "api.scope" in out
+        assert "Widget" in out
+
+    def test_no_api_enabled_entities_no_warning(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from model_generator.generate import _validate_auth_scope_coverage
+
+        models = [{"entities": {"Widget": {"api": {"enabled": False}}}}]
+        _validate_auth_scope_coverage(models, {"auth": {"strategy": "bcrypt-session"}})
+        assert capsys.readouterr().out == ""
+
+    def test_mixed_scoped_unscoped_passes(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from model_generator.generate import _validate_auth_scope_coverage
+
+        models = [
+            {
+                "entities": {
+                    "Widget": {"api": {"scope": {"owner_field": "user_id"}}},
+                    "Tag": {"api": {"enabled": True}},
+                }
+            }
+        ]
+        _validate_auth_scope_coverage(models, {"auth": {"strategy": "bcrypt-session"}})
+        assert capsys.readouterr().out == ""
+
+
 class TestValidateGenerationConfig:
     """Test the _validate_generation_config helper."""
 

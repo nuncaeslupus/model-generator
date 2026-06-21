@@ -256,6 +256,23 @@ alembic upgrade head
 
 ---
 
+## Authentication and Route Scoping
+
+When `auth.strategy` is set in `.model-generator.yaml`, the generator scaffolds authentication infrastructure (login, session management, password hashing). However, CRUD endpoints are **unauthenticated by default** — the auth scaffold is only wired into a route when the entity declares `api.scope`.
+
+**Note:** When `auth.strategy` is set, add `api.scope` to owner-bound entities so routes inject `Depends(get_current_user)` and enforce per-row ownership. Entities without `api.scope` remain publicly accessible.
+
+```json
+"api": {
+    "scope": {"owner_field": "user_id"},
+    "endpoints": ["list", "create", "get", "update", "delete"]
+}
+```
+
+The generator warns at generation time if `auth.strategy` is set but no API-enabled entity declares `api.scope` — this combination results in a fully open API, which is almost always unintentional.
+
+---
+
 ## Tips
 
 - **Start with `--diff`** to review what will be generated before writing files

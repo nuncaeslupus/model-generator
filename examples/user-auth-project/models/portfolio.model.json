@@ -123,6 +123,7 @@
                 }
             ],
             "api": {
+                "scope": {"owner_field": "user_id"},
                 "enabled": true,
                 "prefix": "portfolios",
                 "endpoints": [
