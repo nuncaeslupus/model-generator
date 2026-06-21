@@ -14,6 +14,7 @@ Getting started, designing models, and using the CLI.
 | [Model Design Guide](./user/model-design-guide.md) | Step-by-step guide to designing JSON specifications |
 | [Usage Guide](./user/usage-guide.md) | CLI workflows: generate, preview, clean, interactive mode |
 | [Quick Reference](./user/quick-reference.md) | Lookup tables: field types, constraints, options, CLI flags |
+| [Architecture, Troubleshooting & Upgrades](./user/architecture.md) | Pipeline overview, generated layout, common errors, upgrade story |
 | [Extending Generated Code](./user/extending-generated-code.md) | Add business logic, custom routes, migrations |
 
 ---
@@ -66,6 +67,7 @@ Maintaining the tool itself.
 | I want to... | Go to |
 |--------------|-------|
 | Install and try the example | [Installation Guide](./user/installation.md) |
+| Understand how generation works / fix a common error | [Architecture, Troubleshooting & Upgrades](./user/architecture.md) |
 | Design a new JSON model | [Model Design Guide](./user/model-design-guide.md) |
 | Look up a field type or option | [Quick Reference](./user/quick-reference.md) |
 | Understand the exact JSON format | [JSON Specification Reference](./agent/json-specification-reference.md) |

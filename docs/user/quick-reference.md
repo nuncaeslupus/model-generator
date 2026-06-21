@@ -19,7 +19,10 @@ Lookup tables for model-generator. No prose — just the facts.
 | `enum` | Enumeration | `Column(SQLEnum(Name))` | `EnumName` | `enum_name` (required), `default` |
 | `json_object` | JSON dict | `Column(JSON)` | `dict[str, Any]` | — |
 | `json_array` | JSON list | `Column(JSON)` | `list[Any]` | — |
+| `binary` | Raw bytes | `Column(LargeBinary)` | `bytes` (base64 in JSON) | `encrypt` (Fernet at-rest) |
 | `reference` | Foreign key | `Column(String, ForeignKey(...))` | `str` | `reference_table` (required), `on_delete` |
+
+`integer` is accepted as an alias for `counter` (normalized at load time).
 
 ---
 
@@ -133,7 +136,11 @@ Top-level keys in `.model-generator.yaml` (siblings of `paths:`, `project:`, `st
 | Target | Description | Scope |
 |--------|-------------|-------|
 | `all` | Generate everything in TDD order | All |
-| `infrastructure` | Base, engine, main, conftest | Once |
+| `infrastructure` | Base, engine, main, conftest (all four below) | Once |
+| `base` | Declarative `Base` + custom column types | Once |
+| `engine` | Async engine + `get_session` dependency | Once |
+| `main` | FastAPI app entry point | Once |
+| `test-conftest-root` | Root `conftest.py` | Once |
 | `database` | SQLAlchemy models | Per domain |
 | `factories` | FactoryBoy test factories | Per domain |
 | `enums` | Enum definitions from `_shared/enums.json` | Shared |
@@ -146,6 +153,7 @@ Top-level keys in `.model-generator.yaml` (siblings of `paths:`, `project:`, `st
 | `api-tests` | Contract tests | Per domain |
 | `api-tests-config` | Test conftest | Shared |
 | `migration-init` | Alembic infrastructure | Once |
+| `migration-autogen` | Print autogenerate instructions | Once |
 
 ---
 
@@ -160,8 +168,10 @@ Top-level keys in `.model-generator.yaml` (siblings of `paths:`, `project:`, `st
 | `--clean` | Delete generated files before regenerating |
 | `--scope {selective\|full}` | Cleanup scope |
 | `--clear-only` | Delete generated files without regenerating |
+| `--no-root-files` | Skip `pyproject.toml`, `alembic.ini`, `.gitignore` (existing-project mode) |
 | `--stack STACK` | Stack to use (default: `python-fastapi`) |
 | `--interactive` | Launch interactive wizard |
+| `--version` | Print version and exit |
 
 ---
 

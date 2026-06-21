@@ -62,7 +62,8 @@ Machine-precise reference for model-generator JSON specifications. Every key, ev
 
 ## Field Types
 
-All 12 supported field types with their applicable options:
+All 13 supported field types with their applicable options. (`integer` is
+accepted as an alias for `counter`, normalized at load time.)
 
 ### `uuid`
 
@@ -224,7 +225,7 @@ Same numeric options as `financial`. Fixed precision: `Numeric(5, 4)`.
 {
   "type": "enum",
   "enum_name": "UserStatus",
-  "default": "active",
+  "default": "ACTIVE",
   "required": true
 }
 ```
@@ -232,10 +233,15 @@ Same numeric options as `financial`. Fixed precision: `Numeric(5, 4)`.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `enum_name` | string | **required** | Enum class name (must exist in `_shared/enums.json`) |
-| `default` | string | — | Default enum value |
+| `default` | string | — | Default enum value (member name; **UPPER_CASE** — the generator uppercases it) |
 | `required` | bool | `false` | NOT NULL |
 
-**SQLAlchemy:** `Column(SQLEnum(UserStatus, native_enum=False), nullable=False, default=UserStatus.active)`
+> **Enum casing:** member names *and* string values are emitted in **UPPER_CASE**
+> everywhere. The generator uppercases whatever you write, so `"active"` and
+> `"ACTIVE"` both produce the member `ACTIVE` with value `"ACTIVE"`. Write them
+> UPPER_CASE in your specs to match the generated output.
+
+**SQLAlchemy:** `Column(SQLEnum(UserStatus, native_enum=False), nullable=False, default=UserStatus.ACTIVE)`
 **Pydantic:** `UserStatus` (enum type)
 
 ### `json_object`
@@ -261,6 +267,28 @@ Same numeric options as `financial`. Fixed precision: `Numeric(5, 4)`.
 
 **SQLAlchemy:** `Column(JSON, nullable=True, default=list)`
 **Pydantic:** `list[Any] | None`
+
+### `binary`
+
+```json
+{
+  "type": "binary",
+  "required": true,
+  "encrypt": {"key_env": "FERNET_KEY"}
+}
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `required` | bool | `false` | NOT NULL |
+| `encrypt` | object | — | Encrypt at rest with Fernet; `key_env` names the env var holding the key |
+
+Raw bytes column. With `encrypt`, the generator emits a SQLAlchemy
+`TypeDecorator` that transparently Fernet-encrypts on write and decrypts on read
+(app code reads/writes plain `bytes`); the key is loaded from `encrypt.key_env`.
+
+**SQLAlchemy:** `Column(LargeBinary, nullable=False)` (or the encrypted `TypeDecorator`)
+**Pydantic:** `bytes` (base64-encoded in JSON)
 
 ### `reference`
 
@@ -289,7 +317,7 @@ Same numeric options as `financial`. Fixed precision: `Numeric(5, 4)`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `type` | string | **required** | One of the 12 field types above |
+| `type` | string | **required** | One of the 13 field types above |
 | `required` | bool | `false` | NOT NULL constraint |
 | `unique` | bool | `false` | UNIQUE constraint (text, uuid) |
 | `default` | varies | — | Default value (type-appropriate) |
@@ -471,14 +499,26 @@ When `scope` is set, the generated handlers behave as follows:
 - `create` injects `current_user` and force-assigns `owner_field = current_user.id` after building the entity from the request body.
 - `owner_field` is excluded from both `Create` and `Update` request models — it is set by the handler, not the API caller, and is immutable from the API's perspective.
 
-`api.scope` requires `auth.dependency_path` in `.model-generator.yaml`:
+`api.scope` requires a `auth.dependency_path` — the dotted import path to a
+`get_current_user`-style callable that the generator injects via FastAPI's
+`Depends()`. There are two ways it gets set:
+
+- **`auth.strategy` is set** (e.g. `bcrypt-session`): the generator scaffolds the
+  auth subsystem *and* its `get_current_user`, and the loader **auto-wires**
+  `auth.dependency_path` to that emitted callable. You do not write it yourself,
+  and you do not need to set `dependency_path` by hand.
+- **No `auth.strategy`** (you bring your own auth): set `dependency_path`
+  explicitly to your own callable; the generator imports it but does **not** emit
+  it.
 
 ```yaml
 auth:
+  # Auto-wired when auth.strategy is set — only needed when bringing your own auth:
   dependency_path: "backend.src.auth.get_current_user"
 ```
 
-The generator imports this function and injects it via FastAPI's `Depends()`. The adopter writes the function — the generator does not emit it. Generation will fail loudly if `scope` is declared without this config.
+Generation fails loudly if `scope` is declared with neither `auth.strategy` nor
+an explicit `dependency_path`.
 
 ---
 
@@ -595,14 +635,18 @@ The relationship's existing `foreign_keys` array disambiguates the ORM mapping (
     "EnumName": {
       "description": "Enum description",
       "values": [
-        "simple_string_value",
-        {"name": "EXPLICIT_NAME", "value": "explicit_value"},
-        {"name": "WITH_DESC", "value": "val", "description": "Documented value"}
+        "SIMPLE_STRING_VALUE",
+        {"name": "EXPLICIT_NAME", "value": "EXPLICIT_VALUE"},
+        {"name": "WITH_DESC", "value": "VAL", "description": "Documented value"}
       ]
     }
   }
 }
 ```
+
+Member names and values are normalized to **UPPER_CASE** at generation. A bare
+string `"deposit"` becomes the member `DEPOSIT` with value `"DEPOSIT"`; write
+values UPPER_CASE so the spec matches the emitted enum.
 
 ### `_shared/constraints.json`
 
@@ -698,7 +742,7 @@ models/
           "type": "enum",
           "enum_name": "UserStatus",
           "required": true,
-          "default": "active",
+          "default": "ACTIVE",
           "description": "Account status"
         },
         "is_active": {

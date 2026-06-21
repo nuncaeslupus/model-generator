@@ -85,13 +85,54 @@ out of the box" cluster (TST-1/TST-2 already shipped in #38).
 135/135. Generated `.env.example` inspected (correct var set + trailing newline);
 `ruff check alembic/env.py` clean.
 
-### Next: remaining P1 clusters
+### P1 docs sweep shipped — DOC-2,3,4,5,6,7,8,9,10,11,12,13,14 (PR pending)
+
+Branch `claude/compassionate-dijkstra-d3dgn4`. Closes the docs-sweep cluster.
+Docs/schema-description only — no generator logic changed; 534 tests + lint
+unchanged-green.
+
+- **DOC-2** — `extending-generated-code.md` rewritten for the **async** API
+  (`AsyncSession`, `await session.execute(select(...))`, `Depends(get_session)`
+  from `database/engine.py`); per-entity file names corrected
+  (`{entity}_requests.py`/`_response.py`); the hand-rolled reset-password worked
+  example (the auth router already provides it) swapped for a neutral
+  "deactivate account" action; new top banner stating the stack is async.
+- **DOC-4** — enum-casing corrected to **UPPER_CASE** in the reference (`default:
+  "ACTIVE"`, `UserStatus.ACTIVE`, uppercased `enums.json` value examples + a
+  normalization note) and the schema descriptions (`value` "UPPER_CASE;
+  auto-uppercased", list "auto-uppercased").
+- **DOC-5** — `binary` field type documented (reference section + quick-ref row,
+  LargeBinary/`bytes`/`encrypt`); `integer`→`counter` alias noted; "12 field
+  types" → "13".
+- **DOC-3** — `api.scope` `dependency_path` is **auto-wired** when `auth.strategy`
+  is set (only hand-set when bringing your own auth) — reference corrected.
+- **DOC-6** — usage-guide migration step uses the async driver
+  `sqlite+aiosqlite:///./app.db`.
+- **DOC-7** — usage-guide "Clean and Regenerate" gains a one-shot/upgrade note
+  (domain files overwrite, infra is skip-if-exists, how "should regenerate"
+  actually works).
+- **DOC-8** — CLAUDE.md "Running the Example" `cd`s into the example first
+  (`load_config` reads CWD).
+- **DOC-9** — new `docs/user/architecture.md` (pipeline overview, generated
+  layout, troubleshooting table, upgrade-after-one-shot); linked from README +
+  `docs/README.md`.
+- **DOC-10** — quick-ref CLI tables gain `base`/`engine`/`main`/
+  `test-conftest-root`/`migration-autogen` targets and `--no-root-files`/
+  `--version` flags.
+- **DOC-11** — this status entry; **DOC-12** — CHANGELOG compare-links extended
+  to 0.1.2/0.1.3/0.1.4 + Unreleased rebased on v0.1.4; **DOC-13** — README
+  test-suite table gains `test_cleanup`/`test_enum_examples`/`test_validate`;
+  **DOC-14** — usage-guide wizard install → `uv tool install
+  "model-generator-kit[interactive]"`.
+
+### Next: remaining P1 cluster — tooling/hygiene
 
 Consult the review doc (`status/code-review-2026-06-21.md`, Part D). Still open
-P1: the **docs sweep** (DOC-2,4,5,6,…); the **tooling** PR (TOOL-1, TOOL-3,
-GEN-8). Note: the generated tree still has the pre-existing main/auth I001 +
-pagination-PEP695-on-py311 lint quirks (auto-fixed by `ruff check --fix`) —
-TPL-22 territory, not gated by the smoke job.
+P1: the **tooling** PR (TOOL-1 — scrub downstream project names from the
+CHANGELOG / release notes; TOOL-3 — broaden the ruff set; GEN-8 — `encoding=
+"utf-8"` on all file I/O). Note: the generated tree still has the pre-existing
+main/auth I001 + pagination-PEP695-on-py311 lint quirks (auto-fixed by `ruff
+check --fix`) — TPL-22 territory, not gated by the smoke job.
 
 ### P1 template-correctness trio shipped — TPL-5 + TPL-14 + TPL-16 (PR pending)
 

@@ -175,6 +175,9 @@ First public release on PyPI.
   stack-agnostic by design — FastAPI is the first stack, selected via
   `--stack` (default `python-fastapi`), not a hard dependency of the tool.
 
-[Unreleased]: https://github.com/nuncaeslupus/model-generator/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/nuncaeslupus/model-generator/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/nuncaeslupus/model-generator/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/nuncaeslupus/model-generator/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/nuncaeslupus/model-generator/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/nuncaeslupus/model-generator/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nuncaeslupus/model-generator/releases/tag/v0.1.0
