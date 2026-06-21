@@ -123,6 +123,14 @@ def generate_factories(
     if constraints is None:
         constraints = load_shared_constraints(model_path or project_root)
 
+    # Build table-name → entity-name mapping for resolving reference fields.
+    all_entities = model.get("entities", {})
+    table_to_entity: dict[str, str] = {
+        entity.get("table", snake_case(name) + "s"): name
+        for name, entity in all_entities.items()
+        if entity is not None
+    }
+
     if get_layout(config) == "per-entity":
         return [
             {
@@ -132,6 +140,7 @@ def generate_factories(
                     config=config,
                     sibling_entities=sibling_entities,
                     constraints=constraints,
+                    table_to_entity=table_to_entity,
                 ),
             }
             for name, entity in model.get("entities", {}).items()
@@ -143,5 +152,6 @@ def generate_factories(
         config=config,
         sibling_entities=sibling_entities,
         constraints=constraints,
+        table_to_entity=table_to_entity,
     )
     return {"path": factories_dir / f"{domain}.py", "content": content}

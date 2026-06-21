@@ -368,6 +368,48 @@ class TestFactoryGenerator:
         assert "max_value=999999" in content
         assert "MISSING" not in content
 
+    def test_required_reference_emits_subfactory_without_reference_entity(
+        self, project_env: Any
+    ) -> None:
+        """reference_table resolves to entity name even without reference_entity."""
+        project_root, config, env = project_env
+        model = {
+            "domain": "blog",
+            "entities": {
+                "Author": {
+                    "table": "authors",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        }
+                    },
+                },
+                "Post": {
+                    "table": "posts",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "author_id": {
+                            "type": "reference",
+                            "reference_table": "authors",  # NO reference_entity key
+                            "required": True,
+                        },
+                    },
+                },
+            },
+        }
+        config["generation"] = {"layout": "per-domain"}
+        result = generate_factories(model, config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "factory.SubFactory(AuthorFactory)" in content
+        assert "from .author import AuthorFactory" not in content  # per-domain layout
+
 
 @pytest.fixture
 def multi_entity_model() -> dict[str, Any]:
