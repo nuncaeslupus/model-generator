@@ -43,6 +43,7 @@ Usage:
 ) %}
 
 {#- Scan all entities to determine imports -#}
+{%- set _table_to_entity = table_to_entity | default({}) -%}
 {% for entity_name, entity in model.entities.items() %}
 {% for field_name, field in entity.fields.items() %}
 {% if field.type == 'uuid' %}{% set ns.has_uuid = true %}{% endif %}
@@ -52,7 +53,7 @@ Usage:
 {% if field.type == 'enum' and field.enum_name not in ns.enum_imports %}
 {% set _ = ns.enum_imports.append(field.enum_name) %}
 {% endif %}
-{%- set _ref_entity = table_to_entity.get(field.reference_table, '') if field.reference_table is defined else '' -%}
+{%- set _ref_entity = _table_to_entity.get(field.reference_table, field.reference_entity | default('')) if field.reference_table is defined else field.reference_entity | default('') -%}
 {% if field.type == 'reference' and _ref_entity and _ref_entity != entity_name and _ref_entity not in ns.entity_refs %}
 {% set _ = ns.entity_refs.append(_ref_entity) %}
 {% endif %}
@@ -116,7 +117,8 @@ fake = Faker()
 
 {#- Helper macro to generate field factory based on type - outputs a single indented line -#}
 {%- macro generate_field_factory(field_name, field, entity_name) %}
-{%- set _ref_entity = table_to_entity.get(field.reference_table, '') if field.reference_table is defined else '' -%}
+{%- set _table_to_entity = table_to_entity | default({}) -%}
+{%- set _ref_entity = _table_to_entity.get(field.reference_table, field.reference_entity | default('')) if field.reference_table is defined else field.reference_entity | default('') -%}
 {% if field.type == 'uuid' and field.primary_key and field.auto_generate %}
     {{ field_name }} = factory.LazyFunction(uuid.uuid4)
 {% elif field.type == 'text' %}

@@ -128,6 +128,7 @@ def generate_factories(
     table_to_entity: dict[str, str] = {
         entity.get("table", snake_case(name) + "s"): name
         for name, entity in all_entities.items()
+        if entity is not None
     }
 
     if get_layout(config) == "per-entity":
