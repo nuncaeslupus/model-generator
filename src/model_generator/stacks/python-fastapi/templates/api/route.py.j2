@@ -30,6 +30,7 @@
     has_financial=false,
     has_percentage=false,
     has_datetime=false,
+    needs_isoformat=false,
     has_uuid_pk=false,
     enum_imports=[],
     db_models=[],
@@ -50,12 +51,13 @@
 {% if field.type in ['json_object', 'json_array'] %}{% set ns.has_any = true %}{% endif %}
 {% if field.type == 'financial' %}{% set ns.has_financial = true %}{% endif %}
 {% if field.type == 'percentage' %}{% set ns.has_percentage = true %}{% endif %}
-{% if field.type == 'datetime' %}{% set ns.has_datetime = true %}{% endif %}
+{% if field.type == 'datetime' %}{% set ns.has_datetime = true %}{% set ns.needs_isoformat = true %}{% endif %}
 {% if field.type == 'enum' and field.enum_name not in ns.enum_imports %}
 {% set _ = ns.enum_imports.append(field.enum_name) %}
 {% endif %}
 {% if field_name == 'password_hash' %}{% set ns.has_password_field = true %}{% endif %}
 {% endfor %}
+{% if entity.timestamps is defined and (entity.timestamps.created | default(false) or entity.timestamps.updated | default(false)) %}{% set ns.needs_isoformat = true %}{% endif %}
 {% endfor %}
 {{ generated_marker() }}
 
@@ -96,8 +98,11 @@ from typing import Any
 
 from {{ config.paths.api_models.rsplit('/', 1)[0] | path_to_import }}.errors import format_integrity_error, format_not_found_error
 from {{ config.paths.api_models | path_to_import }}.pagination import PaginatedResponse, calculate_page_info
-{% if ns.has_financial or ns.has_percentage %}
-from {{ config.paths.api_models.rsplit('/', 1)[0] | path_to_import }}.utils import normalize_decimal
+{% set utils_imports = [] %}
+{% if ns.has_financial or ns.has_percentage %}{% set _ = utils_imports.append('normalize_decimal') %}{% endif %}
+{% if ns.needs_isoformat %}{% set _ = utils_imports.append('isoformat_utc') %}{% endif %}
+{% if utils_imports %}
+from {{ config.paths.api_models.rsplit('/', 1)[0] | path_to_import }}.utils import {{ utils_imports | join(', ') }}
 
 {% endif %}
 from {{ config.paths.database_models.rsplit('/', 1)[0] | path_to_import }} import get_session
@@ -483,7 +488,7 @@ def _convert_{{ entity_lower }}_to_response({{ entity_lower }}: {{ entity_name }
 {% if not field.api_exclude_response | default(false) %}
 {% set api_name = field.api_field_name | default(field_name) %}
 {% if field.type == 'datetime' %}
-        "{{ api_name }}": {{ entity_lower }}.{{ field_name }}.isoformat() + "Z" if {{ entity_lower }}.{{ field_name }} else None,
+        "{{ api_name }}": isoformat_utc({{ entity_lower }}.{{ field_name }}),
 {% elif field.type == 'financial' %}
         "{{ api_name }}": normalize_decimal({{ entity_lower }}.{{ field_name }}),
 {% elif field.type == 'percentage' %}
@@ -498,10 +503,10 @@ def _convert_{{ entity_lower }}_to_response({{ entity_lower }}: {{ entity_name }
 {% endif %}
 {% endfor %}
 {% if entity.timestamps.created | default(false) %}
-        "created_at": {{ entity_lower }}.created_at.isoformat() + "Z",
+        "created_at": isoformat_utc({{ entity_lower }}.created_at),
 {% endif %}
 {% if entity.timestamps.updated | default(false) %}
-        "updated_at": {{ entity_lower }}.updated_at.isoformat() + "Z",
+        "updated_at": isoformat_utc({{ entity_lower }}.updated_at),
 {% endif %}
     }
     return {{ entity_name }}Response(**data)  # type: ignore[arg-type]

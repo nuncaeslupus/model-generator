@@ -89,6 +89,14 @@ def test_generate_from_examples(example_project: Any) -> None:
         assert "@router.post" not in api_route
         assert "async def create_user" not in api_route
 
+        # TPL-1: datetimes serialize via the UTC helper, never the broken
+        # `isoformat() + "Z"` (which yields an invalid `...+00:00Z` on a
+        # tz-aware/Postgres datetime). The route imports + uses isoformat_utc.
+        # (utils.py / auth / conftest are emitted by main()'s infrastructure
+        #  pass, not this generate() call — they're covered by unit tests.)
+        assert "isoformat_utc(" in api_route
+        assert 'isoformat() + "Z"' not in api_route
+
     finally:
         os.chdir(original_cwd)
 

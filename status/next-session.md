@@ -1,16 +1,61 @@
 # Next Session Plan
 
-## Current State (2026-06-03, on `claude/wizardly-goodall-ftNAF`)
+## Current State (2026-06-21) — full review + P0 fixes in flight
 
-Filter-test coverage merged to `main` as **`eec462f`** (#24). On top of it, a follow-up branch applies a consumer factory/seeding patch (financial+counter constraint fix, factory-seeded read-only get-by-id test, layout-aware factory import) plus the PR #25 Gemini-review responses (min_ref/max_ref resolved at generation time, safe config access) — see "Recently Completed Fixes". 457 model-generator tests pass; example suite 131/131 on Python 3.12.
+A full multi-lens code review landed in **[`status/code-review-2026-06-21.md`](./code-review-2026-06-21.md)**:
+~70 prioritized, stable-ID, queue-ready issues (P0→P3) plus direct answers to the
+owner's 10 review questions and a fix-sequencing plan. **Read that file — it is the
+backlog and the source of truth for this arc.**
 
-**Active arc next session:** mutmut + test-suite refactor (re-queued, see "Other Possible Next Steps" below).
+**Active arc: work the review backlog, P0 → P1 → P2, one PR per cluster** (the
+clusters are listed under "Part D — Working this backlog" in the review doc).
 
----
+### Already in progress (branch `fix/p0-review-2026-06-21`)
 
-## Active arc: re-queue mutmut + test-suite refactor
+4 of the 7 P0 items are implemented with tests. **These were authored during a
+tooling outage and are NOT yet verified — run `make test` + a clean regen before
+trusting them** (see "Working method" below):
 
-The consumer-addendum arc is closed. Next session picks up the two long-deferred items (since 2026-05-11): mutation testing (#1) then the test-suite refactor (#2), both detailed under "Other Possible Next Steps".
+- **TPL-1** — `isoformat_utc()` helper in `utils.py.j2`; route datetime fields +
+  `created_at`/`updated_at` use it instead of `isoformat() + "Z"` (fixes the
+  invalid `...+00:00Z` on Postgres). `route.py.j2` gains a `needs_isoformat` scan
+  flag + combined utils import.
+- **SEC-2** — `auth_router.py.j2`: `reset_password`/`change_password` revoke the
+  user's `UserSession` rows (`update(UserSession)…is_active=False`).
+- **SEC-3** — `auth_router.py.j2`: `_token_fingerprint()` makes reset tokens
+  single-use (bound to the current password hash; no schema change).
+- **TST-2** — `conftest_root.py.j2`: defaults the pepper + `SESSION_SECRET_KEY`
+  env vars (when `auth.strategy` set) so the generated suite is green without a
+  manual `export`.
+- Tests added: `test_reset_and_change_revoke_sessions`,
+  `test_reset_token_is_single_use`, `test_generate_utils_isoformat_utc`
+  (test_generators.py) + an end-to-end block in `test_full_generation.py`.
+
+### Remaining P0 (not started — larger/design-laden)
+
+- **SEC-1** — warn (or fail) at generation when `auth.strategy` is set but no
+  entity declares `api.scope`/`api.public`; scope the example owner entities; add
+  a usage-guide note. (Generator validation + example specs + docs.)
+- **TPL-2** — make FactoryBoy factories emit required FKs by resolving
+  `reference_table` → entity (the template keys on a nonexistent `reference_entity`).
+- **WIZ-1** — extract `main()`'s infra-prep (extra_deps + `_validate_auth_strategy`)
+  into a shared helper called by both the CLI and the wizard (closes the
+  uninstallable-pyproject + the wizard auth-validation drift).
+
+### Working method (apply to every fix)
+
+1. **RED→GREEN**: add/adjust a test that fails before the fix, passes after.
+2. **Regenerate into a CLEAN tree** (inputs only — `models/` + `.model-generator.yaml`),
+   never over the stale `tmp/genout`: infra files (`utils.py`, `auth_router.py`,
+   root `conftest.py`, `main.py`) are **skip-if-exists**, so they only re-emit
+   into a fresh dir, and the regenerated routes import from them.
+3. `make test` (full suite, ~481 + new) and `make lint` (ruff + mypy strict) clean.
+4. `ast.parse` the emitted tree; the only accepted lint quirk is `E402` in
+   generated `alembic/env.py` (see TPL-3 to fix that too).
+5. One PR per cluster; conventional-commit messages.
+
+Note: this repo's stale-doc/test-count issues (DOC-11) are themselves backlog
+items — this header supersedes the older "457 tests / mutmut arc" state below.
 
 ---
 
