@@ -223,6 +223,52 @@ def generate_gitignore(
     return {"path": output_path, "content": content}
 
 
+def generate_env_example(
+    config: dict[str, Any],
+    env: Environment,
+    project_root: Path,
+    project_config: dict[str, Any],
+    has_encrypted_binary: bool = False,
+    no_root_files: bool = False,
+) -> dict[str, Any] | None:
+    """Generate a ``.env.example`` manifest of the project's environment vars.
+
+    The generated app reads ~5-9 env vars (DATABASE_URL, APP_ENV, CORS_ORIGINS,
+    plus auth / rate-limit / encryption vars when those features are on); a
+    manifest makes the required set discoverable. Root-file and bootstrap-only:
+    returns None under ``no_root_files`` and skips when a ``.env.example``
+    already exists.
+    """
+    if no_root_files:
+        return None
+
+    output_path = project_root / ".env.example"
+
+    if output_path.exists():
+        return None
+
+    auth = config.get("auth") or {}
+    auth_enabled = bool(auth.get("strategy"))
+    pepper_env = auth.get("pepper_env", "APP_PASSWORD_PEPPER")
+
+    rate_limit_redis = False
+    if auth_enabled:
+        rate_limit = auth.get("rate_limit") or {}
+        if rate_limit.get("enabled") is not False:
+            rate_limit_redis = rate_limit.get("backend") == "redis"
+
+    template = env.get_template("infrastructure/env.example.j2")
+    content = template.render(
+        project=project_config.get("project", {}),
+        auth_enabled=auth_enabled,
+        pepper_env=pepper_env,
+        rate_limit_redis=rate_limit_redis,
+        has_encrypted_binary=has_encrypted_binary,
+    )
+
+    return {"path": output_path, "content": content}
+
+
 def generate_pyproject(
     config: dict[str, Any],
     env: Environment,
@@ -267,6 +313,8 @@ def generate_pyproject(
         "constraints", "backend/src/database/models/constraints.py"
     )
 
+    migrations_path = paths.get("migrations", "alembic")
+
     # Top-level source directory for mutmut also_copy
     also_copy_dir = Path(validators_path).parts[0] + "/"
 
@@ -294,6 +342,7 @@ def generate_pyproject(
         validators_path=validators_path,
         utils_path=utils_path,
         constraints_path=constraints_path,
+        migrations_path=migrations_path,
         also_copy_dir=also_copy_dir,
         package_root=package_root,
         style=style,
@@ -708,6 +757,14 @@ def generate_infrastructure(
             project_root,
             project_config,
             extra_deps,
+            no_root_files=no_root_files,
+        ),
+        generate_env_example(
+            config,
+            env,
+            project_root,
+            project_config,
+            has_encrypted_binary=has_encrypted_binary,
             no_root_files=no_root_files,
         ),
         generate_base(config, env, project_root),

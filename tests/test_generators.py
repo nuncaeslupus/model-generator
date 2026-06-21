@@ -32,6 +32,7 @@ from model_generator.generators.constraints import (
 from model_generator.generators.infrastructure import (
     generate_base,
     generate_engine,
+    generate_env_example,
     generate_errors,
     generate_gitignore,
     generate_infrastructure,
@@ -3919,6 +3920,93 @@ class TestInfrastructureGenerators:
         assert result is not None
         assert "engine.py" in str(result["path"])
 
+    def test_generate_engine_production_database_url_guard(
+        self, project_env: Any
+    ) -> None:
+        """TPL-4: engine refuses the SQLite dev fallback under APP_ENV=production."""
+        project_root, config, env = project_env
+        result = generate_engine(config, env, project_root)
+        assert isinstance(result, dict)
+
+        content = result["content"]
+        # Guard helper present; raises in production, dev fallback otherwise.
+        assert "def _resolve_database_url() -> str:" in content
+        assert 'if os.getenv("APP_ENV") == "production":' in content
+        assert "DATABASE_URL environment variable must be set in production." in content
+        assert 'return "sqlite+aiosqlite:///./app.db"' in content
+        assert "DATABASE_URL = _resolve_database_url()" in content
+
+    def test_generate_pyproject_alembic_env_per_file_ignore(
+        self, project_env: Any
+    ) -> None:
+        """TPL-3: emitted pyproject ignores E402 for the alembic env module."""
+        project_root, config, env = project_env
+        result = generate_pyproject(config, env, project_root, config)
+        assert isinstance(result, dict)
+
+        content = result["content"]
+        assert "[tool.ruff.lint.per-file-ignores]" in content
+        # Derived from the configured migrations path (default "alembic").
+        migrations_path = config["paths"].get("migrations", "alembic")
+        assert f'"{migrations_path}/env.py" = ["E402"]' in content
+
+    def test_generate_env_example(self, project_env: Any) -> None:
+        """TPL-9: .env.example manifests the always-present env vars."""
+        project_root, config, env = project_env
+        result = generate_env_example(config, env, project_root, config)
+        assert isinstance(result, dict)
+
+        assert result is not None
+        assert result["path"] == project_root / ".env.example"
+        content = result["content"]
+        assert "APP_ENV=development" in content
+        assert "DATABASE_URL=sqlite+aiosqlite:///./app.db" in content
+        assert "ALEMBIC_DATABASE_URL" in content
+        assert "CORS_ORIGINS" in content
+        # No auth section without an auth strategy.
+        assert "SESSION_SECRET_KEY" not in content
+        assert "FERNET_KEY" not in content
+
+    def test_generate_env_example_skips_existing(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        (project_root / ".env.example").write_text("APP_ENV=keep\n")
+
+        result = generate_env_example(config, env, project_root, config)
+        assert result is None
+
+    def test_generate_env_example_with_no_root_files_returns_none(
+        self, project_env: Any
+    ) -> None:
+        project_root, config, env = project_env
+        result = generate_env_example(
+            config, env, project_root, config, no_root_files=True
+        )
+        assert result is None
+        assert not (project_root / ".env.example").exists()
+
+    def test_generate_env_example_auth_vars(self, project_env: Any) -> None:
+        """Auth + redis rate-limit + encryption add their env vars to the manifest."""
+        project_root, config, env = project_env
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "MY_PEPPER",
+                "rate_limit": {"backend": "redis"},
+            },
+        }
+
+        result = generate_env_example(
+            config, env, project_root, config, has_encrypted_binary=True
+        )
+        assert isinstance(result, dict)
+
+        content = result["content"]
+        assert "SESSION_SECRET_KEY=" in content
+        assert "MY_PEPPER=" in content
+        assert "RATELIMIT_STORAGE_URI" in content
+        assert "FERNET_KEY=" in content
+
     def test_generate_types(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_types(config, env, project_root)
@@ -4403,6 +4491,7 @@ class TestInfrastructureGenerators:
         assert "base.py" in file_names
         assert "main.py" in file_names
         assert "pyproject.toml" in file_names
+        assert ".env.example" in file_names
         assert "request_limit.py" in file_names
 
     def test_infrastructure_skips_existing(self, project_env: Any) -> None:
@@ -4441,6 +4530,7 @@ class TestInfrastructureGenerators:
             "validators.py",
             "utils.py",
             "request_limit.py",
+            ".env.example",
         }
         new_infra = [f for f in files2 if f.name in skipped_infra]
         assert len(new_infra) == 0

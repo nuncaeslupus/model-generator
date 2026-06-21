@@ -57,15 +57,41 @@ example suite has been **silently red since SEC-1** (scoped CRUD → 401; the
 - **Verified:** 519 unit tests (+7), `make lint` clean, `make smoke-example` →
   **135/135** generated contract tests pass.
 
+### P1 green-out-of-box trio shipped — TPL-3 + TPL-4 + TPL-9 (PR pending)
+
+Branch `claude/elegant-dirac-kq7l73`. Completes the "generated project is green
+out of the box" cluster (TST-1/TST-2 already shipped in #38).
+
+- **TPL-3 — alembic `env.py` E402 silenced.** `pyproject.toml.j2` emits a
+  `[tool.ruff.lint.per-file-ignores]` block ignoring `E402` for
+  `{{ migrations_path }}/env.py` (the standard alembic layout configures logging
+  before importing model metadata). `generate_pyproject` threads
+  `migrations_path` (default `alembic`). Verified: generated `alembic/env.py`
+  now passes `ruff check`. (The remaining main/auth I001 + pagination-PEP695
+  quirks are auto-fixed by `ruff check --fix` — separate TPL-22 territory.)
+- **TPL-4 — production `DATABASE_URL` guard.** `engine.py.j2` wraps the URL
+  resolution in `_resolve_database_url()`: keeps the SQLite dev fallback
+  normally, but raises `RuntimeError` when `DATABASE_URL` is unset under
+  `APP_ENV=production` (mirrors the `SESSION_SECRET_KEY` guard in
+  `auth_router.py.j2`).
+- **TPL-9 — `.env.example` manifest.** New `infrastructure/env.example.j2` +
+  `generate_env_example` (root-file, bootstrap-only, gated on `no_root_files`).
+  Always lists `APP_ENV`/`DATABASE_URL`/`ALEMBIC_DATABASE_URL`/`SQL_ECHO`/
+  `CORS_ORIGINS`; adds `SESSION_SECRET_KEY` + pepper when auth is on,
+  `RATELIMIT_STORAGE_URI` for a redis rate-limit backend, `FERNET_KEY` for
+  encrypted binary fields. Usage-guide "Environment Variables" subsection added.
+
+**Verified:** 534 unit tests (+6), `make lint` clean, `make smoke-example` →
+135/135. Generated `.env.example` inspected (correct var set + trailing newline);
+`ruff check alembic/env.py` clean.
+
 ### Next: remaining P1 clusters
 
 Consult the review doc (`status/code-review-2026-06-21.md`, Part D). Still open
-P1: the **green-out-of-box** template trio (TPL-3 E402 per-file-ignore, TPL-4
-prod `DATABASE_URL` guard, TPL-9 `.env.example`); the **docs sweep**
-(DOC-2,4,5,6,…); the **tooling** PR (TOOL-1, TOOL-3, GEN-8). Note: the generated
-tree still has the pre-existing lint quirks (alembic E402, main/auth I001,
-pagination PEP695-on-py311) — TPL-3/TPL-22 territory, not gated by the new smoke
-job.
+P1: the **docs sweep** (DOC-2,4,5,6,…); the **tooling** PR (TOOL-1, TOOL-3,
+GEN-8). Note: the generated tree still has the pre-existing main/auth I001 +
+pagination-PEP695-on-py311 lint quirks (auto-fixed by `ruff check --fix`) —
+TPL-22 territory, not gated by the smoke job.
 
 ### P1 template-correctness trio shipped — TPL-5 + TPL-14 + TPL-16 (PR pending)
 
