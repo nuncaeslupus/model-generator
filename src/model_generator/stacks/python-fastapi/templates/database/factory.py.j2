@@ -52,8 +52,9 @@ Usage:
 {% if field.type == 'enum' and field.enum_name not in ns.enum_imports %}
 {% set _ = ns.enum_imports.append(field.enum_name) %}
 {% endif %}
-{% if field.type == 'reference' and field.reference_entity != entity_name and field.reference_entity not in ns.entity_refs %}
-{% set _ = ns.entity_refs.append(field.reference_entity) %}
+{%- set _ref_entity = table_to_entity.get(field.reference_table, '') if field.reference_table is defined else '' -%}
+{% if field.type == 'reference' and _ref_entity and _ref_entity != entity_name and _ref_entity not in ns.entity_refs %}
+{% set _ = ns.entity_refs.append(_ref_entity) %}
 {% endif %}
 {% endfor %}
 {% if entity.relationships is defined and entity.relationships | length > 0 %}
@@ -115,6 +116,7 @@ fake = Faker()
 
 {#- Helper macro to generate field factory based on type - outputs a single indented line -#}
 {%- macro generate_field_factory(field_name, field, entity_name) %}
+{%- set _ref_entity = table_to_entity.get(field.reference_table, '') if field.reference_table is defined else '' -%}
 {% if field.type == 'uuid' and field.primary_key and field.auto_generate %}
     {{ field_name }} = factory.LazyFunction(uuid.uuid4)
 {% elif field.type == 'text' %}
@@ -211,11 +213,11 @@ fake = Faker()
     {{ field_name }} = factory.LazyFunction(lambda: {})
 {% elif field.type == 'json_array' %}
     {{ field_name }} = factory.LazyFunction(lambda: [])
-{% elif field.type == 'reference' and field.reference_entity is defined %}
-{% if field.reference_entity == entity_name %}
-    {{ field_name }} = factory.SubFactory("{{ field.reference_entity }}Factory")
+{% elif field.type == 'reference' and _ref_entity %}
+{% if _ref_entity == entity_name %}
+    {{ field_name }} = factory.SubFactory("{{ _ref_entity }}Factory")
 {% else %}
-    {{ field_name }} = factory.SubFactory({{ field.reference_entity }}Factory)
+    {{ field_name }} = factory.SubFactory({{ _ref_entity }}Factory)
 {% endif %}
 {% elif field.default is defined %}
 {% if field.default is string %}
