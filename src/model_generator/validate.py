@@ -30,7 +30,7 @@ def load_schema() -> dict[str, Any]:
         print(f"Error: Schema not found at {schema_path}")
         sys.exit(1)
 
-    with Path(schema_path).open(encoding="utf-8") as f:
+    with schema_path.open(encoding="utf-8") as f:
         return cast(dict[str, Any], json.load(f))
 
 
@@ -46,7 +46,7 @@ def validate_model(model_path: Path, schema: dict[str, Any]) -> list[str]:
         return [f"File not found: {model_path}"]
 
     try:
-        with Path(model_path).open(encoding="utf-8") as f:
+        with model_path.open(encoding="utf-8") as f:
             model = json.load(f)
     except json.JSONDecodeError as e:
         return [f"Invalid JSON: {e}"]
@@ -202,7 +202,7 @@ def main() -> None:
                 print(error)
         else:
             # Show entity count
-            with Path(model_path).open(encoding="utf-8") as f:
+            with model_path.open(encoding="utf-8") as f:
                 model = json.load(f)
             entity_count = len(model.get("entities", {}))
             print(f"✅ {model_path.name}: Valid ({entity_count} entities)")

@@ -91,7 +91,7 @@ def _create_config(config_path: Path, project_root: Path) -> None:
     stacks = _scan_stacks()
     stack = select("Stack:", choices=stacks, default="python-fastapi")
 
-    layout_choices = [*list(_PATH_LAYOUTS.keys()), "custom"]
+    layout_choices = [*_PATH_LAYOUTS, "custom"]
     layout = select("Path layout:", choices=layout_choices, default=layout_choices[0])
 
     config: dict[str, Any] = {
@@ -120,7 +120,7 @@ def _update_config(config_path: Path) -> None:
     """Show current config and offer updates."""
     print("\n--- Update Project Settings ---\n")
 
-    with Path(config_path).open(encoding="utf-8") as f:
+    with config_path.open(encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
 
     print("Current configuration:")

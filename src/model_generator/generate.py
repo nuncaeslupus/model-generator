@@ -866,7 +866,7 @@ def _process_outputs(
         path.parent.mkdir(parents=True, exist_ok=True)
 
         if mode == "append":
-            with Path(path).open("a", encoding="utf-8") as f:
+            with path.open("a", encoding="utf-8") as f:
                 f.write(content)
             new_count = output.get("new_count", 0)
             skipped = output.get("skipped", 0)
@@ -874,7 +874,7 @@ def _process_outputs(
             if skipped > 0:
                 print(f"     (skipped {skipped} already existing)")
         else:
-            with Path(path).open("w", encoding="utf-8") as f:
+            with path.open("w", encoding="utf-8") as f:
                 f.write(content)
             print(f"  ✅ Generated: {path}")
 
