@@ -319,7 +319,7 @@ class TestPrepareInfraModules:
             }
             with patch("model_generator.generate._validate_auth_strategy"):
                 domains, routes, factories, extra_deps, models = _prepare_infra_modules(
-                    [model_path], config, "per-entity"
+                    [model_path], config
                 )
             assert "bcrypt>=4.0.0" in extra_deps
             assert "itsdangerous>=2.0" in extra_deps
@@ -355,7 +355,5 @@ class TestPrepareInfraModules:
             )
             config = {"generation": {"layout": "per-entity"}}
             with patch("model_generator.generate._validate_auth_strategy"):
-                _, _, _, extra_deps, _ = _prepare_infra_modules(
-                    [model_path], config, "per-entity"
-                )
+                _, _, _, extra_deps, _ = _prepare_infra_modules([model_path], config)
             assert "pandas>=2.0.0" in extra_deps

@@ -858,13 +858,13 @@ def _process_outputs(
 def _prepare_infra_modules(
     model_files: list[Path],
     config: dict[str, Any],
-    layout: str,
 ) -> tuple[list[str], list[str], list[str], list[str], list[dict[str, Any]]]:
     """Collect module lists and extra deps for infrastructure generation.
 
     Shared by main() and the interactive wizard so both paths produce an
     identical pyproject.toml and validate auth prerequisites.
     """
+    layout = get_layout(config)
     domains: list[str] = []
     route_modules: list[str] = []
     factory_modules: list[str] = []
@@ -877,13 +877,13 @@ def _prepare_infra_modules(
         domain = model.get("domain", "unknown")
         has_api = any(
             e.get("api", {}).get("enabled", True)
-            for e in model.get("entities", {}).values()
+            for e in (model.get("entities") or {}).values()
         )
         if domain not in domains and has_api:
             domains.append(domain)
 
         if layout == "per-entity":
-            for name, entity in model.get("entities", {}).items():
+            for name, entity in (model.get("entities") or {}).items():
                 stem = snake_case(name)
                 if (
                     entity.get("api", {}).get("enabled", True)
@@ -1030,7 +1030,6 @@ def main() -> None:
 
     config = load_config(args.stack)
     env = get_template_env(args.stack, config)
-    layout = get_layout(config)
 
     (
         domains,
@@ -1038,7 +1037,7 @@ def main() -> None:
         factory_modules,
         extra_deps,
         loaded_models,
-    ) = _prepare_infra_modules(model_files, config, layout)
+    ) = _prepare_infra_modules(model_files, config)
 
     has_encrypted_binary = _has_encrypted_binary_field(loaded_models)
 

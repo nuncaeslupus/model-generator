@@ -98,7 +98,6 @@ def run_generate() -> None:
         from ...generate import _has_encrypted_binary_field, _prepare_infra_modules
         from ...generators.infrastructure import generate_infrastructure
         from ...utils import (
-            get_layout,
             get_template_env,
             load_config,
             run_quality_tools,
@@ -107,7 +106,6 @@ def run_generate() -> None:
         stack = "python-fastapi"
         config = load_config(stack)
         env = get_template_env(stack, config)
-        layout = get_layout(config)
 
         (
             domains,
@@ -115,7 +113,7 @@ def run_generate() -> None:
             factory_modules,
             extra_deps,
             loaded_models,
-        ) = _prepare_infra_modules(selected_files, config, layout)
+        ) = _prepare_infra_modules(selected_files, config)
 
         infra_files = generate_infrastructure(
             config=config,
