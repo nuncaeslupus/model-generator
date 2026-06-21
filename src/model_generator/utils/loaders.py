@@ -13,19 +13,20 @@ import yaml
 
 from .templates import path_to_import
 
+_JSON_COMMENT_RE = re.compile(r'("(?:\\.|[^"\\])*")|//[^\n]*')
+
 
 def strip_json_comments(text: str) -> str:
     """Strip ``//`` line and inline comments from JSON text.
 
-    Naive (does not skip over string literals), matching the model JSON dialect
-    the rest of the pipeline accepts. Shared so every reader (generator,
-    validator, conftest generation) parses the same dialect.
+    Skips over double-quoted string literals so a ``//`` inside a value (a URL,
+    a description) is preserved — only comments *outside* strings are removed.
+    Shared so every reader (generator, validator, conftest generation) parses
+    the same dialect.
     """
-    # Strip whole-line // comments
-    text = re.sub(r"^\s*//.*$", "", text, flags=re.MULTILINE)
-    # Strip inline // comments (naive approach - doesn't handle strings)
-    text = re.sub(r"\s+//.*$", "", text, flags=re.MULTILINE)
-    return text
+    return _JSON_COMMENT_RE.sub(
+        lambda m: m.group(1) if m.group(1) is not None else "", text
+    )
 
 
 def parse_model_file(model_path: Path) -> dict[str, Any]:
@@ -41,8 +42,11 @@ def parse_model_file(model_path: Path) -> dict[str, Any]:
         json_content = strip_json_comments(f.read())
 
     data = json.loads(json_content)
-    _normalize_field_types(data)
-    _normalize_indexes(data)
+    # Normalization expects an object; for non-dict JSON (a list/primitive),
+    # skip it and let the schema validator report the type error cleanly.
+    if isinstance(data, dict):
+        _normalize_field_types(data)
+        _normalize_indexes(data)
     return cast(dict[str, Any], data)
 
 

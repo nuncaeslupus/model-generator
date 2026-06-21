@@ -147,3 +147,40 @@ def test_load_model_accepts_legacy_index_shape(
     captured = capsys.readouterr()
     assert "Model validation warning" not in captured.out
     assert data["entities"]["Widget"]["indexes"] == [{"fields": ["email"]}]
+
+
+def test_strip_json_comments_preserves_slashes_in_strings() -> None:
+    """GEN-9: a // inside a string value (URL) must survive comment stripping."""
+    from model_generator.utils.loaders import strip_json_comments
+
+    text = '{\n  "url": "https://example.com/x",  // trailing comment\n  "a": 1\n}'
+    stripped = strip_json_comments(text)
+    data = json.loads(stripped)
+    assert data["url"] == "https://example.com/x"
+    assert data["a"] == 1
+
+
+def test_load_model_preserves_url_value_with_slashes(tmp_path: Path) -> None:
+    """End-to-end: a description containing // is not corrupted by stripping."""
+    model = {
+        "domain": "links",
+        "entities": {
+            "Link": {
+                "table": "links",
+                "fields": {
+                    "id": {"type": "uuid", "primary_key": True},
+                    "href": {
+                        "type": "text",
+                        "max_length": 255,
+                        "description": "Default is https://example.com/home",
+                    },
+                },
+            }
+        },
+    }
+    model_path = tmp_path / "links.model.json"
+    model_path.write_text(json.dumps(model), encoding="utf-8")
+
+    data = generate.load_model(model_path)
+    desc = data["entities"]["Link"]["fields"]["href"]["description"]
+    assert desc == "Default is https://example.com/home"

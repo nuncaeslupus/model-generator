@@ -1092,6 +1092,27 @@ class TestRunQualityTools:
             assert c.kwargs["cwd"] == tmp_path
             assert c.kwargs["capture_output"] is True
 
+    def test_chunks_large_file_lists(self, tmp_path: Path) -> None:
+        """Files are batched so a huge list can't overflow the OS arg limit."""
+        files = [tmp_path / f"f{i}.py" for i in range(250)]
+        with (
+            patch("model_generator.utils.quality.subprocess.run") as mock_run,
+            patch("model_generator.utils.quality._find_ruff", return_value="ruff"),
+            patch(
+                "model_generator.utils.quality.shutil.which",
+                return_value="/usr/bin/ruff",
+            ),
+        ):
+            mock_run.return_value.returncode = 0
+            run_quality_tools({}, tmp_path, files)
+        # 250 files / 100 per batch = 3 batches, for each of format + check = 6 calls.
+        assert mock_run.call_count == 6
+        for c in mock_run.call_args_list:
+            # argv = [ruff, subcommand, *batch]; batch never exceeds 100 files.
+            argv = c.args[0]
+            file_count = sum(1 for a in argv if a.endswith(".py"))
+            assert file_count <= 100
+
     def test_skips_when_ruff_missing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

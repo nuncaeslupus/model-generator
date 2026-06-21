@@ -122,6 +122,16 @@ class TestValidateModel:
         assert len(errors) == 1
         assert "Invalid JSON" in errors[0]
 
+    def test_non_dict_json_reports_schema_error_not_crash(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
+        """Valid-but-non-object JSON must surface a schema error, not AttributeError."""
+        path = tmp_path / "list.model.json"
+        path.write_text("[]")
+        errors = validate_model(path, schema)
+        assert len(errors) > 0
+        assert any("is not of type" in e for e in errors)
+
     def test_schema_violation_fields_wrong_type(
         self, tmp_path: Path, schema: dict[str, Any]
     ) -> None:
