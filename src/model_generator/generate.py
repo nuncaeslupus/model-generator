@@ -855,6 +855,62 @@ def _process_outputs(
     return generated_files
 
 
+def _prepare_infra_modules(
+    model_files: list[Path],
+    config: dict[str, Any],
+    layout: str,
+) -> tuple[list[str], list[str], list[str], list[str], list[dict[str, Any]]]:
+    """Collect module lists and extra deps for infrastructure generation.
+
+    Shared by main() and the interactive wizard so both paths produce an
+    identical pyproject.toml and validate auth prerequisites.
+    """
+    domains: list[str] = []
+    route_modules: list[str] = []
+    factory_modules: list[str] = []
+    extra_deps: list[str] = []
+    loaded_models: list[dict[str, Any]] = []
+
+    for model_file in model_files:
+        model = load_model(model_file)
+        loaded_models.append(model)
+        domain = model.get("domain", "unknown")
+        has_api = any(
+            e.get("api", {}).get("enabled", True)
+            for e in model.get("entities", {}).values()
+        )
+        if domain not in domains and has_api:
+            domains.append(domain)
+
+        if layout == "per-entity":
+            for name, entity in model.get("entities", {}).items():
+                stem = snake_case(name)
+                if (
+                    entity.get("api", {}).get("enabled", True)
+                    and stem not in route_modules
+                ):
+                    route_modules.append(stem)
+                if has_api and stem not in factory_modules:
+                    factory_modules.append(stem)
+
+        extra_deps.extend(model.get("dependencies", []))
+
+    extra_deps = sorted(set(extra_deps))
+
+    _validate_auth_strategy(loaded_models, config)
+    _validate_auth_scope_coverage(loaded_models, config)
+
+    auth_extra = _compute_auth_extra(config)
+    if auth_extra:
+        extra_deps = sorted(set(extra_deps + auth_extra))
+
+    if layout != "per-entity":
+        route_modules = list(domains)
+        factory_modules = list(domains)
+
+    return domains, route_modules, factory_modules, extra_deps, loaded_models
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate code from model definitions")
     parser.add_argument(
@@ -976,52 +1032,13 @@ def main() -> None:
     env = get_template_env(args.stack, config)
     layout = get_layout(config)
 
-    # Build module-name lists for infrastructure templates that import per-entity
-    # (or per-domain) generated modules. `domains` is still the per-spec domain
-    # list; `route_modules` and `factory_modules` are the layout-aware module
-    # stems that main.py and the root conftest import from. `factory_modules`
-    # mirrors the per-domain gating: only include factories from domains that
-    # have at least one API-enabled entity (parity with `domains`).
-    domains: list[str] = []
-    route_modules: list[str] = []
-    factory_modules: list[str] = []
-    extra_deps: list[str] = []
-    loaded_models: list[dict[str, Any]] = []
-    for model_file in model_files:
-        model = load_model(model_file)
-        loaded_models.append(model)
-        domain = model.get("domain", "unknown")
-        has_api = any(
-            e.get("api", {}).get("enabled", True)
-            for e in model.get("entities", {}).values()
-        )
-        if domain not in domains and has_api:
-            domains.append(domain)
-
-        if layout == "per-entity":
-            for name, entity in model.get("entities", {}).items():
-                stem = snake_case(name)
-                if (
-                    entity.get("api", {}).get("enabled", True)
-                    and stem not in route_modules
-                ):
-                    route_modules.append(stem)
-                if has_api and stem not in factory_modules:
-                    factory_modules.append(stem)
-
-        extra_deps.extend(model.get("dependencies", []))
-    extra_deps = sorted(set(extra_deps))
-
-    _validate_auth_strategy(loaded_models, config)
-    _validate_auth_scope_coverage(loaded_models, config)
-
-    auth_extra = _compute_auth_extra(config)
-    if auth_extra:
-        extra_deps = sorted(set(extra_deps + auth_extra))
-
-    if layout != "per-entity":
-        route_modules = list(domains)
-        factory_modules = list(domains)
+    (
+        domains,
+        route_modules,
+        factory_modules,
+        extra_deps,
+        loaded_models,
+    ) = _prepare_infra_modules(model_files, config, layout)
 
     has_encrypted_binary = _has_encrypted_binary_field(loaded_models)
 

@@ -279,3 +279,83 @@ class TestTestRunnerAction:
             assert "No tests/ directory found" in captured.out
         finally:
             os.chdir(original_cwd)
+
+
+class TestPrepareInfraModules:
+    """Tests for the shared _prepare_infra_modules() helper."""
+
+    def test_collects_auth_extra_deps(self) -> None:
+        """Auth extra deps appear in extra_deps when auth.strategy is configured."""
+
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        from model_generator.generate import _prepare_infra_modules
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = Path(tmp) / "test.model.json"
+            model_path.write_text(
+                json.dumps(
+                    {
+                        "domain": "test",
+                        "entities": {
+                            "Widget": {
+                                "fields": {
+                                    "id": {
+                                        "type": "uuid",
+                                        "primary_key": True,
+                                        "auto_generate": True,
+                                    }
+                                },
+                            }
+                        },
+                    }
+                )
+            )
+            config = {
+                "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
+                "generation": {"layout": "per-entity"},
+            }
+            with patch("model_generator.generate._validate_auth_strategy"):
+                domains, routes, factories, extra_deps, models = _prepare_infra_modules(
+                    [model_path], config, "per-entity"
+                )
+            assert "bcrypt>=4.0.0" in extra_deps
+            assert "itsdangerous>=2.0" in extra_deps
+
+    def test_collects_model_dependencies(self) -> None:
+        """Model-declared dependencies appear in extra_deps."""
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        from model_generator.generate import _prepare_infra_modules
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = Path(tmp) / "test.model.json"
+            model_path.write_text(
+                json.dumps(
+                    {
+                        "domain": "test",
+                        "dependencies": ["pandas>=2.0.0"],
+                        "entities": {
+                            "Widget": {
+                                "fields": {
+                                    "id": {
+                                        "type": "uuid",
+                                        "primary_key": True,
+                                        "auto_generate": True,
+                                    }
+                                },
+                            }
+                        },
+                    }
+                )
+            )
+            config = {"generation": {"layout": "per-entity"}}
+            with patch("model_generator.generate._validate_auth_strategy"):
+                _, _, _, extra_deps, _ = _prepare_infra_modules(
+                    [model_path], config, "per-entity"
+                )
+            assert "pandas>=2.0.0" in extra_deps
