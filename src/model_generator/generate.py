@@ -770,7 +770,7 @@ def _validate_auth_scope_coverage(
             '  "api": {\n'
             '    "scope": {"owner_field": "user_id"}\n'
             "  }\n\n"
-            f"API-enabled entities found: {', '.join(api_enabled)}\n"
+            f"API-enabled entities found: {', '.join(sorted(set(api_enabled)))}\n"
             "See docs/user/usage-guide.md for details."
         )
 
