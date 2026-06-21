@@ -238,8 +238,8 @@ Same numeric options as `financial`. Fixed precision: `Numeric(5, 4)`.
 
 > **Enum casing:** member names *and* string values are emitted in **UPPER_CASE**
 > everywhere. The generator uppercases whatever you write, so `"active"` and
-> `"ACTIVE"` both produce the member `ACTIVE` with value `"ACTIVE"`. Write them
-> UPPER_CASE in your specs to match the generated output.
+> `"ACTIVE"` both produce the member `ACTIVE` with value `"ACTIVE"`. Write
+> them in UPPER_CASE in your specs to match the generated output.
 
 **SQLAlchemy:** `Column(SQLEnum(UserStatus, native_enum=False), nullable=False, default=UserStatus.ACTIVE)`
 **Pydantic:** `UserStatus` (enum type)
@@ -285,7 +285,8 @@ Same numeric options as `financial`. Fixed precision: `Numeric(5, 4)`.
 
 Raw bytes column. With `encrypt`, the generator emits a SQLAlchemy
 `TypeDecorator` that transparently Fernet-encrypts on write and decrypts on read
-(app code reads/writes plain `bytes`); the key is loaded from `encrypt.key_env`.
+(app code reads/writes plain `bytes`); the key is loaded from the environment
+variable named in `encrypt.key_env`.
 
 **SQLAlchemy:** `Column(LargeBinary, nullable=False)` (or the encrypted `TypeDecorator`)
 **Pydantic:** `bytes` (base64-encoded in JSON)
@@ -499,7 +500,7 @@ When `scope` is set, the generated handlers behave as follows:
 - `create` injects `current_user` and force-assigns `owner_field = current_user.id` after building the entity from the request body.
 - `owner_field` is excluded from both `Create` and `Update` request models — it is set by the handler, not the API caller, and is immutable from the API's perspective.
 
-`api.scope` requires a `auth.dependency_path` — the dotted import path to a
+`api.scope` requires an `auth.dependency_path` — the dotted import path to a
 `get_current_user`-style callable that the generator injects via FastAPI's
 `Depends()`. There are two ways it gets set:
 
@@ -646,7 +647,7 @@ The relationship's existing `foreign_keys` array disambiguates the ORM mapping (
 
 Member names and values are normalized to **UPPER_CASE** at generation. A bare
 string `"deposit"` becomes the member `DEPOSIT` with value `"DEPOSIT"`; write
-values UPPER_CASE so the spec matches the emitted enum.
+values in UPPER_CASE so the spec matches the emitted enum.
 
 ### `_shared/constraints.json`
 

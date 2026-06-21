@@ -85,7 +85,7 @@ The stack is **async** end to end: `AsyncSession`, `async_sessionmaker`,
 |---------|-------------|-----|
 | `ModuleNotFoundError: No module named '...models.base'` | `paths.base` is not a `base.py` inside `paths.database_models` | See [Base Module Location](./usage-guide.md#base-module-location) — base must be a child of the models dir, named `base.py` |
 | Imports like `from src.hub.database...` are wrong for your `src/` layout | `python_root` not set | Set `python_root: "src"` to strip the prefix from generated imports (see [Python Import Root](./usage-guide.md#python-import-root)) |
-| `/auth/register` returns 500 and the whole suite cascades | `APP_PASSWORD_PEPPER` (or `SESSION_SECRET_KEY`) unset | `cp .env.example .env` and fill them in, or export them before `pytest` |
+| `/api/v1/auth/register` returns 500 and the whole suite cascades | `APP_PASSWORD_PEPPER` (or `SESSION_SECRET_KEY`) unset | `cp .env.example .env` and fill them in, or export them before `pytest` |
 | Adopter config silently ignored | `model-gen` run from a directory other than the project root | `load_config` reads `.model-generator.yaml` from **CWD** — `cd` into the project first |
 | `RuntimeError: DATABASE_URL ... must be set in production` | `APP_ENV=production` with no `DATABASE_URL` | Set a real `DATABASE_URL` (the dev SQLite fallback is refused in production by design) |
 | `alembic upgrade` fails on an async URL | (older output) sync Alembic engine | Already fixed — `get_url()` coerces async drivers to sync; regenerate `alembic/env.py` if your tree predates 0.1.4 |
