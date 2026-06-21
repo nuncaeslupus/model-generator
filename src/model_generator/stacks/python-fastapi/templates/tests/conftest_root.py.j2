@@ -26,8 +26,20 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import sessionmaker
 
 from {{ database_models_import }}.base import Base
+{% if auth_strategy %}
+
+# Default the auth env (password pepper + cookie-signing secret) BEFORE the app
+# is imported — the auth router builds its signed-cookie serializer at import
+# time. These defaults keep the generated contract suite green without a manual
+# export; real deployments provide them via the environment/secrets. `app` and
+# `get_session` are imported lazily in the client fixture (below) so this runs
+# first.
+os.environ.setdefault("{{ pepper_env }}", "test-pepper-not-for-production")
+os.environ.setdefault("SESSION_SECRET_KEY", "test-session-secret-not-for-production")
+{% else %}
 from {{ main_import }} import app
 from {{ engine_import }} import get_session
+{% endif %}
 
 
 @pytest.fixture(scope="session")
@@ -42,6 +54,13 @@ def client() -> Generator[TestClient, None, None]:
 
     With xdist parallel testing, each worker gets its own session-scoped database.
     """
+{% if auth_strategy %}
+    # Imported here, not at module top, so the auth env defaults set above are
+    # applied before the auth router's import-time serializer construction.
+    from {{ main_import }} import app
+    from {{ engine_import }} import get_session
+
+{% endif %}
     # Create temporary database file
     fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(fd)

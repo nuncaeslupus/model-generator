@@ -41,7 +41,7 @@ import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from {{ db_import }}.engine import get_session
@@ -112,6 +112,16 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, password_hash: str) -> bool:
     """Verify a plaintext password against a stored hash."""
     return bcrypt.checkpw(_peppered(password).encode(), password_hash.encode())
+
+
+def _token_fingerprint(password_hash: str) -> str:
+    """Short fingerprint of the current password hash.
+
+    Bound into reset tokens so a token becomes single-use: once the password
+    changes (by this reset or any other path) the fingerprint no longer matches
+    and the token is rejected, closing the replay-within-TTL window.
+    """
+    return hashlib.sha256(password_hash.encode()).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +382,9 @@ async def forgot_password(
     result = await session.execute(stmt)
     user = result.scalar_one_or_none()
     if user is not None:
-        token = _serializer.dumps({"user_id": str(user.id)})
+        token = _serializer.dumps(
+            {"user_id": str(user.id), "pw": _token_fingerprint(user.password_hash)}
+        )
         try:
             await _send_password_reset_email(user.email, token)
         except NotImplementedError as exc:
@@ -413,7 +425,24 @@ async def reset_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid reset token",
         )
+
+    # Single-use: reject a token whose bound fingerprint no longer matches the
+    # current password hash (already-used or otherwise-rotated token).
+    fingerprint = data.get("pw") if isinstance(data, dict) else None
+    if fingerprint != _token_fingerprint(user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
     user.password_hash = hash_password(payload.new_password)
+    # Revoke all existing sessions so a reset (e.g. account-takeover recovery)
+    # actually evicts an attacker instead of leaving their session valid.
+    await session.execute(
+        update(UserSession)
+        .where(UserSession.user_id == user.id)
+        .values(is_active=False)
+    )
     await session.commit()
     return MessageResponse(message="Password reset successful")
 
@@ -430,5 +459,11 @@ async def change_password(
             detail="Current password is incorrect",
         )
     current_user.password_hash = hash_password(payload.new_password)
+    # Revoke existing sessions on credential change (forces re-login everywhere).
+    await session.execute(
+        update(UserSession)
+        .where(UserSession.user_id == current_user.id)
+        .values(is_active=False)
+    )
     await session.commit()
     return MessageResponse(message="Password changed successfully")

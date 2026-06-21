@@ -3600,6 +3600,27 @@ class TestInfrastructureGenerators:
         result = generate_utils(config, env, project_root)
         assert result is None
 
+    def test_generate_utils_isoformat_utc(self, project_env: Any) -> None:
+        """TPL-1: isoformat_utc emits one 'Z' for naive AND tz-aware input."""
+        from datetime import datetime, timezone
+
+        project_root, config, env = project_env
+        result = generate_utils(config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "def isoformat_utc(" in content
+
+        ns: dict[str, Any] = {}
+        exec(content, ns)  # exercising generated code
+        iso = ns["isoformat_utc"]
+        aware = datetime(2025, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+        naive = datetime(2025, 1, 2, 3, 4, 5)
+        # Both must produce a single trailing 'Z' and never the malformed
+        # '...+00:00Z' that the old `isoformat() + "Z"` emitted on Postgres.
+        assert iso(aware) == "2025-01-02T03:04:05Z"
+        assert iso(naive) == "2025-01-02T03:04:05Z"
+        assert iso(None) is None
+
     def test_generate_main(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_main(
@@ -3840,6 +3861,32 @@ class TestInfrastructureGenerators:
             config, env, project_root, domains=["users"]
         )
         assert result is None
+
+    def test_conftest_root_no_auth_env_without_strategy(self, project_env: Any) -> None:
+        """TST-2: no env defaults emitted when auth is not configured."""
+        project_root, config, env = project_env
+        result = generate_test_conftest_root(
+            config, env, project_root, domains=["users"]
+        )
+        assert isinstance(result, dict)
+        assert "os.environ.setdefault" not in result["content"]
+
+    def test_conftest_root_defaults_auth_env_when_strategy_set(
+        self, project_env: Any
+    ) -> None:
+        """TST-2: auth env vars default so the suite runs without a manual export."""
+        project_root, config, env = project_env
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "APP_PASSWORD_PEPPER"},
+        }
+        result = generate_test_conftest_root(
+            config, env, project_root, domains=["users"]
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert 'os.environ.setdefault("APP_PASSWORD_PEPPER"' in content
+        assert 'os.environ.setdefault("SESSION_SECRET_KEY"' in content
 
     def test_generate_errors_generic_duplicate_message_by_default(
         self, project_env: Any
@@ -4476,6 +4523,44 @@ class TestAuthRouterGenerator:
         assert "async def _send_password_reset_email(" in content
         # forgot_password must await it
         assert "await _send_password_reset_email(user.email, token)" in content
+
+    def test_reset_and_change_revoke_sessions(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """SEC-2: rotating a password must deactivate the user's sessions."""
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
+        }
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "from sqlalchemy import select, update" in content
+        # reset-password AND change-password each deactivate the user's sessions
+        # (logout uses an attribute set, not a bulk update, so isn't counted).
+        assert content.count("update(UserSession)") == 2
+        assert content.count(".values(is_active=False)") == 2
+
+    def test_reset_token_is_single_use(self, project_env_per_entity: Any) -> None:
+        """SEC-3: reset token is bound to the current password-hash fingerprint."""
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
+        }
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "def _token_fingerprint(password_hash: str) -> str:" in content
+        # forgot-password binds the fingerprint into the signed token...
+        assert '"pw": _token_fingerprint(user.password_hash)' in content
+        # ...and reset-password rejects a token whose fingerprint no longer matches.
+        assert 'fingerprint = data.get("pw")' in content
 
 
 class TestCsrfGenerator:

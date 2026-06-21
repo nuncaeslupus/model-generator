@@ -593,6 +593,14 @@ def generate_test_conftest_root(
     )
     factories_import = path_to_import(factories_path, python_root=python_root)
 
+    # Auth scaffolding requires a password pepper (and signs cookies); default
+    # both in the generated conftest so the contract suite is green without a
+    # manual export. Only emitted when an auth strategy is configured.
+    auth_cfg = config.get("auth")
+    auth_dict = auth_cfg if isinstance(auth_cfg, dict) else {}
+    auth_strategy = auth_dict.get("strategy")
+    pepper_env = auth_dict.get("pepper_env", "APP_PASSWORD_PEPPER")
+
     template = env.get_template("tests/conftest_root.py.j2")
     content = template.render(
         domains=factory_modules if factory_modules is not None else domains,
@@ -600,6 +608,8 @@ def generate_test_conftest_root(
         main_import=main_import,
         engine_import=engine_import,
         factories_import=factories_import,
+        auth_strategy=auth_strategy,
+        pepper_env=pepper_env,
     )
 
     return {"path": output_path, "content": content}
