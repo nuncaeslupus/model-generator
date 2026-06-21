@@ -3630,29 +3630,10 @@ class TestMigrationGenerator:
 class TestMigrationAutogen:
     """Test generate_migration_autogen."""
 
-    def test_returns_none_when_not_initialized(
-        self, minimal_model: dict[str, Any], project_env: Any
-    ) -> None:
-        project_root, config, env = project_env
-        result = generate_migration_autogen(minimal_model, config, env, project_root)
-
-        assert result is None
-
-    def test_returns_dict_when_initialized(
-        self, minimal_model: dict[str, Any], project_env: Any
-    ) -> None:
-        project_root, config, env = project_env
-        (project_root / "alembic.ini").write_text("[alembic]\n")
-        result = generate_migration_autogen(minimal_model, config, env, project_root)
-        assert isinstance(result, dict)
-
-        assert result is not None
-        assert "info" in result
-        assert "instructions" in result
-        assert result["info"] == (
-            "Migration autogeneration requires DATABASE_URL and should be run manually"
-        )
-        assert "DATABASE_URL" in result["instructions"]
+    # GEN-12: the target is instruction-only and emits no file, so it returns
+    # ``None`` rather than a sentinel dict the output dispatch had to
+    # special-case. The ``-> None`` signature (CI-enforced by mypy) is the
+    # guard against a dict being reintroduced; behaviour is covered below.
 
     def test_warning_message_when_not_initialized(
         self,
@@ -3669,7 +3650,7 @@ class TestMigrationAutogen:
             == "  ⚠️  Alembic not initialized. Run with --target migration-init first."
         )
 
-    def test_progress_message_when_initialized(
+    def test_prints_project_agnostic_instructions_when_initialized(
         self,
         minimal_model: dict[str, Any],
         project_env: Any,
@@ -3678,10 +3659,19 @@ class TestMigrationAutogen:
         project_root, config, env = project_env
         (project_root / "alembic.ini").write_text("[alembic]\n")
         generate_migration_autogen(minimal_model, config, env, project_root)
-        captured = capsys.readouterr()
+        out = capsys.readouterr().out
 
-        expected = "  Running alembic revision --autogenerate..."
-        assert captured.out.rstrip("\n") == expected
+        # Honest: no false "Running alembic…" line — nothing is actually run.
+        assert "Running alembic revision --autogenerate..." not in out
+        # GEN-6: instructions must be project-agnostic — no hardcoded
+        # TimescaleDB / docker-compose orchestration.
+        assert "timescale" not in out.lower()
+        assert "docker-compose" not in out
+        assert "docker compose" not in out
+        # Still surfaces the actionable guidance.
+        assert "DATABASE_URL" in out
+        assert "alembic revision --autogenerate" in out
+        assert "alembic upgrade head" in out
 
 
 class TestInfrastructureGenerators:
