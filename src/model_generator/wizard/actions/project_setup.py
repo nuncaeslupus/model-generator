@@ -91,7 +91,7 @@ def _create_config(config_path: Path, project_root: Path) -> None:
     stacks = _scan_stacks()
     stack = select("Stack:", choices=stacks, default="python-fastapi")
 
-    layout_choices = list(_PATH_LAYOUTS.keys()) + ["custom"]
+    layout_choices = [*_PATH_LAYOUTS, "custom"]
     layout = select("Path layout:", choices=layout_choices, default=layout_choices[0])
 
     config: dict[str, Any] = {
@@ -104,22 +104,23 @@ def _create_config(config_path: Path, project_root: Path) -> None:
     if layout != "custom" and layout in _PATH_LAYOUTS:
         config["paths"] = _PATH_LAYOUTS[layout]
 
-    config_path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
+    config_path.write_text(
+        yaml.dump(config, default_flow_style=False, sort_keys=False), encoding="utf-8"
+    )
     print(f"\nCreated: {config_path}")
 
     # Create models directory
     models_dir = project_root / "models"
-    if not models_dir.exists():
-        if confirm("Create models/ directory?"):
-            models_dir.mkdir(parents=True)
-            print(f"Created: {models_dir}")
+    if not models_dir.exists() and confirm("Create models/ directory?"):
+        models_dir.mkdir(parents=True)
+        print(f"Created: {models_dir}")
 
 
 def _update_config(config_path: Path) -> None:
     """Show current config and offer updates."""
     print("\n--- Update Project Settings ---\n")
 
-    with open(config_path) as f:
+    with config_path.open(encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
 
     print("Current configuration:")
@@ -138,5 +139,7 @@ def _update_config(config_path: Path) -> None:
         "Stack:", choices=stacks, default=config.get("stack", "python-fastapi")
     )
 
-    config_path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
+    config_path.write_text(
+        yaml.dump(config, default_flow_style=False, sort_keys=False), encoding="utf-8"
+    )
     print(f"\nUpdated: {config_path}")

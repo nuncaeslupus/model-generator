@@ -20,8 +20,9 @@ TDD Generation Order (when --target all):
 import argparse
 import shutil
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from . import __version__
 from .generators import (
@@ -217,7 +218,7 @@ def _cleanup_selective(
     patterns.append(f"{migrations}/versions/.gitkeep")
 
     # All explicit file paths in config
-    for key, path in paths.items():
+    for path in paths.values():
         if isinstance(path, str) and (path.endswith(".py") or path.endswith(".ini")):
             files_to_delete.append(project_root / path)
 
@@ -279,10 +280,9 @@ def _cleanup_selective(
     # Use set to avoid duplicates, but filter for existence
     for file_path in sorted({f for f in files_to_delete if f.exists()}):
         print(f"  {'Would delete' if dry_run else 'Deleting'}: {file_path}")
-        if not dry_run:
-            if file_path.is_file():
-                file_path.unlink()
-                deleted_count += 1
+        if not dry_run and file_path.is_file():
+            file_path.unlink()
+            deleted_count += 1
 
     for dir_path in sorted(set(dirs_to_delete)):
         if dir_path.exists() and dir_path.is_dir():
@@ -302,14 +302,11 @@ def generate_conftest(
     model_path: Path,
 ) -> dict[str, Any] | None:
     """Generate conftest.py with fixtures for all domains."""
-    if model_path.is_file():
-        models_dir = model_path.parent
-    else:
-        models_dir = model_path
+    models_dir = model_path.parent if model_path.is_file() else model_path
 
     auth_strategy = config.get("auth", {}).get("strategy")
     rate_limiter_import = _compute_rate_limiter_import(config)
-    content, count = generate_conftest_content(
+    content, _count = generate_conftest_content(
         models_dir,
         auth_strategy=auth_strategy,
         rate_limiter_import=rate_limiter_import,
@@ -869,7 +866,7 @@ def _process_outputs(
         path.parent.mkdir(parents=True, exist_ok=True)
 
         if mode == "append":
-            with open(path, "a") as f:
+            with path.open("a", encoding="utf-8") as f:
                 f.write(content)
             new_count = output.get("new_count", 0)
             skipped = output.get("skipped", 0)
@@ -877,7 +874,7 @@ def _process_outputs(
             if skipped > 0:
                 print(f"     (skipped {skipped} already existing)")
         else:
-            with open(path, "w") as f:
+            with path.open("w", encoding="utf-8") as f:
                 f.write(content)
             print(f"  ✅ Generated: {path}")
 

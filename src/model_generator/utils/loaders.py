@@ -24,7 +24,7 @@ def load_model(model_path: Path) -> dict[str, Any]:
 
     Validates the model against the schema definition.
     """
-    with open(model_path) as f:
+    with model_path.open(encoding="utf-8") as f:
         json_content = f.read()
 
     # Strip // comments
@@ -124,7 +124,7 @@ def _validate_model_schema(data: dict[str, Any], model_path: Path) -> None:
         print(f"  ⚠️  Schema file not found at {schema_path}, skipping validation")
         return
 
-    with open(schema_path) as f:
+    with schema_path.open(encoding="utf-8") as f:
         schema = json.load(f)
 
     try:
@@ -167,7 +167,7 @@ def load_config(stack: str = "python-fastapi") -> dict[str, Any]:
     # Load project config if it exists
     project_config: dict[str, Any] = {}
     if project_config_path.exists():
-        with open(project_config_path) as f:
+        with project_config_path.open(encoding="utf-8") as f:
             project_config = yaml.safe_load(f) or {}
 
     # Get stack name from project config or use default
@@ -179,7 +179,7 @@ def load_config(stack: str = "python-fastapi") -> dict[str, Any]:
         print(f"Error: Stack config not found at {config_path}")
         sys.exit(1)
 
-    with open(config_path) as f:
+    with config_path.open(encoding="utf-8") as f:
         stack_config = yaml.safe_load(f)
 
     merged_config = deep_merge(stack_config, project_config)
@@ -250,7 +250,7 @@ def load_shared_enums(model_path: Path) -> dict[str, Any]:
     if not shared_enums_file.exists():
         return {}
 
-    with open(shared_enums_file) as f:
+    with shared_enums_file.open(encoding="utf-8") as f:
         data = json.load(f)
         return cast(dict[str, Any], data.get("enums", {}))
 
@@ -272,7 +272,7 @@ def load_shared_constraints(model_path: Path) -> dict[str, Any]:
     if not shared_constraints_file.exists():
         return {}
 
-    with open(shared_constraints_file) as f:
+    with shared_constraints_file.open(encoding="utf-8") as f:
         data = json.load(f)
 
     # Flatten constraint groups into a flat dict

@@ -71,11 +71,25 @@ jobs:
         with:
           name: dist
           path: dist/
-      - name: Create release with CHANGELOG body and attached dist
+      - name: Extract this version's CHANGELOG section
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { flag = 1; next }
+            flag && /^## \[/ { flag = 0 }
+            flag { print }
+          ' CHANGELOG.md > release-notes.md
+          # Fall back to the full changelog if the section was not found.
+          if [ ! -s release-notes.md ]; then
+            echo "::warning::No CHANGELOG section for $VERSION; using full file."
+            cp CHANGELOG.md release-notes.md
+          fi
+
+      - name: Create release with section notes and attached dist
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --notes-file CHANGELOG.md \
+            --notes-file release-notes.md \
             dist/*

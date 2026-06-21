@@ -16,7 +16,7 @@ def get_existing_constraints(constraints_file: Path) -> set[str]:
     if not constraints_file.exists():
         return set()
 
-    content = constraints_file.read_text()
+    content = constraints_file.read_text(encoding="utf-8")
     pattern = r"^([A-Z][A-Z0-9_]*)\s*="
     return set(re.findall(pattern, content, re.MULTILINE))
 

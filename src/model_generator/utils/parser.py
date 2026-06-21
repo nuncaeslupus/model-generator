@@ -22,7 +22,7 @@ def scan_model_files(models_dir: Path) -> list[dict[str, Any]]:
             continue
 
         try:
-            content = model_file.read_text()
+            content = model_file.read_text(encoding="utf-8")
             tree = ast.parse(content)
 
             entities = []
@@ -101,7 +101,7 @@ def scan_api_model_files(api_models_dir: Path) -> list[dict[str, Any]]:
         response_file = api_models_dir / f"{domain_name}_response.py"
         if response_file.exists():
             try:
-                content = response_file.read_text()
+                content = response_file.read_text(encoding="utf-8")
                 tree = ast.parse(content)
                 for node in ast.walk(tree):
                     if isinstance(node, ast.ClassDef) and node.name.endswith(
@@ -115,7 +115,7 @@ def scan_api_model_files(api_models_dir: Path) -> list[dict[str, Any]]:
         request_file = api_models_dir / f"{domain_name}_requests.py"
         if request_file.exists():
             try:
-                content = request_file.read_text()
+                content = request_file.read_text(encoding="utf-8")
                 tree = ast.parse(content)
                 for node in ast.walk(tree):
                     if isinstance(node, ast.ClassDef) and node.name.endswith("Request"):

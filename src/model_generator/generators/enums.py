@@ -16,7 +16,7 @@ def get_existing_enums(enums_file: Path) -> set[str]:
     if not enums_file.exists():
         return set()
 
-    content = enums_file.read_text()
+    content = enums_file.read_text(encoding="utf-8")
     pattern = r"class\s+(\w+)\s*\(\s*(?:str\s*,\s*Enum|StrEnum)\s*\)"
     return set(re.findall(pattern, content))
 

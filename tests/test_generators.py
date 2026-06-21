@@ -4,8 +4,9 @@ import json
 import os
 import sys
 import types
+from datetime import UTC
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -205,7 +206,7 @@ class TestDatabaseGenerator:
 class TestGenerateInit:
     """Test __init__.py generation for database models."""
 
-    _FAKE_DOMAINS = [
+    _FAKE_DOMAINS: ClassVar[list[dict[str, Any]]] = [
         {
             "name": "items",
             "file": "items",
@@ -4064,7 +4065,7 @@ class TestInfrastructureGenerators:
 
     def test_generate_utils_isoformat_utc(self, project_env: Any) -> None:
         """TPL-1: isoformat_utc emits one 'Z' for naive AND tz-aware input."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         project_root, config, env = project_env
         result = generate_utils(config, env, project_root)
@@ -4075,7 +4076,7 @@ class TestInfrastructureGenerators:
         ns: dict[str, Any] = {}
         exec(content, ns)  # exercising generated code
         iso = ns["isoformat_utc"]
-        aware = datetime(2025, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+        aware = datetime(2025, 1, 2, 3, 4, 5, tzinfo=UTC)
         naive = datetime(2025, 1, 2, 3, 4, 5)
         # Both must produce a single trailing 'Z' and never the malformed
         # '...+00:00Z' that the old `isoformat() + "Z"` emitted on Postgres.

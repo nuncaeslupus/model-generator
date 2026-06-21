@@ -30,7 +30,7 @@ def load_schema() -> dict[str, Any]:
         print(f"Error: Schema not found at {schema_path}")
         sys.exit(1)
 
-    with open(schema_path) as f:
+    with schema_path.open(encoding="utf-8") as f:
         return cast(dict[str, Any], json.load(f))
 
 
@@ -46,7 +46,7 @@ def validate_model(model_path: Path, schema: dict[str, Any]) -> list[str]:
         return [f"File not found: {model_path}"]
 
     try:
-        with open(model_path) as f:
+        with model_path.open(encoding="utf-8") as f:
             model = json.load(f)
     except json.JSONDecodeError as e:
         return [f"Invalid JSON: {e}"]
@@ -103,12 +103,10 @@ def validate_semantics(model: dict[str, Any]) -> list[str]:
 
         # Check reference fields
         for field_name, field in fields.items():
-            if field.get("type") == "reference":
-                if not field.get("reference_table"):
-                    errors.append(
-                        f"{prefix} Reference field '{field_name}' "
-                        "missing reference_table"
-                    )
+            if field.get("type") == "reference" and not field.get("reference_table"):
+                errors.append(
+                    f"{prefix} Reference field '{field_name}' missing reference_table"
+                )
 
         # Check field constraints reference valid fields
         for field_name, field in fields.items():
@@ -204,7 +202,7 @@ def main() -> None:
                 print(error)
         else:
             # Show entity count
-            with open(model_path) as f:
+            with model_path.open(encoding="utf-8") as f:
                 model = json.load(f)
             entity_count = len(model.get("entities", {}))
             print(f"✅ {model_path.name}: Valid ({entity_count} entities)")
