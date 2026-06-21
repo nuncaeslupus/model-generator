@@ -50,6 +50,9 @@ mutmut-stats.json
 # Temporary files
 tmp/
 
+# Claude Code agent worktrees (ephemeral, never committed)
+.claude/worktrees/
+
 # Example project generated output
 examples/*/backend/
 examples/*/tests/
