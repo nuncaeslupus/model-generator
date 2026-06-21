@@ -22,6 +22,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   writing generated files passed no `encoding=`, so they used the platform
   default codec (cp1252 on Windows) — risking mojibake or `UnicodeDecodeError`
   on non-ASCII model content. Every read/write now pins `encoding="utf-8"`.
+- **`model-val` accepts the same JSON dialect as `model-gen`.** The validator
+  parsed specs with a raw `json.load` that bypassed the shared loader, so it
+  rejected files the generator happily builds: `//` comments, the `integer`
+  alias (normalized to `counter`), and legacy index shapes
+  (`{"type": "unique", "field": ...}`). It now reads through the shared
+  comment-stripping + normalizing parser, so validation and generation agree.
+- **Conftest generation tolerates `//`-commented specs.** The contract-test
+  conftest builder also used a raw `json.load` and crashed on commented model
+  files; it now uses the same shared parser.
+- **`run_quality_tools` no longer swallows failures or uses a shell.** The
+  post-generation ruff step ran via `subprocess.run(..., shell=True)` with the
+  file list interpolated into a string (breaking on paths with spaces/special
+  characters), and ignored the return code — so a missing ruff or a failing
+  `ruff format` was silent. It now invokes ruff with an argv list (no shell),
+  warns clearly when ruff isn't installed, and surfaces a non-zero `ruff format`
+  (a non-zero `ruff check --fix`, expected for freshly generated code, stays
+  quiet).
 
 ### Changed
 

@@ -1059,29 +1059,94 @@ class TestRunQualityTools:
     def test_runs_format_and_check(self, tmp_path: Path) -> None:
         file1 = tmp_path / "a.py"
         file2 = tmp_path / "b.py"
-        expected_paths = f"{file1} {file2}"
         with (
             patch("model_generator.utils.quality.subprocess.run") as mock_run,
             patch("model_generator.utils.quality._find_ruff", return_value="ruff"),
+            patch(
+                "model_generator.utils.quality.shutil.which",
+                return_value="/usr/bin/ruff",
+            ),
         ):
+            mock_run.return_value.returncode = 0
             run_quality_tools({}, tmp_path, [file1, file2])
         assert mock_run.call_count == 2
         format_cmd = mock_run.call_args_list[0].args[0]
         check_cmd = mock_run.call_args_list[1].args[0]
-        assert format_cmd == f"ruff format {expected_paths}"
-        assert check_cmd == f"ruff check --fix {expected_paths}"
+        assert format_cmd == ["ruff", "format", str(file1), str(file2)]
+        assert check_cmd == ["ruff", "check", "--fix", str(file1), str(file2)]
 
-    def test_subprocess_cwd_and_capture(self, tmp_path: Path) -> None:
+    def test_subprocess_no_shell_with_cwd_and_capture(self, tmp_path: Path) -> None:
         file1 = tmp_path / "a.py"
         with (
             patch("model_generator.utils.quality.subprocess.run") as mock_run,
             patch("model_generator.utils.quality._find_ruff", return_value="ruff"),
+            patch(
+                "model_generator.utils.quality.shutil.which",
+                return_value="/usr/bin/ruff",
+            ),
         ):
+            mock_run.return_value.returncode = 0
             run_quality_tools({}, tmp_path, [file1])
         for c in mock_run.call_args_list:
-            assert c.kwargs["shell"] is True
+            assert "shell" not in c.kwargs  # argv form, never shell=True
             assert c.kwargs["cwd"] == tmp_path
             assert c.kwargs["capture_output"] is True
+
+    def test_chunks_large_file_lists(self, tmp_path: Path) -> None:
+        """Files are batched so a huge list can't overflow the OS arg limit."""
+        files = [tmp_path / f"f{i}.py" for i in range(250)]
+        with (
+            patch("model_generator.utils.quality.subprocess.run") as mock_run,
+            patch("model_generator.utils.quality._find_ruff", return_value="ruff"),
+            patch(
+                "model_generator.utils.quality.shutil.which",
+                return_value="/usr/bin/ruff",
+            ),
+        ):
+            mock_run.return_value.returncode = 0
+            run_quality_tools({}, tmp_path, files)
+        # 250 files / 100 per batch = 3 batches, for each of format + check = 6 calls.
+        assert mock_run.call_count == 6
+        for c in mock_run.call_args_list:
+            # argv = [ruff, subcommand, *batch]; batch never exceeds 100 files.
+            argv = c.args[0]
+            file_count = sum(1 for a in argv if a.endswith(".py"))
+            assert file_count <= 100
+
+    def test_skips_when_ruff_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A missing ruff is surfaced, not silently skipped."""
+        file1 = tmp_path / "a.py"
+        with (
+            patch("model_generator.utils.quality.subprocess.run") as mock_run,
+            patch("model_generator.utils.quality._find_ruff", return_value="ruff"),
+            patch("model_generator.utils.quality.shutil.which", return_value=None),
+        ):
+            run_quality_tools({}, tmp_path, [file1])
+        mock_run.assert_not_called()
+        assert "ruff not found" in capsys.readouterr().out
+
+    def test_warns_when_format_fails(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A non-zero `ruff format` is reported instead of swallowed."""
+        file1 = tmp_path / "a.py"
+        with (
+            patch("model_generator.utils.quality.subprocess.run") as mock_run,
+            patch("model_generator.utils.quality._find_ruff", return_value="ruff"),
+            patch(
+                "model_generator.utils.quality.shutil.which",
+                return_value="/usr/bin/ruff",
+            ),
+        ):
+            mock_run.return_value.returncode = 2
+            mock_run.return_value.stderr = "boom: bad format\n"
+            mock_run.return_value.stdout = ""
+            run_quality_tools({}, tmp_path, [file1])
+        out = capsys.readouterr().out
+        assert "failed (exit 2)" in out
+        assert "boom: bad format" in out
 
     def test_prints_progress_messages(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -1089,9 +1154,14 @@ class TestRunQualityTools:
         """Prints exact status messages before each ruff command."""
         file1 = tmp_path / "a.py"
         with (
-            patch("model_generator.utils.quality.subprocess.run"),
+            patch("model_generator.utils.quality.subprocess.run") as mock_run,
             patch("model_generator.utils.quality._find_ruff", return_value="ruff"),
+            patch(
+                "model_generator.utils.quality.shutil.which",
+                return_value="/usr/bin/ruff",
+            ),
         ):
+            mock_run.return_value.returncode = 0
             run_quality_tools({}, tmp_path, [file1])
         captured = capsys.readouterr()
         expected = "\n  Running ruff format...\n  Running ruff check --fix...\n"
