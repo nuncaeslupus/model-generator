@@ -1,6 +1,6 @@
 # Next Session Plan
 
-## Current State (2026-06-21) — full review + P0 fixes in flight
+## Current State (2026-06-21) — all P0s complete, P1 next
 
 A full multi-lens code review landed in **[`status/code-review-2026-06-21.md`](./code-review-2026-06-21.md)**:
 ~70 prioritized, stable-ID, queue-ready issues (P0→P3) plus direct answers to the
@@ -10,39 +10,33 @@ backlog and the source of truth for this arc.**
 **Active arc: work the review backlog, P0 → P1 → P2, one PR per cluster** (the
 clusters are listed under "Part D — Working this backlog" in the review doc).
 
-### Already in progress (branch `fix/p0-review-2026-06-21`)
-
-4 of the 7 P0 items are implemented, tested, and **verified** (commit `7881a47`):
-504 tests pass, `make lint` clean (ruff + mypy strict), and the example
-regenerates clean (76 emitted files parse; only the 4 pre-existing lint quirks
-remain). **Next step: open a PR for this branch**, then continue with the
-remaining P0s. The four shipped fixes:
+### All 7 P0 items shipped (PRs #34, #35, #36, #37)
 
 - **TPL-1** — `isoformat_utc()` helper in `utils.py.j2`; route datetime fields +
   `created_at`/`updated_at` use it instead of `isoformat() + "Z"` (fixes the
-  invalid `...+00:00Z` on Postgres). `route.py.j2` gains a `needs_isoformat` scan
-  flag + combined utils import.
+  invalid `...+00:00Z` on Postgres).
 - **SEC-2** — `auth_router.py.j2`: `reset_password`/`change_password` revoke the
-  user's `UserSession` rows (`update(UserSession)…is_active=False`).
+  user's `UserSession` rows.
 - **SEC-3** — `auth_router.py.j2`: `_token_fingerprint()` makes reset tokens
   single-use (bound to the current password hash; no schema change).
 - **TST-2** — `conftest_root.py.j2`: defaults the pepper + `SESSION_SECRET_KEY`
-  env vars (when `auth.strategy` set) so the generated suite is green without a
-  manual `export`.
-- Tests added: `test_reset_and_change_revoke_sessions`,
-  `test_reset_token_is_single_use`, `test_generate_utils_isoformat_utc`
-  (test_generators.py) + an end-to-end block in `test_full_generation.py`.
+  env vars so the generated suite is green without a manual `export`.
+- **SEC-1** — warn at generation when `auth.strategy` is set but no API-enabled
+  entity declares `api.scope`; scope example owner entities (Portfolio/ApiKey/
+  UserSession/UserRole via `user_id`); add usage-guide note.
+- **TPL-2** — FactoryBoy factories now emit correct `SubFactory` calls by
+  resolving `reference_table` → entity name via a `table_to_entity` dict computed
+  in the generator and threaded into the template. Fixes `IntegrityError` on
+  `Factory.create()` for FK fields.
+- **WIZ-1** — `_prepare_infra_modules()` shared helper extracted from `main()`;
+  both `main()` and wizard's `run_generate()` call it. Closes uninstallable
+  `pyproject.toml` (missing bcrypt/itsdangerous) for auth projects generated via
+  the wizard.
 
-### Remaining P0 (not started — larger/design-laden)
+### Next: P1 cluster
 
-- **SEC-1** — warn (or fail) at generation when `auth.strategy` is set but no
-  entity declares `api.scope`/`api.public`; scope the example owner entities; add
-  a usage-guide note. (Generator validation + example specs + docs.)
-- **TPL-2** — make FactoryBoy factories emit required FKs by resolving
-  `reference_table` → entity (the template keys on a nonexistent `reference_entity`).
-- **WIZ-1** — extract `main()`'s infra-prep (extra_deps + `_validate_auth_strategy`)
-  into a shared helper called by both the CLI and the wizard (closes the
-  uninstallable-pyproject + the wizard auth-validation drift).
+Consult the review doc (`status/code-review-2026-06-21.md`, Part D) for P1
+cluster definitions and sequencing. 512 tests pass, `make lint` clean.
 
 ### Working method (apply to every fix)
 
@@ -73,6 +67,32 @@ items — this header supersedes the older "457 tests / mutmut arc" state below.
 ---
 
 ## Recently Completed Fixes
+
+### Review backlog P0 arc — SEC-1, TPL-2, WIZ-1 (2026-06-21, PRs #35–#37)
+
+Three remaining P0 items from the 2026-06-21 multi-lens code review, each in its
+own PR. 512 tests, `make lint` clean after each merge.
+
+- **SEC-1 (PR #35)** — `_validate_auth_scope_coverage()` added to `generate.py`.
+  Warns at generation time when `auth.strategy` is set but zero API-enabled
+  entities declare `api.scope`. Example spec updated: Portfolio, ApiKey, UserSession,
+  and UserRole gain `"scope": {"owner_field": "user_id"}`. Usage-guide section
+  added explaining that CRUD is unauthenticated by default and `api.scope` is the
+  opt-in. 5 new tests in `TestValidateAuthScopeCoverage`.
+- **TPL-2 (PR #36)** — `generate_factories()` in `generators/database.py` computes
+  a `table_to_entity` dict (`table_name → EntityName`) and passes it to every
+  `template.render()` call. `factory.py.j2` now resolves `reference_table` via
+  this dict (instead of the nonexistent `field.reference_entity` key) in both the
+  import-scan loop and the `generate_field_factory` macro. Fixes `IntegrityError`
+  at `Factory.create()` for any FK reference field. 1 new test:
+  `test_required_reference_emits_subfactory_without_reference_entity`.
+- **WIZ-1 (PR #37)** — `_prepare_infra_modules()` helper extracted from `main()`.
+  Collects domains/route_modules/factory_modules/extra_deps, calls
+  `_validate_auth_strategy` + `_validate_auth_scope_coverage`, and returns all
+  five values. `main()` and `wizard/actions/generate.py:run_generate()` both call
+  it. Closes two bugs: wizard generated `pyproject.toml` missing auth deps
+  (bcrypt/itsdangerous/email-validator/slowapi), and wizard skipped the auth-
+  strategy cross-model validation. 2 new tests in `TestPrepareInfraModules`.
 
 ### Generated CRUD hardening — P1–P4 from downstream audit (2026-06-11)
 
