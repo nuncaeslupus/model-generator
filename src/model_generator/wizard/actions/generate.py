@@ -91,7 +91,7 @@ def run_generate() -> None:
     # when infrastructure is emitted. Mirror the CLI's --no-root-files so the
     # scratch-and-migrate-into-an-existing-tree workflow has parity here.
     no_root_files = False
-    if target in INFRASTRUCTURE_TARGETS:
+    if target in INFRASTRUCTURE_TARGETS or target == "migration-init":
         no_root_files = not confirm(
             "Generate root project files (pyproject.toml, alembic.ini, .gitignore)?",
             default=True,

@@ -63,6 +63,10 @@ def checkbox(message: str, choices: list[str]) -> list[str]:
     print("Enter choices separated by commas (e.g. 1,3,5), or 'all':")
     while True:
         raw = _input("> ")
+        if not raw:
+            # Empty input = no selection, matching questionary.checkbox's [] return
+            # (otherwise "".split(",") -> [""] would ValueError-loop forever).
+            return []
         if raw.lower() == "all":
             return list(choices)
         try:

@@ -92,6 +92,14 @@ class TestPromptsFallback:
             result = checkbox("Select:", choices=["x", "y", "z"])
         assert result == ["x", "y", "z"]
 
+    def test_checkbox_empty_returns_empty(self) -> None:
+        """Empty input = no selection (matches questionary), not an infinite loop."""
+        from model_generator.wizard.prompts import checkbox
+
+        with patch("builtins.input", return_value=""):
+            result = checkbox("Select:", choices=["x", "y", "z"])
+        assert result == []
+
     def test_confirm_default_yes(self) -> None:
         from model_generator.wizard.prompts import confirm
 
@@ -490,65 +498,57 @@ class TestRunGenerateAction:
         )
         return tmp_path
 
-    def test_domain_target_calls_generate(self, tmp_path: Path) -> None:
+    def test_domain_target_calls_generate(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """A non-infra target scans models and calls generate() per file."""
-        import os
-
         from model_generator.wizard.actions import generate as gen_action
 
         self._setup_project(tmp_path)
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            with (
-                patch.object(gen_action, "select", return_value="database"),
-                patch.object(gen_action, "confirm", return_value=True),
-                patch("model_generator.generate.generate") as mock_generate,
-            ):
-                gen_action.run_generate()
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(gen_action, "select", return_value="database"),
+            patch.object(gen_action, "confirm", return_value=True),
+            patch("model_generator.generate.generate") as mock_generate,
+        ):
+            gen_action.run_generate()
 
-            mock_generate.assert_called_once()
-            _, kwargs = mock_generate.call_args
-            assert kwargs["target"] == "database"
-            assert kwargs["no_root_files"] is False
-            assert kwargs["model_path"].name == "widget.model.json"
-        finally:
-            os.chdir(original_cwd)
+        mock_generate.assert_called_once()
+        _, kwargs = mock_generate.call_args
+        assert kwargs["target"] == "database"
+        assert kwargs["no_root_files"] is False
+        assert kwargs["model_path"].name == "widget.model.json"
 
-    def test_no_root_files_threaded_when_declined(self, tmp_path: Path) -> None:
+    def test_no_root_files_threaded_when_declined(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """WIZ-4: declining root files threads no_root_files=True into both calls."""
-        import os
-
         from model_generator.wizard.actions import generate as gen_action
 
         self._setup_project(tmp_path)
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            with (
-                patch.object(gen_action, "select", return_value="all"),
-                # confirm calls: root-files? -> No, then Proceed? -> Yes.
-                patch.object(gen_action, "confirm", side_effect=[False, True]),
-                patch("model_generator.utils.load_config", return_value={}),
-                patch("model_generator.utils.get_template_env"),
-                patch("model_generator.utils.run_quality_tools"),
-                patch(
-                    "model_generator.generate._prepare_infra_modules",
-                    return_value=([], [], [], [], []),
-                ),
-                patch(
-                    "model_generator.generate._has_encrypted_binary_field",
-                    return_value=False,
-                ),
-                patch(
-                    "model_generator.generators.infrastructure.generate_infrastructure",
-                    return_value=[],
-                ) as mock_infra,
-                patch("model_generator.generate.generate") as mock_generate,
-            ):
-                gen_action.run_generate()
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(gen_action, "select", return_value="all"),
+            # confirm calls: root-files? -> No, then Proceed? -> Yes.
+            patch.object(gen_action, "confirm", side_effect=[False, True]),
+            patch("model_generator.utils.load_config", return_value={}),
+            patch("model_generator.utils.get_template_env"),
+            patch("model_generator.utils.run_quality_tools"),
+            patch(
+                "model_generator.generate._prepare_infra_modules",
+                return_value=([], [], [], [], []),
+            ),
+            patch(
+                "model_generator.generate._has_encrypted_binary_field",
+                return_value=False,
+            ),
+            patch(
+                "model_generator.generators.infrastructure.generate_infrastructure",
+                return_value=[],
+            ) as mock_infra,
+            patch("model_generator.generate.generate") as mock_generate,
+        ):
+            gen_action.run_generate()
 
-            assert mock_infra.call_args.kwargs["no_root_files"] is True
-            assert mock_generate.call_args.kwargs["no_root_files"] is True
-        finally:
-            os.chdir(original_cwd)
+        assert mock_infra.call_args.kwargs["no_root_files"] is True
+        assert mock_generate.call_args.kwargs["no_root_files"] is True
