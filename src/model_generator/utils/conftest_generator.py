@@ -68,6 +68,11 @@ def extract_entities(models: dict[str, dict[str, Any]]) -> dict[str, dict[str, A
                 "fields": entity["fields"],
                 "relationships": entity.get("relationships", {}),
                 "api_prefix": api_prefix,
+                # Owner-scoping config (``api.scope``). When present, the
+                # entity's CRUD endpoints require an authenticated current_user
+                # and inject the owner from it — so the contract suite must
+                # authenticate (see the default-auth fixture below).
+                "scope": api_config.get("scope"),
                 "timestamps": entity.get("timestamps", {}),
                 # Carry index/constraint metadata so the shared fixtures can
                 # detect unique (incl. composite) indexes and emit distinct
@@ -532,9 +537,23 @@ def generate_conftest(
     constraints: dict[str, dict[str, Any]] | None = None,
     auth_strategy: str | None = None,
     rate_limiter_import: str | None = None,
+    auth_router_import: str | None = None,
+    main_import: str | None = None,
 ) -> str:
     """Generate complete conftest.py content."""
     lines = []
+
+    # Emit a default-authenticated-user fixture only when auth is on, at least
+    # one entity is owner-scoped, the auth-user entity ("User") exists, and we
+    # know where to import get_current_user / the app from. Without it, scoped
+    # CRUD returns 401 and the whole generated contract suite cascades.
+    emit_default_auth = bool(
+        auth_strategy
+        and any(e.get("scope") for e in entities.values())
+        and "User" in entities
+        and auth_router_import
+        and main_import
+    )
 
     # Header
     lines.append(GENERATED_MARKER)
@@ -549,6 +568,8 @@ def generate_conftest(
     lines.append("dependency order (independent first, then dependent entities).")
     lines.append('"""')
     lines.append("")
+    if emit_default_auth:
+        lines.append("from collections.abc import Iterator")
     lines.append("import uuid")
     lines.append("from typing import cast")
     lines.append("")
@@ -568,6 +589,61 @@ def generate_conftest(
             '(test isolation)."""'
         )
         lines.append("    limiter.reset()")
+        lines.append("")
+
+    if emit_default_auth:
+        user_fixture = get_fixture_name("User", entities["User"])
+        lines.append("")
+        lines.append("@pytest.fixture(autouse=True)")
+        lines.append(
+            f"def _default_authenticated_user({user_fixture}: str) -> Iterator[str]:"
+        )
+        lines.append('    """Authenticate every test as a default owner user.')
+        lines.append("")
+        lines.append(
+            "    Owner-scoped endpoints (``api.scope``) require an authenticated"
+        )
+        lines.append("    ``current_user`` and inject the owner from it. Override")
+        lines.append(
+            f"    ``get_current_user`` with the persisted ``{user_fixture}`` user so"
+        )
+        lines.append(
+            "    owner-scoped CRUD works out of the box; a test needing a *different*"
+        )
+        lines.append(
+            "    identity overrides it itself (see ``*_scope_access_denied``)."
+        )
+        lines.append('    """')
+        lines.append(f"    from {auth_router_import} import get_current_user")
+        lines.append(f"    from {main_import} import app")
+        lines.append("")
+        lines.append(
+            "    # current_user.id must compare equal to the owner column's loaded"
+        )
+        lines.append(
+            "    # value. The auth user's PK is a UUID, so the ORM loads the owner"
+        )
+        lines.append(
+            "    # column as uuid.UUID; coerce the registered id to match (a raw str"
+        )
+        lines.append(
+            "    # would fail the Python-level owner check on get/update/delete)."
+        )
+        lines.append("    try:")
+        lines.append(f"        owner_id: object = uuid.UUID({user_fixture})")
+        lines.append("    except ValueError:")
+        lines.append(f"        owner_id = {user_fixture}")
+        lines.append("")
+        lines.append("    class _DefaultUser:")
+        lines.append("        id = owner_id")
+        lines.append("")
+        lines.append(
+            "    app.dependency_overrides[get_current_user] = lambda: _DefaultUser()"
+        )
+        lines.append("    try:")
+        lines.append(f"        yield {user_fixture}")
+        lines.append("    finally:")
+        lines.append("        app.dependency_overrides.pop(get_current_user, None)")
         lines.append("")
 
     # Sort entities by dependency
@@ -648,6 +724,8 @@ def generate_conftest_content(
     models_dir: Path,
     auth_strategy: str | None = None,
     rate_limiter_import: str | None = None,
+    auth_router_import: str | None = None,
+    main_import: str | None = None,
 ) -> tuple[str, int]:
     """
     Generate content for conftest.py based on all models in the directory.
@@ -678,6 +756,8 @@ def generate_conftest_content(
         constraints,
         auth_strategy=auth_strategy,
         rate_limiter_import=rate_limiter_import,
+        auth_router_import=auth_router_import,
+        main_import=main_import,
     )
 
     return content, len(entities)

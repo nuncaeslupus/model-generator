@@ -35,3 +35,18 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --extra dev
       - run: uv run pytest tests/ -v
+
+  # Highest-value guard: regenerate the bundled example and run its *emitted*
+  # contract suite. Catches template changes that ship importable-but-broken
+  # code (which the mocked/string-matched unit suite cannot). The generated
+  # stack uses PEP 695 generics, so this runs on 3.12.
+  generated-example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - run: make smoke-example
