@@ -1060,9 +1060,11 @@ class TestRunQualityTools:
         file1 = tmp_path / "a.py"
         file2 = tmp_path / "b.py"
         expected_paths = f"{file1} {file2}"
-        with patch("model_generator.utils.quality.subprocess.run") as mock_run:
-            with patch("model_generator.utils.quality._find_ruff", return_value="ruff"):
-                run_quality_tools({}, tmp_path, [file1, file2])
+        with (
+            patch("model_generator.utils.quality.subprocess.run") as mock_run,
+            patch("model_generator.utils.quality._find_ruff", return_value="ruff"),
+        ):
+            run_quality_tools({}, tmp_path, [file1, file2])
         assert mock_run.call_count == 2
         format_cmd = mock_run.call_args_list[0].args[0]
         check_cmd = mock_run.call_args_list[1].args[0]
@@ -1071,9 +1073,11 @@ class TestRunQualityTools:
 
     def test_subprocess_cwd_and_capture(self, tmp_path: Path) -> None:
         file1 = tmp_path / "a.py"
-        with patch("model_generator.utils.quality.subprocess.run") as mock_run:
-            with patch("model_generator.utils.quality._find_ruff", return_value="ruff"):
-                run_quality_tools({}, tmp_path, [file1])
+        with (
+            patch("model_generator.utils.quality.subprocess.run") as mock_run,
+            patch("model_generator.utils.quality._find_ruff", return_value="ruff"),
+        ):
+            run_quality_tools({}, tmp_path, [file1])
         for c in mock_run.call_args_list:
             assert c.kwargs["shell"] is True
             assert c.kwargs["cwd"] == tmp_path
@@ -1084,9 +1088,11 @@ class TestRunQualityTools:
     ) -> None:
         """Prints exact status messages before each ruff command."""
         file1 = tmp_path / "a.py"
-        with patch("model_generator.utils.quality.subprocess.run"):
-            with patch("model_generator.utils.quality._find_ruff", return_value="ruff"):
-                run_quality_tools({}, tmp_path, [file1])
+        with (
+            patch("model_generator.utils.quality.subprocess.run"),
+            patch("model_generator.utils.quality._find_ruff", return_value="ruff"),
+        ):
+            run_quality_tools({}, tmp_path, [file1])
         captured = capsys.readouterr()
         expected = "\n  Running ruff format...\n  Running ruff check --fix...\n"
         assert captured.out == expected

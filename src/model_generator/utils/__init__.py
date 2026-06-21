@@ -16,8 +16,8 @@ from .quality import run_quality_tools
 from .templates import get_template_env, path_to_import
 
 __all__ = [
-    "deep_merge",
     "GENERATED_MARKER",
+    "deep_merge",
     "get_layout",
     "get_template_env",
     "load_config",

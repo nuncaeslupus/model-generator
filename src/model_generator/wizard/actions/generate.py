@@ -57,7 +57,7 @@ def run_generate() -> None:
     if len(model_files) > 1:
         selected = checkbox(
             "Select domains to generate:",
-            choices=["all"] + domain_names,
+            choices=["all", *domain_names],
         )
         if "all" in selected:
             selected_files = model_files

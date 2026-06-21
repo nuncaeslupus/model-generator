@@ -18,6 +18,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   persisted owner user (overriding `get_current_user`, coercing the id to the
   owner column's `uuid.UUID` type), and the missing-required test no longer
   treats the scope owner field as a required request field.
+- **All generator file I/O is now UTF-8 explicit.** Reading specs/schemas and
+  writing generated files passed no `encoding=`, so they used the platform
+  default codec (cp1252 on Windows) — risking mojibake or `UnicodeDecodeError`
+  on non-ASCII model content. Every read/write now pins `encoding="utf-8"`.
+
+### Changed
+
+- **Internal: ruff lint set broadened** to `B`/`SIM`/`UP`/`PTH`/`RUF` (from
+  `E`/`W`/`F`/`I`), matching the project's global standard, with an explanatory
+  comment; ~33 real issues fixed across the package.
+- **Release notes scoped per version.** The release workflow now publishes only
+  the tagged version's CHANGELOG section instead of the entire file, and the
+  CHANGELOG no longer names specific downstream projects.
 
 ### Added
 
@@ -63,9 +76,9 @@ Two generator-template fixes surfaced by the 0.1.3 downstream regen.
 ### Fixed
 
 Signed financial fields no longer fail validation on legitimate negative
-values. **Adopters built from generator output (e.g. `oms`, trading stacks)
-should regenerate to pick this up.** No wire contract changed — field names,
-types, and status codes are identical.
+values. **Adopters built from generator output should regenerate to pick this
+up.** No wire contract changed — field names, types, and status codes are
+identical.
 
 - **`financial` field validator selection is now constraint-aware.** The API
   response template (`api/response.py.j2`) hardcoded
@@ -90,9 +103,9 @@ types, and status codes are identical.
 ### Security
 
 Two template fixes surfaced by a downstream PR-review pass over the 0.1.1
-adoption. **Adopters built from generator output (e.g. `oms`, `ml-engine`)
-should regenerate to pick these up.** No wire contract changed — field names,
-enums, and happy-path status codes are identical.
+adoption. **Adopters built from generator output should regenerate to pick
+these up.** No wire contract changed — field names, enums, and happy-path status
+codes are identical.
 
 - **Request-body size limit: negative `Content-Length` bypass (defense-in-depth).**
   The `request_limit.py` middleware read `Content-Length` with `int(value)`
@@ -117,10 +130,10 @@ enums, and happy-path status codes are identical.
 ### Security
 
 Hardened the generated FastAPI CRUD surface (follow-ups from a downstream
-security audit). **Adopters built from generator output (e.g. `oms`,
-`ml-engine`) should regenerate to pick these up.** No wire contract changed —
-field names, enums, and happy-path status codes are identical; every change
-below affects only the malformed-input / error paths.
+security audit). **Adopters built from generator output should regenerate to
+pick these up.** No wire contract changed — field names, enums, and happy-path
+status codes are identical; every change below affects only the malformed-input
+/ error paths.
 
 - **List filters validate at the boundary (no more 500s).** Numeric and date
   `list_*` query params are now emitted with their real types

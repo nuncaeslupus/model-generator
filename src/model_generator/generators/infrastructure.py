@@ -817,7 +817,7 @@ def generate_infrastructure(
             continue
 
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
+        with path.open("w", encoding="utf-8") as f:
             f.write(content)
         print(f"  ✅ Generated: {path}")
         generated_files.append(path)

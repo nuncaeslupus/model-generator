@@ -18,7 +18,7 @@ def load_all_models(models_dir: Path) -> dict[str, dict[str, Any]]:
     """Load all model JSON files."""
     models = {}
     for json_file in sorted(models_dir.glob("*.model.json")):
-        with open(json_file) as f:
+        with json_file.open(encoding="utf-8") as f:
             data = json.load(f)
             domain = data["domain"]
             models[domain] = data
@@ -31,7 +31,7 @@ def load_enums(models_dir: Path) -> dict[str, str]:
     if not enums_file.exists():
         return {}
 
-    with open(enums_file) as f:
+    with enums_file.open(encoding="utf-8") as f:
         data = json.load(f)
         enums: dict[str, str] = {}
         for enum_name, enum_def in data.get("enums", {}).items():
@@ -97,7 +97,7 @@ def find_foreign_key_dependencies(
         deps = set()
 
         # Check fields for references
-        for field_name, field in entity_data["fields"].items():
+        for _field_name, field in entity_data["fields"].items():
             if field.get("type") == "reference":
                 # Convert reference_table to entity name
                 ref_table = field.get("reference_table")

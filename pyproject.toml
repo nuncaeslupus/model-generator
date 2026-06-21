@@ -65,12 +65,31 @@ target-version = "py311"
 exclude = [".claude/"]
 
 [tool.ruff.lint]
+# Broadened beyond the E/W/F/I baseline to match the project's global standard:
+# flake8-bugbear, flake8-simplify, pyupgrade, flake8-use-pathlib, and Ruff's own
+# rules catch real correctness/portability issues (notably PTH = missing-encoding
+# file I/O, which is a Windows footgun).
 select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "UP",   # pyupgrade
+    "PTH",  # flake8-use-pathlib
+    "RUF",  # Ruff-specific rules
 ]
+ignore = [
+    # The `ℹ` (U+2139 INFORMATION SOURCE) prefix in CLI status messages is an
+    # intentional info marker, not an ambiguous-for-a-Latin-letter typo.
+    "RUF001",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test fixtures idiomatically use os.getcwd()/open() for chdir save-restore and
+# reading spec files; the pathlib rules add churn without value in the suite.
+"tests/**" = ["PTH109", "PTH123"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

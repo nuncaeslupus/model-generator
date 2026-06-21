@@ -54,7 +54,7 @@ def generate_init(
 
     if get_layout(config) == "per-entity":
         existing_files = {d["file"] for d in domains}
-        for name in model.get("entities", {}).keys():
+        for name in model.get("entities", {}):
             stem = snake_case(name)
             if stem not in existing_files:
                 domains.append(
