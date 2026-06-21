@@ -738,6 +738,43 @@ def _validate_auth_strategy(
             sys.exit(1)
 
 
+def _validate_auth_scope_coverage(
+    models: list[dict[str, Any]], config: dict[str, Any]
+) -> None:
+    """Warn if auth.strategy is set but no API-enabled entity declares api.scope.
+
+    CRUD routes are unauthenticated by default; the auth scaffold is only
+    wired in when an entity sets api.scope. An auth-on project with zero
+    scoped entities ships a fully-open API, which is almost always unintentional.
+    """
+    auth = config.get("auth") or {}
+    if not auth.get("strategy"):
+        return
+
+    scoped: list[str] = []
+    api_enabled: list[str] = []
+    for model in models:
+        for entity_name, entity in (model.get("entities") or {}).items():
+            api_cfg = entity.get("api") or {}
+            if not api_cfg.get("enabled", True):
+                continue
+            api_enabled.append(entity_name)
+            if api_cfg.get("scope"):
+                scoped.append(entity_name)
+
+    if api_enabled and not scoped:
+        print(
+            "Warning: auth.strategy is set but no API-enabled entity declares\n"
+            "api.scope. All generated CRUD endpoints will be unauthenticated.\n\n"
+            "Add api.scope to owner-bound entities, for example:\n\n"
+            '  "api": {\n'
+            '    "scope": {"owner_field": "user_id"}\n'
+            "  }\n\n"
+            f"API-enabled entities found: {', '.join(api_enabled)}\n"
+            "See docs/user/usage-guide.md for details."
+        )
+
+
 def _generate_target(
     target: str,
     model: dict[str, Any],
@@ -976,6 +1013,7 @@ def main() -> None:
     extra_deps = sorted(set(extra_deps))
 
     _validate_auth_strategy(loaded_models, config)
+    _validate_auth_scope_coverage(loaded_models, config)
 
     auth_extra = _compute_auth_extra(config)
     if auth_extra:

@@ -240,6 +240,7 @@
                 }
             ],
             "api": {
+                "scope": {"owner_field": "user_id"},
                 "enabled": true,
                 "prefix": "sessions",
                 "endpoints": [
@@ -356,6 +357,7 @@
                 }
             ],
             "api": {
+                "scope": {"owner_field": "user_id"},
                 "enabled": true,
                 "prefix": "api-keys"
             },
@@ -521,6 +523,7 @@
                 }
             ],
             "api": {
+                "scope": {"owner_field": "user_id"},
                 "enabled": true,
                 "prefix": "user-roles"
             },
