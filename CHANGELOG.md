@@ -8,6 +8,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`encrypt` is now expressible in a valid spec.** A binary field's `encrypt`
+  block (which triggers the at-rest `EncryptedBytes` type) was rejected by the
+  field schema (`additionalProperties: false` with no `encrypt` property), so
+  `model-val` flagged it and `load_model` warned even though `model-gen` honors
+  it. Added `encrypt` (`{key_env?}`) to the field schema.
+- **Example `.gitignore` no longer hides generated code.** The bundled
+  `user-auth-project/.gitignore` excluded the generated `src/`, `tests/`, and
+  `alembic/` trees — contradicting the "the generated code is yours, commit it"
+  philosophy and diverging from the `.gitignore` the generator actually emits.
+  It now mirrors the generated file (ignoring only caches/venvs/secrets/build
+  artifacts).
 - **Generated contract suite is green for owner-scoped entities.** When
   `auth.strategy` is on and an entity declares `api.scope`, its CRUD endpoints
   require an authenticated `current_user` and inject the owner from it. The

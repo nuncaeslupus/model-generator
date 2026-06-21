@@ -132,6 +132,74 @@ class TestValidateModel:
         assert len(errors) > 0
         assert any("is not of type" in e for e in errors)
 
+    def test_accepts_encrypted_binary_field(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
+        """EX-5: a binary field with an `encrypt` block is expressible/valid."""
+        model = {
+            "domain": "secrets",
+            "entities": {
+                "Secret": {
+                    "table": "secrets",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                        "blob": {
+                            "type": "binary",
+                            "required": True,
+                            "encrypt": {"key_env": "FERNET_KEY"},
+                        },
+                    },
+                }
+            },
+        }
+        path = tmp_path / "secrets.model.json"
+        path.write_text(json.dumps(model))
+        assert validate_model(path, schema) == []
+
+    def test_rejects_unknown_key_in_encrypt(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
+        """`encrypt` is a closed object — typos surface instead of silently passing."""
+        model = {
+            "domain": "secrets",
+            "entities": {
+                "Secret": {
+                    "table": "secrets",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                        "blob": {"type": "binary", "encrypt": {"bogus": "x"}},
+                    },
+                }
+            },
+        }
+        path = tmp_path / "secrets.model.json"
+        path.write_text(json.dumps(model))
+        assert len(validate_model(path, schema)) > 0
+
+    def test_rejects_encrypt_on_non_binary_field(
+        self, tmp_path: Path, schema: dict[str, Any]
+    ) -> None:
+        """EX-5: `encrypt` only makes sense on binary fields — reject it elsewhere."""
+        model = {
+            "domain": "secrets",
+            "entities": {
+                "Secret": {
+                    "table": "secrets",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                        "name": {
+                            "type": "text",
+                            "max_length": 100,
+                            "encrypt": {"key_env": "FERNET_KEY"},
+                        },
+                    },
+                }
+            },
+        }
+        path = tmp_path / "secrets.model.json"
+        path.write_text(json.dumps(model))
+        assert len(validate_model(path, schema)) > 0
+
     def test_schema_violation_fields_wrong_type(
         self, tmp_path: Path, schema: dict[str, Any]
     ) -> None:

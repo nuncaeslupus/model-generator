@@ -281,12 +281,14 @@ Same numeric options as `financial`. Fixed precision: `Numeric(5, 4)`.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `required` | bool | `false` | NOT NULL |
-| `encrypt` | object | — | Encrypt at rest with Fernet; `key_env` names the env var holding the key |
+| `encrypt` | object | — | Encrypt at rest with Fernet via the generated `EncryptedBytes` type |
 
-Raw bytes column. With `encrypt`, the generator emits a SQLAlchemy
-`TypeDecorator` that transparently Fernet-encrypts on write and decrypts on read
-(app code reads/writes plain `bytes`); the key is loaded from the environment
-variable named in `encrypt.key_env`.
+Raw bytes column. Adding an `encrypt` block makes the generator emit a SQLAlchemy
+`TypeDecorator` (`EncryptedBytes`) that transparently Fernet-encrypts on write and
+decrypts on read (app code reads/writes plain `bytes`). The Fernet key is read
+from the **`FERNET_KEY`** environment variable. `encrypt.key_env` is accepted to
+document the intended key source, but the generated type currently always reads
+`FERNET_KEY`.
 
 **SQLAlchemy:** `Column(LargeBinary, nullable=False)` (or the encrypted `TypeDecorator`)
 **Pydantic:** `bytes` (base64-encoded in JSON)

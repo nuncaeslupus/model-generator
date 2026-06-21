@@ -347,6 +347,29 @@
                 "timestamp_after": {
                     "type": "string",
                     "description": "For datetime fields: validate this timestamp >= referenced field (e.g., 'created_at')"
+                },
+                "encrypt": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "For binary fields: encrypt at rest with Fernet via the generated EncryptedBytes type (reads the FERNET_KEY env var).",
+                    "properties": {
+                        "key_env": {
+                            "type": "string",
+                            "description": "Name of the env var holding the Fernet key (documents intent; the generated EncryptedBytes reads FERNET_KEY)."
+                        }
+                    }
+                }
+            },
+            "dependencies": {
+                "encrypt": {
+                    "properties": {
+                        "type": {
+                            "enum": [
+                                "binary"
+                            ]
+                        }
+                    },
+                    "description": "encrypt is only valid on binary fields"
                 }
             }
         },
