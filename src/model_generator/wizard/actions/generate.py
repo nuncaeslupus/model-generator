@@ -87,6 +87,16 @@ def run_generate() -> None:
     ]
     target = select("Generation target:", choices=targets, default="all")
 
+    # Root project files (pyproject.toml / alembic.ini / .gitignore) only matter
+    # when infrastructure is emitted. Mirror the CLI's --no-root-files so the
+    # scratch-and-migrate-into-an-existing-tree workflow has parity here.
+    no_root_files = False
+    if target in INFRASTRUCTURE_TARGETS or target == "migration-init":
+        no_root_files = not confirm(
+            "Generate root project files (pyproject.toml, alembic.ini, .gitignore)?",
+            default=True,
+        )
+
     # Confirm
     file_names = [f.name for f in selected_files]
     print(f"\nWill generate '{target}' for: {', '.join(file_names)}")
@@ -125,6 +135,7 @@ def run_generate() -> None:
             project_config=config,
             has_encrypted_binary=_has_encrypted_binary_field(loaded_models),
             extra_deps=extra_deps,
+            no_root_files=no_root_files,
         )
         if infra_files:
             run_quality_tools(config, project_root, infra_files)
@@ -137,6 +148,6 @@ def run_generate() -> None:
     from ...generate import generate
 
     for model_file in selected_files:
-        generate(model_path=model_file, target=target)
+        generate(model_path=model_file, target=target, no_root_files=no_root_files)
 
     print("\nGeneration complete.")

@@ -125,14 +125,46 @@ unchanged-green.
   **DOC-14** — usage-guide wizard install → `uv tool install
   "model-generator-kit[interactive]"`.
 
-### Next: remaining P1 cluster — tooling/hygiene
+### P1/P2 wizard PR shipped — WIZ-2 + WIZ-3 + WIZ-4 + WIZ-5 (PR pending)
 
-Consult the review doc (`status/code-review-2026-06-21.md`, Part D). Still open
-P1: the **tooling** PR (TOOL-1 — scrub downstream project names from the
-CHANGELOG / release notes; TOOL-3 — broaden the ruff set; GEN-8 — `encoding=
-"utf-8"` on all file I/O). Note: the generated tree still has the pre-existing
-main/auth I001 + pagination-PEP695-on-py311 lint quirks (auto-fixed by `ruff
-check --fix`) — TPL-22 territory, not gated by the smoke job.
+Branch `claude/modest-davinci-iu0mhb`. Closes the wizard cluster (WIZ-1 + TOOL-9
+already shipped in #37). Wizard runtime only — no templates/generated output
+touched, so the smoke-example suite is unaffected.
+
+- **WIZ-2 — `questionary` import guarded.** `prompts.py` wrapped the
+  `import questionary as _questionary` in `try/except ImportError` (it ships in
+  the optional `[interactive]` extra). On a base install `_questionary` is now
+  `None` and the plain-`input()` fallback is *live* code, not dead — previously
+  the unconditional import crashed `--interactive` at module load and the
+  fallback branches were unreachable despite the docstring's promise.
+- **WIZ-3 — Ctrl-C / ESC / Ctrl-D handled.** New `PromptCancelled` exception.
+  Every helper raises it when questionary's `.ask()` returns `None` (abort)
+  instead of casting `None` to `str`/`list` (silent re-prompt loops / `TypeError`
+  on the checkbox result); the fallback maps `EOFError` to the same. `menu.py`'s
+  loop catches `PromptCancelled`/`KeyboardInterrupt`: a cancelled *top-level*
+  prompt exits the wizard, a cancelled prompt *inside an action* aborts that
+  action and returns to the menu (dispatch extracted to `_dispatch`).
+- **WIZ-4 — wizard can set `--no-root-files`.** `actions/generate.py` asks
+  "Generate root project files (pyproject.toml/alembic.ini/.gitignore)?" when the
+  target emits infrastructure, and threads `no_root_files` into both
+  `generate_infrastructure(...)` and `generate(...)` — CLI scratch-and-migrate
+  parity.
+- **WIZ-5 — `run_generate` core path tested.** New `TestRunGenerateAction` drives
+  the real function over a tmp project (config + one model): a non-infra target
+  scans files and calls `generate(...)` per file; declining root files threads
+  `no_root_files=True` into both the infra and per-domain calls. Plus
+  `TestPromptsOptionalImport`, `TestPromptsCancellation`, `TestMenuCancellation`.
+
+**Verified:** 559 unit tests (+25), `make lint` clean (ruff + mypy strict).
+
+### Next: remaining P2 cluster
+
+Consult the review doc (`status/code-review-2026-06-21.md`, Part B/D). Open P2s
+include template fixes (TPL-6 percentage scale, TPL-10 encrypted_bytes
+annotations, TPL-12 datetime time-bomb), generator hygiene (GEN-2/3/4/6), and
+example-coverage gaps (EX-2/3/4/5/8/9). Note: the generated tree still has the
+pre-existing main/auth I001 + pagination-PEP695-on-py311 lint quirks (auto-fixed
+by `ruff check --fix`) — TPL-22 territory, not gated by the smoke job.
 
 ### P1 template-correctness trio shipped — TPL-5 + TPL-14 + TPL-16 (PR pending)
 
