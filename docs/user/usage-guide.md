@@ -145,6 +145,21 @@ model-gen --clear-only --scope full
 - `selective` (default) — Only files that would be regenerated
 - `full` — Also removes cache dirs (`.pytest_cache`, `.mypy_cache`, `.venv`), generated infrastructure, and `alembic.ini`
 
+> **One-shot, not an upgrade channel.** `--clean` is for *pre-adoption*
+> iteration — you're still tuning the JSON specs and want a fresh tree on each
+> run. Once you start editing the generated code, it is yours: there is no
+> "re-run to upgrade" path. **Domain files** (database models, routes, API
+> models, tests, factories) are overwritten on every run, so `--clean` +
+> regenerate would discard your edits to them. **Infrastructure files** (`base`,
+> `engine`, `main`, `auth_router`, root `conftest`, `utils`, …) are
+> *skip-if-exists* and never overwritten — which also means a generator
+> **security or correctness fix to an infra template does not reach an
+> already-generated project automatically.** To pick one up, regenerate the
+> single affected file into a scratch tree (`--target <infra-target>` in an
+> empty dir) and port the diff by hand, or delete that one file and re-run.
+> When a CHANGELOG entry says "adopters should regenerate," this is the workflow
+> it means.
+
 ### Generating into an existing project
 
 When integrating model-generator output into a project that already has its own `pyproject.toml`, `.gitignore`, or alembic config, use `--no-root-files` to suppress root-level file emission:
@@ -238,7 +253,7 @@ The wizard provides a menu:
 ### Install for Rich UI
 
 ```bash
-pip install -e "model-generator/[interactive]"
+uv tool install "model-generator-kit[interactive]"   # or: pipx install "model-generator-kit[interactive]"
 ```
 
 With `questionary` installed, the wizard uses arrow-key selection menus. Without it, a plain numbered-list fallback works.
@@ -262,8 +277,8 @@ This checks your `.model.json` files against the JSON schema without generating 
 The generator creates Alembic infrastructure. After generation:
 
 ```bash
-# Set database URL
-export DATABASE_URL="sqlite:///./app.db"
+# Set database URL (async driver — the generated engine is async)
+export DATABASE_URL="sqlite+aiosqlite:///./app.db"
 
 # Create tables
 alembic upgrade head

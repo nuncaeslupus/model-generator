@@ -55,6 +55,7 @@ For your own project, see the [Installation Guide](./docs/user/installation.md).
 - **[Model Design Guide](./docs/user/model-design-guide.md)** — How to design comprehensive JSON specifications
 - **[Usage Guide](./docs/user/usage-guide.md)** — CLI workflows, generation, cleanup, interactive mode
 - **[Quick Reference](./docs/user/quick-reference.md)** — Lookup tables: field types, constraints, options
+- **[Architecture, Troubleshooting & Upgrades](./docs/user/architecture.md)** — How it works, common errors, the upgrade story
 - **[Extending Generated Code](./docs/user/extending-generated-code.md)** — Business logic, custom routes, migrations
 
 ### For Agents
@@ -93,8 +94,11 @@ uv run pytest tests/ -v
 | `test_wizard.py` | Wizard imports, prompt fallbacks, menu flow, project setup, clean and test runner actions |
 | `test_template_utils.py` | `path_to_import`, `wrap_text`, template environment, custom Jinja2 filters |
 | `test_cli.py` | CLI flags: `--interactive`, `--clear-only`, `--dry-run`, `--diff`, missing model |
+| `test_cleanup.py` | `--clean` / `--clear-only` cleanup behavior and scopes |
+| `test_enum_examples.py` | Enum example generation and UPPER_CASE normalization |
 | `test_full_generation.py` | End-to-end generation from example project |
 | `test_integration.py` | Full generation pipeline |
+| `test_validate.py` | `model-val` CLI validator |
 | `test_validation.py` | JSON schema validation |
 | `test_utils.py` | Utility functions |
 

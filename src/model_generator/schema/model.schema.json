@@ -83,7 +83,7 @@
                                     },
                                     "value": {
                                         "type": "string",
-                                        "description": "Enum string value (lowercase)"
+                                        "description": "Enum string value (UPPER_CASE; auto-uppercased)"
                                     },
                                     "description": {
                                         "type": "string",
@@ -94,7 +94,7 @@
                         ]
                     },
                     "minItems": 1,
-                    "description": "List of enum values. Can be strings (auto-lowercased) or objects with name/value/description."
+                    "description": "List of enum values. Can be strings (auto-uppercased) or objects with name/value/description."
                 }
             }
         },

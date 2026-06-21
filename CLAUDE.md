@@ -88,10 +88,10 @@ uv run model-gen --interactive   # Interactive wizard
 ### Running the Example
 
 ```bash
-uv run model-gen examples/user-auth-project/models --target all
-cd examples/user-auth-project
+cd examples/user-auth-project          # cd first — load_config reads
+uv run model-gen models --target all   # .model-generator.yaml from CWD
 uv venv && uv sync --extra dev
-uv run pytest                    # generated contract suite
+uv run pytest                          # generated contract suite
 ```
 
 ---
