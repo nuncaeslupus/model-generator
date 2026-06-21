@@ -20,15 +20,19 @@ Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.g
 """
 
 import os
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import LargeBinary, TypeDecorator, TypeEngine
+from sqlalchemy import LargeBinary, TypeDecorator
 from sqlalchemy.dialects.postgresql import BYTEA
 
+if TYPE_CHECKING:
+    from cryptography.fernet import Fernet
+
 FERNET_KEY = os.environ.get("FERNET_KEY")
-_fernet = None
+_fernet: "Fernet | None" = None
 
 
-def _get_fernet():
+def _get_fernet() -> "Fernet":
     """Get cached Fernet instance."""
     global _fernet
     if _fernet is None:
@@ -46,17 +50,19 @@ class EncryptedBytes(TypeDecorator):
     impl = LargeBinary
     cache_ok = True
 
-    def process_bind_param(self, value: bytes | None, dialect) -> bytes | None:
+    def process_bind_param(self, value: bytes | None, dialect: Any) -> bytes | None:
         if value is None:
             return None
         return _get_fernet().encrypt(value)
 
-    def process_result_value(self, value: bytes | None, dialect) -> bytes | None:
+    def process_result_value(
+        self, value: bytes | None, dialect: Any
+    ) -> bytes | None:
         if value is None:
             return None
         return _get_fernet().decrypt(value)
 
-    def load_dialect_impl(self, dialect: TypeEngine) -> TypeEngine:
+    def load_dialect_impl(self, dialect: Any) -> Any:
         if dialect.name == "postgresql":
             return dialect.type_descriptor(BYTEA)
         return dialect.type_descriptor(LargeBinary())

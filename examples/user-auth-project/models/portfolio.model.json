@@ -197,7 +197,7 @@
                 },
                 "allocation_percentage": {
                     "type": "percentage",
-                    "description": "Target allocation percentage for rebalancing (0-100%)"
+                    "description": "Target allocation for rebalancing as a 0.0-1.0 fraction (e.g. 0.25 = 25%)"
                 }
             },
             "timestamps": {
