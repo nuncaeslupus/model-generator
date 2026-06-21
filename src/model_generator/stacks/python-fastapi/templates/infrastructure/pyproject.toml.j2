@@ -60,6 +60,13 @@ ignore = [
     "W191",  # indentation contains tabs
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Alembic's env.py configures logging before importing the model metadata, so
+# its post-setup imports trip E402 (module import not at top). This is the
+# standard generated alembic layout — ignore E402 for that one module so
+# `ruff check .` is green out of the box.
+"{{ migrations_path }}/env.py" = ["E402"]
+
 [tool.ruff.format]
 {% if style.quote_style is not none %}
 quote-style = "{{ style.quote_style }}"

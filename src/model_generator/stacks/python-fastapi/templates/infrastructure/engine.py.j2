@@ -18,8 +18,26 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+def _resolve_database_url() -> str:
+    """Return the configured DATABASE_URL, refusing the dev fallback in production.
+
+    Outside production an unset DATABASE_URL falls back to an ephemeral local
+    SQLite file so the app boots for development. Under APP_ENV=production that
+    silent fallback is a footgun (data written to a throwaway file), so require
+    an explicit URL there — mirroring the SESSION_SECRET_KEY guard.
+    """
+    url = os.getenv("DATABASE_URL")
+    if url:
+        return url
+    if os.getenv("APP_ENV") == "production":
+        raise RuntimeError(
+            "DATABASE_URL environment variable must be set in production."
+        )
+    return "sqlite+aiosqlite:///./app.db"
+
+
 # Database URL from environment, with SQLite fallback for development
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./app.db")
+DATABASE_URL = _resolve_database_url()
 
 # Create async engine with appropriate settings
 if DATABASE_URL.startswith("sqlite"):

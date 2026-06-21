@@ -196,6 +196,27 @@ uv run mypy . --explicit-package-bases
 # Start development — the generated code is yours to maintain
 ```
 
+### Environment Variables
+
+Generation emits a `.env.example` manifesting every environment variable the
+project reads. Copy it and fill in real values:
+
+```bash
+cp .env.example .env
+```
+
+Commented-out variables are optional (their documented default applies when
+unset). The set grows with enabled features — auth adds `SESSION_SECRET_KEY`
+and the password pepper; a redis rate-limit backend adds
+`RATELIMIT_STORAGE_URI`; encrypted binary fields add `FERNET_KEY`.
+
+Two variables have **production guards** that refuse insecure dev fallbacks
+when `APP_ENV=production`: `DATABASE_URL` (otherwise an ephemeral local SQLite
+file) and, with auth enabled, `SESSION_SECRET_KEY` (otherwise a baked-in dev
+key). Both raise at startup if missing in production, so a misconfigured
+deploy fails loudly instead of silently losing data or signing cookies with a
+known key.
+
 ---
 
 ## Interactive Mode
