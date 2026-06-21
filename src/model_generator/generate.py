@@ -451,8 +451,6 @@ def generate(
             continue
         if isinstance(result, list):
             outputs.extend(result)
-        elif isinstance(result, dict) and "instructions" in result:
-            print(result["instructions"])
         else:
             outputs.append(result)
 
@@ -831,7 +829,9 @@ def _generate_target(
             model, config, env, project_root, no_root_files=no_root_files
         )
     elif target == "migration-autogen":
-        return generate_migration_autogen(model, config, env, project_root)
+        # Instruction-only target: prints guidance, emits no file.
+        generate_migration_autogen(model, config, env, project_root)
+        return None
 
     return None
 

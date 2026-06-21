@@ -191,14 +191,38 @@ test_signatures_are_fully_annotated`, `TestConftestGeneratorDatetimeFixture`),
 RED→GREEN confirmed (both fail with the template/source changes stashed).
 `make lint` clean (ruff + mypy strict), `make smoke-example` → 135/135.
 
+### P2 migration-autogen cleanup shipped — GEN-6 + GEN-12 (PR pending)
+
+Branch `claude/keen-ptolemy-4dlslp` (reset onto main after #46 merged). Both
+issues live in the same `migration-autogen` code path.
+
+- **GEN-6 — honest + project-agnostic instructions.** `generate_migration_autogen`
+  dropped the misleading `print("  Running alembic revision --autogenerate...")`
+  (nothing is actually run — the docstring even says so) and the hardcoded
+  `docker-compose up -d timescaledb` orchestration line (project-specific, violates
+  the project-agnostic principle). The guidance is now a module-level
+  `_AUTOGEN_INSTRUCTIONS` constant: "start your database and make sure it is
+  reachable", a generic `DATABASE_URL` export (async-driver example), and the
+  `alembic revision --autogenerate` / `alembic upgrade head` steps.
+- **GEN-12 — no sentinel return dict.** The function returned a `{"info", "instructions"}`
+  dict with no `path`/`content`, intercepted by a fragile
+  `isinstance(result, dict) and "instructions" in result` branch in `generate.py`'s
+  output dispatch. It now **prints** the instructions and returns `None` (typed
+  `-> None`); the special-case dispatch branch is removed, so the loop only handles
+  real file-emitting results. The `-> None` signature (mypy-enforced in CI) is the
+  guard against a sentinel dict being reintroduced.
+
+**Verified:** 560 unit tests, RED→GREEN confirmed (the two `TestMigrationAutogen`
+behavioural tests fail with the source changes stashed). `make lint` clean
+(ruff + mypy strict), `make smoke-example` → 135/135.
+
 ### Next: remaining P2 cluster
 
 Consult the review doc (`status/code-review-2026-06-21.md`, Part B/D). Open P2s
-now include generator hygiene (GEN-6 migration-autogen hardcodes TimescaleDB),
-example-coverage gaps (EX-2/3/4/8), and test-depth gaps (TST-5/6/7). Note: the
-generated tree still has the pre-existing main/auth I001 + pagination-PEP695-on-
-py311 lint quirks (auto-fixed by `ruff check --fix`) — TPL-22 territory, not gated
-by the smoke job.
+now include example-coverage gaps (EX-2/3/4/8) and test-depth gaps (TST-5/6/7).
+Note: the generated tree still has the pre-existing main/auth I001 + pagination-
+PEP695-on-py311 lint quirks (auto-fixed by `ruff check --fix`) — TPL-22 territory,
+not gated by the smoke job.
 
 ### P1 template-correctness trio shipped — TPL-5 + TPL-14 + TPL-16 (PR pending)
 

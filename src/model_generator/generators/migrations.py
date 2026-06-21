@@ -107,13 +107,35 @@ alembic upgrade head
 """
 
 
+# Project-agnostic guidance: autogeneration needs a live database, so it can't
+# run during generation. Kept free of any specific database/orchestration tool
+# (no TimescaleDB/docker-compose) per the project-agnostic principle.
+_AUTOGEN_INSTRUCTIONS = """
+📋 Migration autogeneration requires a running database.
+
+   model-generator has created your SQLAlchemy models — to create the
+   corresponding Alembic migration, run these commands from your project root:
+
+   1. Start your database and make sure it is reachable.
+
+   2. Point Alembic at it and generate the migration:
+      export DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/dbname"
+      alembic revision --autogenerate -m "initial schema"
+
+   3. Apply it:
+      alembic upgrade head
+"""
+
+
 def generate_migration_autogen(
     model: dict[str, Any], config: dict[str, Any], env: Environment, project_root: Path
-) -> dict[str, Any] | None:
+) -> None:
     """
-    Return instructions for running Alembic autogenerate.
+    Print instructions for running Alembic autogenerate; emit no files.
 
-    This can't be run directly during generation as it requires DATABASE_URL.
+    Autogeneration can't run during generation — it requires a live database
+    (DATABASE_URL). This target only surfaces guidance, so it returns ``None``
+    (rather than a sentinel dict the output dispatch had to special-case).
     """
     alembic_ini = project_root / "alembic.ini"
 
@@ -121,26 +143,5 @@ def generate_migration_autogen(
         print("  ⚠️  Alembic not initialized. Run with --target migration-init first.")
         return None
 
-    print("  Running alembic revision --autogenerate...")
-
-    return {
-        "info": (
-            "Migration autogeneration requires DATABASE_URL and should be run manually"
-        ),
-        "instructions": """
-📋 Migration autogeneration requires a running database.
-
-   Model-generator has created your SQLAlchemy models — to create the
-   corresponding Alembic migration, run these commands from your project root:
-
-   1. Start your database (if not already running):
-      docker-compose up -d timescaledb   # or: docker-compose up -d postgres
-
-   2. Generate the migration:
-      export DATABASE_URL="postgresql://user:pass@localhost:5432/dbname"
-      alembic revision --autogenerate -m "initial schema"
-
-   3. Apply it:
-      alembic upgrade head
-""",
-    }
+    print(_AUTOGEN_INSTRUCTIONS)
+    return None
