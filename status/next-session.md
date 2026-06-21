@@ -12,9 +12,11 @@ clusters are listed under "Part D — Working this backlog" in the review doc).
 
 ### Already in progress (branch `fix/p0-review-2026-06-21`)
 
-4 of the 7 P0 items are implemented with tests. **These were authored during a
-tooling outage and are NOT yet verified — run `make test` + a clean regen before
-trusting them** (see "Working method" below):
+4 of the 7 P0 items are implemented, tested, and **verified** (commit `7881a47`):
+504 tests pass, `make lint` clean (ruff + mypy strict), and the example
+regenerates clean (76 emitted files parse; only the 4 pre-existing lint quirks
+remain). **Next step: open a PR for this branch**, then continue with the
+remaining P0s. The four shipped fixes:
 
 - **TPL-1** — `isoformat_utc()` helper in `utils.py.j2`; route datetime fields +
   `created_at`/`updated_at` use it instead of `isoformat() + "Z"` (fixes the
