@@ -5,7 +5,6 @@ Action: Generate code from model specifications.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from ..prompts import checkbox, confirm, select
 
@@ -96,49 +95,25 @@ def run_generate() -> None:
 
     # Generate infrastructure if needed (same logic as main())
     if target in INFRASTRUCTURE_TARGETS:
-        from ...generate import _has_encrypted_binary_field
+        from ...generate import _has_encrypted_binary_field, _prepare_infra_modules
         from ...generators.infrastructure import generate_infrastructure
         from ...utils import (
-            get_layout,
             get_template_env,
             load_config,
-            load_model,
             run_quality_tools,
         )
-        from ...utils.templates import snake_case
 
         stack = "python-fastapi"
         config = load_config(stack)
         env = get_template_env(stack, config)
-        layout = get_layout(config)
 
-        domains: list[str] = []
-        route_modules: list[str] = []
-        factory_modules: list[str] = []
-        loaded_models: list[dict[str, Any]] = []
-        for model_file in selected_files:
-            model = load_model(model_file)
-            loaded_models.append(model)
-            domain = model.get("domain", "unknown")
-            has_api = any(
-                e.get("api", {}).get("enabled", True)
-                for e in model.get("entities", {}).values()
-            )
-            if domain not in domains and has_api:
-                domains.append(domain)
-            if layout == "per-entity":
-                for name, entity in model.get("entities", {}).items():
-                    stem = snake_case(name)
-                    if (
-                        entity.get("api", {}).get("enabled", True)
-                        and stem not in route_modules
-                    ):
-                        route_modules.append(stem)
-                    if has_api and stem not in factory_modules:
-                        factory_modules.append(stem)
-        if layout != "per-entity":
-            route_modules = list(domains)
-            factory_modules = list(domains)
+        (
+            domains,
+            route_modules,
+            factory_modules,
+            extra_deps,
+            loaded_models,
+        ) = _prepare_infra_modules(selected_files, config)
 
         infra_files = generate_infrastructure(
             config=config,
@@ -149,6 +124,7 @@ def run_generate() -> None:
             factory_modules=factory_modules,
             project_config=config,
             has_encrypted_binary=_has_encrypted_binary_field(loaded_models),
+            extra_deps=extra_deps,
         )
         if infra_files:
             run_quality_tools(config, project_root, infra_files)
