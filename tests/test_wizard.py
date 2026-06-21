@@ -1,6 +1,7 @@
 """Tests for the interactive wizard module."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -132,6 +133,103 @@ class TestPromptsFallback:
         with patch("builtins.input", return_value=""):
             result = text("Enter text:", default="fallback")
         assert result == "fallback"
+
+
+class TestPromptsOptionalImport:
+    """WIZ-2: questionary is an optional extra — the import must be guarded."""
+
+    def test_module_exposes_questionary_sentinel(self) -> None:
+        import model_generator.wizard.prompts as p
+
+        # _questionary is either the real module or None (never an AttributeError):
+        # the try/except import means a base install still imports cleanly.
+        assert hasattr(p, "_questionary")
+
+    def test_fallback_used_when_questionary_absent(self) -> None:
+        """With _questionary None the plain input() path is live, not dead code."""
+        import model_generator.wizard.prompts as p
+
+        with (
+            patch.object(p, "_questionary", None),
+            patch("builtins.input", return_value="1"),
+        ):
+            assert p.select("Pick:", choices=["a", "b"]) == "a"
+
+
+class TestPromptsCancellation:
+    """WIZ-3: aborting a prompt raises PromptCancelled, never a bogus value."""
+
+    @staticmethod
+    def _cancelling_questionary() -> SimpleNamespace:
+        """A questionary stand-in whose every prompt .ask()s to None (Ctrl-C/ESC)."""
+        cancelled = SimpleNamespace(ask=lambda: None)
+        return SimpleNamespace(
+            select=lambda *a, **k: cancelled,
+            checkbox=lambda *a, **k: cancelled,
+            confirm=lambda *a, **k: cancelled,
+            text=lambda *a, **k: cancelled,
+        )
+
+    @pytest.mark.parametrize(
+        ("fn", "args"),
+        [
+            ("select", ("Pick:", ["a", "b"])),
+            ("checkbox", ("Pick:", ["a", "b"])),
+            ("confirm", ("OK?",)),
+            ("text", ("Name?",)),
+        ],
+    )
+    def test_questionary_none_raises(self, fn: str, args: tuple[object, ...]) -> None:
+        import model_generator.wizard.prompts as p
+
+        with (
+            patch.object(p, "_questionary", self._cancelling_questionary()),
+            pytest.raises(p.PromptCancelled),
+        ):
+            getattr(p, fn)(*args)
+
+    def test_fallback_eof_raises_cancelled(self) -> None:
+        """Ctrl-D (EOFError) at the plain prompt maps to PromptCancelled."""
+        import model_generator.wizard.prompts as p
+
+        with (
+            patch.object(p, "_questionary", None),
+            patch("builtins.input", side_effect=EOFError),
+            pytest.raises(p.PromptCancelled),
+        ):
+            p.select("Pick:", choices=["a", "b"])
+
+
+class TestMenuCancellation:
+    """WIZ-3: cancellation control flow in the menu loop."""
+
+    def test_top_level_cancel_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
+        from model_generator.wizard.menu import run_menu
+        from model_generator.wizard.prompts import PromptCancelled
+
+        with patch("model_generator.wizard.menu.select", side_effect=PromptCancelled):
+            run_menu()  # must terminate, not loop forever
+        assert "Goodbye" in capsys.readouterr().out
+
+    def test_action_cancel_returns_to_menu(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from model_generator.wizard.menu import run_menu
+        from model_generator.wizard.prompts import PromptCancelled
+
+        with (
+            patch(
+                "model_generator.wizard.menu.select",
+                side_effect=["Generate code", "Exit"],
+            ),
+            patch(
+                "model_generator.wizard.actions.generate.run_generate",
+                side_effect=PromptCancelled,
+            ),
+        ):
+            run_menu()
+        out = capsys.readouterr().out
+        assert "Returning to menu" in out
 
 
 class TestMenuFlow:
@@ -357,3 +455,100 @@ class TestPrepareInfraModules:
             with patch("model_generator.generate._validate_auth_strategy"):
                 _, _, _, extra_deps, _ = _prepare_infra_modules([model_path], config)
             assert "pandas>=2.0.0" in extra_deps
+
+
+class TestRunGenerateAction:
+    """WIZ-5 / WIZ-4: run_generate's real control flow (not a mock dispatch)."""
+
+    @staticmethod
+    def _setup_project(tmp_path: Path) -> Path:
+        """A minimal project tree run_generate can discover: config + one model."""
+        import json
+
+        (tmp_path / ".model-generator.yaml").write_text(
+            "project: {name: demo}\nstack: python-fastapi\n"
+        )
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        (models_dir / "widget.model.json").write_text(
+            json.dumps(
+                {
+                    "domain": "widget",
+                    "entities": {
+                        "Widget": {
+                            "fields": {
+                                "id": {
+                                    "type": "uuid",
+                                    "primary_key": True,
+                                    "auto_generate": True,
+                                }
+                            },
+                        }
+                    },
+                }
+            )
+        )
+        return tmp_path
+
+    def test_domain_target_calls_generate(self, tmp_path: Path) -> None:
+        """A non-infra target scans models and calls generate() per file."""
+        import os
+
+        from model_generator.wizard.actions import generate as gen_action
+
+        self._setup_project(tmp_path)
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            with (
+                patch.object(gen_action, "select", return_value="database"),
+                patch.object(gen_action, "confirm", return_value=True),
+                patch("model_generator.generate.generate") as mock_generate,
+            ):
+                gen_action.run_generate()
+
+            mock_generate.assert_called_once()
+            _, kwargs = mock_generate.call_args
+            assert kwargs["target"] == "database"
+            assert kwargs["no_root_files"] is False
+            assert kwargs["model_path"].name == "widget.model.json"
+        finally:
+            os.chdir(original_cwd)
+
+    def test_no_root_files_threaded_when_declined(self, tmp_path: Path) -> None:
+        """WIZ-4: declining root files threads no_root_files=True into both calls."""
+        import os
+
+        from model_generator.wizard.actions import generate as gen_action
+
+        self._setup_project(tmp_path)
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            with (
+                patch.object(gen_action, "select", return_value="all"),
+                # confirm calls: root-files? -> No, then Proceed? -> Yes.
+                patch.object(gen_action, "confirm", side_effect=[False, True]),
+                patch("model_generator.utils.load_config", return_value={}),
+                patch("model_generator.utils.get_template_env"),
+                patch("model_generator.utils.run_quality_tools"),
+                patch(
+                    "model_generator.generate._prepare_infra_modules",
+                    return_value=([], [], [], [], []),
+                ),
+                patch(
+                    "model_generator.generate._has_encrypted_binary_field",
+                    return_value=False,
+                ),
+                patch(
+                    "model_generator.generators.infrastructure.generate_infrastructure",
+                    return_value=[],
+                ) as mock_infra,
+                patch("model_generator.generate.generate") as mock_generate,
+            ):
+                gen_action.run_generate()
+
+            assert mock_infra.call_args.kwargs["no_root_files"] is True
+            assert mock_generate.call_args.kwargs["no_root_files"] is True
+        finally:
+            os.chdir(original_cwd)
