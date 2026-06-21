@@ -282,7 +282,11 @@ def generate_minimal_create_data(
                 enum_val = field.get("default", "active").upper()
             lines.append(f'            "{api_field_name}": "{enum_val}",')
         elif field_type == "datetime":
-            lines.append(f'            "{api_field_name}": "2025-01-01T00:00:00Z",')
+            # Far-future literal so fixtures for expiry-style fields (e.g.
+            # session ``expires_at``) are never already-past, and to match the
+            # ``2099`` convention the contract update payloads use. A past date
+            # here is a time-bomb: it ages into "expired" as real time advances.
+            lines.append(f'            "{api_field_name}": "2099-01-01T00:00:00Z",')
         elif field_type == "json_array":
             lines.append(f'            "{api_field_name}": ["item1", "item2"],')
         elif field_type == "json_object":

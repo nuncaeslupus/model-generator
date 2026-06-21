@@ -157,14 +157,48 @@ touched, so the smoke-example suite is unaffected.
 
 **Verified:** 559 unit tests (+25), `make lint` clean (ruff + mypy strict).
 
+### P2 template-correctness trio shipped — TPL-6 + TPL-10 + TPL-12 (PR pending)
+
+Branch `claude/keen-ptolemy-4dlslp`. Closes the P2 template-correctness cluster.
+
+- **TPL-10 — `encrypted_bytes.py` is mypy-clean under the shipped config.**
+  `encrypted_bytes.py.j2`: `_get_fernet()` was unannotated and `process_bind_param`/
+  `process_result_value`/`load_dialect_impl` had a bare `dialect` param →
+  `disallow_untyped_defs` failures. Now `from typing import TYPE_CHECKING, Any`,
+  `dialect: Any` everywhere (mirrors `types.py`), and `_get_fernet() -> "Fernet"`
+  (via a `TYPE_CHECKING` import of `cryptography.fernet.Fernet`) so the bind/result
+  values stay `bytes` and don't trip `warn_return_any`. Verified end-to-end:
+  rendered file is clean under the generated project's exact mypy flags
+  (`disallow_untyped_defs`/`disallow_incomplete_defs`/`check_untyped_defs`/
+  `warn_return_any`/…). The only residual — `[type-arg]` on the bare
+  `TypeDecorator` base — comes from `disallow_any_generics` (NOT in the shipped
+  config) and is shared verbatim with the existing `types.py`, so this is exact
+  parity, not a new gap.
+- **TPL-12 — datetime fixtures use a far-future literal.**
+  `conftest_generator.py:generate_minimal_create_data` emitted `2025-01-01` for
+  every datetime create field — a time-bomb: a session `expires_at` seeded in
+  the past is already expired, and the literal ages further out of range as real
+  time advances. Now `2099-01-01T00:00:00Z`, matching the `2099` convention the
+  contract update payloads already use.
+- **TPL-6 — `percentage` is documented as a 0–1 fraction.** The type stores a
+  0.0–1.0 fraction (`Numeric(5,4)`, `validate_percentage` enforces `0 ≤ v ≤ 1`),
+  but the example's `allocation_percentage` description said "(0-100%)". Fixed the
+  example description to "0.0-1.0 fraction (e.g. 0.25 = 25%)" and added a
+  clarifying note to the `percentage` section of the JSON-spec reference.
+
+**Verified:** 562 unit tests (+2: `TestEncryptedBytesGenerator::
+test_signatures_are_fully_annotated`, `TestConftestGeneratorDatetimeFixture`),
+RED→GREEN confirmed (both fail with the template/source changes stashed).
+`make lint` clean (ruff + mypy strict), `make smoke-example` → 135/135.
+
 ### Next: remaining P2 cluster
 
 Consult the review doc (`status/code-review-2026-06-21.md`, Part B/D). Open P2s
-include template fixes (TPL-6 percentage scale, TPL-10 encrypted_bytes
-annotations, TPL-12 datetime time-bomb), generator hygiene (GEN-2/3/4/6), and
-example-coverage gaps (EX-2/3/4/5/8/9). Note: the generated tree still has the
-pre-existing main/auth I001 + pagination-PEP695-on-py311 lint quirks (auto-fixed
-by `ruff check --fix`) — TPL-22 territory, not gated by the smoke job.
+now include generator hygiene (GEN-6 migration-autogen hardcodes TimescaleDB),
+example-coverage gaps (EX-2/3/4/8), and test-depth gaps (TST-5/6/7). Note: the
+generated tree still has the pre-existing main/auth I001 + pagination-PEP695-on-
+py311 lint quirks (auto-fixed by `ruff check --fix`) — TPL-22 territory, not gated
+by the smoke job.
 
 ### P1 template-correctness trio shipped — TPL-5 + TPL-14 + TPL-16 (PR pending)
 

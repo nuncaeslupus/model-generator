@@ -162,6 +162,9 @@ Same options as `text` except no `max_length` (unlimited).
 ```
 
 Same numeric options as `financial`. Fixed precision: `Numeric(5, 4)`.
+Stored as a **0.0–1.0 fraction**, not a 0–100 percent value (e.g. `0.25` means
+25%); the emitted `validate_percentage` validator enforces the `0 ≤ value ≤ 1`
+range. Field descriptions should say "0.0–1.0 fraction", not "0-100%".
 
 **SQLAlchemy:** `Column(Numeric(5, 4), nullable=True, default=Decimal("0.0"))`
 

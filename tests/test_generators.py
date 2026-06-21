@@ -5181,6 +5181,38 @@ class TestEncryptedBytesGenerator:
         assert "{-#" not in content
         assert "{#-" not in content
 
+    def test_signatures_are_fully_annotated(self, project_env_per_entity: Any) -> None:
+        """TPL-10: every method/function carries annotations so the file passes
+        the strict mypy config the generator also ships.
+
+        Mirrors the ``types.py`` TypeDecorator convention (``dialect: Any``);
+        an unannotated ``_get_fernet`` or ``dialect`` param fails
+        ``disallow_untyped_defs``. ``_get_fernet`` is typed ``-> Fernet`` (not
+        ``Any``) so the bind/result values stay ``bytes``, dodging
+        ``warn_return_any``.
+        """
+        from model_generator.generators.infrastructure import generate_encrypted_bytes
+
+        project_root, config, env = project_env_per_entity
+        result = generate_encrypted_bytes(
+            config, env, project_root, has_encrypted_binary=True
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+
+        assert "from typing import TYPE_CHECKING, Any" in content
+        assert 'def _get_fernet() -> "Fernet":' in content
+        assert "from cryptography.fernet import Fernet" in content
+        assert "value: bytes | None, dialect: Any" in content
+        assert "def load_dialect_impl(self, dialect: Any) -> Any:" in content
+        # No bare (unannotated) `dialect` parameter should remain.
+        assert "dialect)" not in content
+
+        # The annotated file must parse cleanly.
+        import ast
+
+        ast.parse(content)
+
     def test_returns_none_when_file_exists(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_encrypted_bytes
 
@@ -5734,6 +5766,35 @@ class TestApiTestsReferenceTextFiltering:
         content = result["content"]
         # No created-value filter for the nullable reference (would 500 on None).
         assert 'created_thing["owner_id"]' not in content
+
+
+class TestConftestGeneratorDatetimeFixture:
+    """TPL-12: datetime create-data fixtures use a far-future literal.
+
+    A hardcoded past date (the old ``2025-01-01``) is a time-bomb: a session
+    ``expires_at`` seeded in the past is already expired, and it ages further
+    out of range as real time advances. The far-future ``2099`` literal also
+    matches the convention the contract update payloads use.
+    """
+
+    @staticmethod
+    def test_datetime_fixture_is_future() -> None:
+        from model_generator.utils.conftest_generator import (
+            generate_minimal_create_data,
+        )
+
+        entity_data = {
+            "fields": {
+                "expires_at": {"type": "datetime", "required": True},
+            },
+        }
+        lines = generate_minimal_create_data(
+            "UserSession", entity_data, dependencies={}, enums={}
+        )
+        joined = "\n".join(lines)
+        assert '"expires_at": "2099-01-01T00:00:00Z"' in joined
+        # The old past-date time-bomb must be gone.
+        assert "2025-01-01" not in joined
 
 
 class TestConftestGeneratorRateLimitReset:
