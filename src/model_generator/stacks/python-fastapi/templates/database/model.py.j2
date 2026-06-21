@@ -38,7 +38,8 @@ This module contains:
     has_uuid=false,
     has_decimal=false,
     enum_imports=[],
-    constraint_imports=[]
+    constraint_imports=[],
+    rel_targets=[]
 ) %}
 {#- Scan all entities for required imports -#}
 {% for entity_name, entity in model.entities.items() %}
@@ -65,6 +66,9 @@ This module contains:
 {% endfor %}
 {% if entity.timestamps is defined and (entity.timestamps.created or entity.timestamps.updated) %}{% set ns.has_datetime = true %}{% endif %}
 {% if entity.relationships is defined and entity.relationships | length > 0 %}{% set ns.has_relationships = true %}{% endif %}
+{% for rel_name, rel in entity.relationships | default({}) | dictsort %}
+{% if rel.target in sibling_entities and rel.target != entity_name and rel.target not in ns.rel_targets %}{% set _ = ns.rel_targets.append(rel.target) %}{% endif %}
+{% endfor %}
 {% if entity.indexes is defined and entity.indexes | length > 0 %}{% set ns.has_index = true %}{% endif %}
 {% if entity.constraints is defined and entity.constraints | length > 0 %}{% set ns.has_check = true %}{% endif %}
 {% if entity.foreign_keys is defined and entity.foreign_keys | length > 0 %}{% set ns.has_fk_constraint = true %}{% endif %}
@@ -83,8 +87,11 @@ from datetime import datetime
 from decimal import Decimal
 
 {% endif %}
-{% if ns.has_json %}
-from typing import Any
+{% set typing_names = [] %}
+{% if ns.has_json %}{% set _ = typing_names.append('Any') %}{% endif %}
+{% if config.generation.layout == 'per-entity' and ns.rel_targets %}{% set _ = typing_names.append('TYPE_CHECKING') %}{% endif %}
+{% if typing_names %}
+from typing import {{ typing_names | join(', ') }}
 
 {% endif %}
 {% if ns.has_numeric or ns.has_uuid %}
@@ -158,6 +165,13 @@ from .enums import {{ ns.enum_imports | join(', ') }}
 {%- if ns.constraint_imports %}
 from .constraints import {{ ns.constraint_imports | sort | join(', ') }}
 {%- endif %}
+{% if config.generation.layout == 'per-entity' and ns.rel_targets %}
+
+if TYPE_CHECKING:
+{% for target in ns.rel_targets | sort %}
+    from .{{ target | snake_case }} import {{ target }}
+{% endfor %}
+{% endif %}
 
 
 {% if config.generation.layout != 'per-entity' %}
@@ -223,7 +237,10 @@ class {{ entity_name }}(Base):
 {% for item in regular_fields %}
 {% set field = item.value %}
 {% set field_name = item.key %}
-{% set optional = '' if (field.required | default(false)) else ' | None' %}
+{#- A field with a default (explicit, or the implicit False the boolean branch
+    always emits) is never NULL at rest, so it must not be typed Optional. -#}
+{% set has_default = field.default is defined or field.type == 'boolean' %}
+{% set optional = '' if (field.required | default(false) or has_default) else ' | None' %}
 {% if field.type == 'text' %}
     {{ field_name }}: Mapped[str{{ optional }}] = mapped_column(String({{ field.max_length }}){% if field.unique | default(false) %}, unique=True{% endif %}{% if field.default is defined %}, default="{{ field.default }}"{% endif %})
 {% elif field.type == 'longtext' %}
@@ -290,9 +307,13 @@ class {{ entity_name }}(Base):
 {% if entity.relationships is defined and entity.relationships | length > 0 %}
 {{ section_header('Relationships') }}
 {% for rel_name, rel in entity.relationships.items() %}
+{#- Only annotate with Mapped[...] when the target lives in the same module
+    (a sibling entity): the forward-ref name must resolve for mypy. Cross-file
+    (cross-domain) targets aren't importable here, so they stay unannotated. -#}
+{% set typed = rel.target in sibling_entities %}
 {% if rel.type == 'one_to_many' %}
 {% if rel.cascade is defined %}
-    {{ rel_name }} = relationship(
+    {{ rel_name }}{% if typed %}: Mapped[list["{{ rel.target }}"]]{% endif %} = relationship(
         "{{ rel.target }}",
 {% if rel.foreign_keys is defined %}
         foreign_keys="[{% for fk in rel.foreign_keys %}{{ rel.target }}.{{ fk }}{% if not loop.last %}, {% endif %}{% endfor %}]",
@@ -301,17 +322,17 @@ class {{ entity_name }}(Base):
         cascade="{{ rel.cascade }}",
     )
 {% else %}
-    {{ rel_name }} = relationship("{{ rel.target }}"{% if rel.foreign_keys is defined %}, foreign_keys="[{% for fk in rel.foreign_keys %}{{ rel.target }}.{{ fk }}{% if not loop.last %}, {% endif %}{% endfor %}]"{% endif %}, back_populates="{{ rel.back_populates }}")
+    {{ rel_name }}{% if typed %}: Mapped[list["{{ rel.target }}"]]{% endif %} = relationship("{{ rel.target }}"{% if rel.foreign_keys is defined %}, foreign_keys="[{% for fk in rel.foreign_keys %}{{ rel.target }}.{{ fk }}{% if not loop.last %}, {% endif %}{% endfor %}]"{% endif %}, back_populates="{{ rel.back_populates }}")
 {% endif %}
 {% elif rel.type == 'many_to_one' %}
 {% set self_ref_pks = (pk_fields | map(attribute='key') | list) if (rel.target == entity_name and pk_fields) else [] %}
 {% if rel.foreign_keys is defined %}
-    {{ rel_name }} = relationship("{{ rel.target }}", foreign_keys=[{{ rel.foreign_keys | join(', ') }}], back_populates="{{ rel.back_populates }}"{% if self_ref_pks %}, remote_side=[{{ self_ref_pks | join(', ') }}]{% endif %})
+    {{ rel_name }}{% if typed %}: Mapped["{{ rel.target }} | None"]{% endif %} = relationship("{{ rel.target }}", foreign_keys=[{{ rel.foreign_keys | join(', ') }}], back_populates="{{ rel.back_populates }}"{% if self_ref_pks %}, remote_side=[{{ self_ref_pks | join(', ') }}]{% endif %})
 {% else %}
-    {{ rel_name }} = relationship("{{ rel.target }}", back_populates="{{ rel.back_populates }}"{% if self_ref_pks %}, remote_side=[{{ self_ref_pks | join(', ') }}]{% endif %})
+    {{ rel_name }}{% if typed %}: Mapped["{{ rel.target }} | None"]{% endif %} = relationship("{{ rel.target }}", back_populates="{{ rel.back_populates }}"{% if self_ref_pks %}, remote_side=[{{ self_ref_pks | join(', ') }}]{% endif %})
 {% endif %}
 {% elif rel.type == 'one_to_one' %}
-    {{ rel_name }} = relationship(
+    {{ rel_name }}{% if typed %}: Mapped["{{ rel.target }} | None"]{% endif %} = relationship(
         "{{ rel.target }}",
         back_populates="{{ rel.back_populates }}",
         uselist=False,
@@ -320,7 +341,7 @@ class {{ entity_name }}(Base):
 {% endif %}
     )
 {% elif rel.type == 'one_to_one_inverse' %}
-    {{ rel_name }} = relationship("{{ rel.target }}", back_populates="{{ rel.back_populates }}")
+    {{ rel_name }}{% if typed %}: Mapped["{{ rel.target }} | None"]{% endif %} = relationship("{{ rel.target }}", back_populates="{{ rel.back_populates }}")
 {% endif %}
 {% endfor %}
 

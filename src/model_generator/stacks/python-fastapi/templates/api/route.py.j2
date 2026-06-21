@@ -32,6 +32,7 @@
     has_datetime=false,
     needs_isoformat=false,
     has_uuid_pk=false,
+    needs_uuid_filter=false,
     enum_imports=[],
     db_models=[],
     has_password_field=false,
@@ -48,6 +49,7 @@
 {% endif %}
 {% for field_name, field in entity.fields.items() %}
 {% if field.type == 'uuid' and field.primary_key | default(false) %}{% set ns.has_uuid_pk = true %}{% endif %}
+{% if field.type == 'reference' and (field.reference_column | default('id')) == 'id' and not field.api_exclude_response | default(false) and not field.primary_key | default(false) %}{% set ns.needs_uuid_filter = true %}{% endif %}
 {% if field.type in ['json_object', 'json_array'] %}{% set ns.has_any = true %}{% endif %}
 {% if field.type == 'financial' %}{% set ns.has_financial = true %}{% endif %}
 {% if field.type == 'percentage' %}{% set ns.has_percentage = true %}{% endif %}
@@ -82,7 +84,7 @@ from datetime import datetime, timezone
 {% if ns.has_financial or ns.has_percentage %}
 from decimal import Decimal
 {% endif %}
-{% if ns.has_uuid_pk %}
+{% if ns.has_uuid_pk or ns.needs_uuid_filter %}
 from uuid import UUID
 {% endif %}
 
@@ -193,7 +195,11 @@ async def list_{{ entity_plural }}(
     {{ field_name }}_min: int | None = Query(None, description="Filter {{ field_name }} minimum value"),
     {{ field_name }}_max: int | None = Query(None, description="Filter {{ field_name }} maximum value"),
 {% elif field.type == 'reference' %}
+{% if (field.reference_column | default('id')) == 'id' %}
+    {{ field_name }}: UUID | None = Query(None, description="Filter by {{ field_name }}"),
+{% else %}
     {{ field_name }}: str | None = Query(None, description="Filter by {{ field_name }}"),
+{% endif %}
 {% elif field.type == 'text' and field.unique | default(false) %}
     {{ field_name }}: str | None = Query(None, description="Filter by {{ field_name }}"),
 {% endif %}
