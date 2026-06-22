@@ -379,6 +379,25 @@ class TestModelsIndex:
         assert "export 'enums.dart';" in content
         assert "export 'widget.dart';" in content
 
+    def test_barrel_omits_enums_when_none(
+        self,
+        flutter_config: dict[str, Any],
+        env: Any,
+        tmp_path: Path,
+    ) -> None:
+        # A spec with no enum fields must NOT export enums.dart — that file is
+        # never generated, so exporting it is a hard Dart compile error.
+        model = {
+            "entities": {
+                "Gadget": {"fields": {"name": {"type": "text", "required": True}}}
+            }
+        }
+        result = generate_flutter_models_index(model, flutter_config, env, tmp_path)
+        assert result is not None
+        content = str(result["content"])
+        assert "enums.dart" not in content
+        assert "export 'gadget.dart';" in content
+
 
 # --------------------------------------------------------------------------- #
 # Infrastructure: converters & pubspec

@@ -132,9 +132,16 @@ def generate_flutter_models_index(
     for entity_name in model.get("entities") or {}:
         exports.add(f"{_entity_filename(entity_name)}.dart")
 
+    # Only export enums.dart if it was actually generated — exporting a missing
+    # file is a hard Dart compile error for specs that declare no enums.
+    has_enums = (project_root / enums_path).is_file() or any(
+        (entity.get("fields") or {}).get(fname, {}).get("type") == "enum"
+        for entity in (model.get("entities") or {}).values()
+        for fname in (entity.get("fields") or {})
+    )
     content = template.render(
         exports=sorted(exports),
-        enums_file=enums_path.name,
+        enums_file=enums_path.name if has_enums else None,
     )
     return {
         "path": models_dir / "models_index.dart",

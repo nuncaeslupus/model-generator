@@ -61,6 +61,17 @@ _FLUTTER_GENERATORS: dict[str, TargetGenerator] = {
 }
 
 
+def _flutter_resolve_cleanup_paths(config: dict[str, Any]) -> dict[str, Any]:
+    """Expand every ``{pkg}`` placeholder in the flutter ``paths`` for cleanup.
+
+    Cleanup runs against the on-disk tree, so the path templates
+    (``lib/{pkg}/models``) must be resolved to the configured package name
+    (honoring a custom ``flutter.package_name``) before the globs are built.
+    """
+    keys = (config.get("paths") or {}).keys()
+    return {key: resolve_path(config, key) for key in keys}
+
+
 def _flutter_derived_cleanup_files(
     project_root: Path, paths: dict[str, Any]
 ) -> list[Path]:
@@ -68,11 +79,11 @@ def _flutter_derived_cleanup_files(
 
     The core converters file is named explicitly so selective cleanup is
     complete (the enums file already lives under the ``models`` source dir swept
-    by the ``*.dart`` glob). The ``{pkg}`` placeholder is resolved the same way
-    as during generation.
+    by the ``*.dart`` glob). ``paths`` is already ``{pkg}``-resolved by
+    :func:`_flutter_resolve_cleanup_paths`.
     """
     files: list[Path] = []
-    core = resolve_path({"paths": paths}, "api_core")
+    core = paths.get("api_core")
     if core:
         files.append(project_root / core / "converters.dart")
     return files
@@ -86,6 +97,7 @@ _FLUTTER_CLEANUP = CleanupSpec(
     derived_files=_flutter_derived_cleanup_files,
     full_cleanup_dirs=(".dart_tool", "build"),
     full_cleanup_files=(),
+    path_resolver=_flutter_resolve_cleanup_paths,
 )
 
 
