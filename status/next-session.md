@@ -216,10 +216,49 @@ issues live in the same `migration-autogen` code path.
 behavioural tests fail with the source changes stashed). `make lint` clean
 (ruff + mypy strict), `make smoke-example` → 135/135.
 
+### P2 test-depth cluster shipped — TST-5 + TST-6 + TST-7 (PR pending)
+
+Branch `claude/peaceful-feynman-g0k3kn`. Closes the test-depth cluster. **Pure
+test additions — no `src/` or template changes**, so the generated output and the
+`make smoke-example` gate are unaffected. These are coverage/characterization
+tests (expected GREEN against current code), not bug-fix RED→GREEN: they lock in
+correct current behavior the suite never exercised.
+
+- **TST-5 — cross-domain mapper config probed end-to-end.** The only live
+  `registry.configure()` probe was on a single composite-FK model
+  (`TestCompositeForeignKey`). New `TestCrossDomainMapperConfig` +
+  `cross_domain_models` fixture generate **two separate domain specs**
+  (`blog.{Author,Post}` + `engagement.Comment`, with `Post`↔`Comment` crossing
+  the boundary), merge every emitted per-entity file into one shared
+  `DeclarativeBase` registry (what import time does in a real project), and call
+  `registry.configure()` — the step that raises on a misconfigured cross-domain
+  `back_populates`/join. Second test asserts the relationship resolves as
+  inverses on both ends via `sqlalchemy.inspect`.
+- **TST-6 — schema-invalid-but-plausible specs characterized.**
+  `TestSchemaInvalidSpecHandling` pins both halves of the load/validate contract:
+  `load_model` is **warn-only** (returns the spec intact, no `sys.exit`) on an
+  unknown field type + a missing PK, while `validate_model` (the `model-val`
+  gate) **flags** both. Catches a regression where load_model starts exiting or
+  the validator goes silent.
+- **TST-7 — generated output is lint-clean after the quality pass.**
+  `TestGeneratedOutputLintClean` writes the emitted DB-model + API-model files,
+  runs the generator's own `ruff --fix`/`ruff format` pass with the **exact
+  select/ignore set** the generated `pyproject.toml` ships (`E,W,F,I,B,C4,UP` /
+  `E501,B008,B904,W191`), then asserts `ruff check` finds **no residual** — i.e.
+  no *non-auto-fixable* lint (B007/F841/UP…) slipped into a template. (Routes are
+  excluded: they carry the known pagination-PEP695-on-py311 quirk, TPL-22.)
+  Skips cleanly if `ruff` is absent.
+
+**Verified:** 567 unit tests (+7), `make lint` clean (ruff + mypy strict). No
+templates touched → smoke-example unaffected (still 135/135 from the prior PR).
+
 ### Next: remaining P2 cluster
 
-Consult the review doc (`status/code-review-2026-06-21.md`, Part B/D). Open P2s
-now include example-coverage gaps (EX-2/3/4/8) and test-depth gaps (TST-5/6/7).
+Consult the review doc (`status/code-review-2026-06-21.md`, Part B/D). The
+remaining P2s are the **example-coverage** gaps (EX-2/3/4/8: `api.scope`/
+`validators`/`filters` unused, composite-FK + one_to_one/many_to_many never
+exercised, `integer`/`binary` + `pattern`/`range`/`positive` zero coverage, no
+minimal no-auth example / per-domain demo). TST-5/6/7 are now closed.
 Note: the generated tree still has the pre-existing main/auth I001 + pagination-
 PEP695-on-py311 lint quirks (auto-fixed by `ruff check --fix`) — TPL-22 territory,
 not gated by the smoke job.

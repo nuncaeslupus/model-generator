@@ -2,6 +2,9 @@
 
 import json
 import os
+import re
+import shutil
+import subprocess
 import sys
 import types
 from datetime import UTC
@@ -46,6 +49,8 @@ from model_generator.generators.infrastructure import (
     generate_validators,
 )
 from model_generator.utils import get_template_env, load_config
+from model_generator.utils.loaders import load_model
+from model_generator.validate import load_schema, validate_model
 
 
 @pytest.fixture
@@ -6231,3 +6236,301 @@ class TestConftestLoadAllModelsComments:
         models = load_all_models(models_dir)
         qty = models["items"]["entities"]["Item"]["fields"]["qty"]
         assert qty["type"] == "counter"  # integer alias normalized
+
+
+@pytest.fixture
+def cross_domain_models() -> list[dict[str, Any]]:
+    """Two SEPARATE domain specs whose relationships cross the domain boundary.
+
+    blog.Post --one_to_many--> engagement.Comment (and back). In a real
+    generated project each domain is its own module; SQLAlchemy only sees one
+    registry once every module is imported. The existing mapper probe
+    (TestCompositeForeignKey::test_configure_mappers_succeeds) only configures
+    a SINGLE composite-FK model, so a back_populates / join-condition mistake
+    that only manifests once two domains share a registry would go unnoticed.
+    """
+    blog = {
+        "domain": "blog",
+        "entities": {
+            "Author": {
+                "table": "authors",
+                "fields": {
+                    "id": {"type": "uuid", "primary_key": True, "auto_generate": True},
+                    "name": {"type": "text", "max_length": 100, "required": True},
+                },
+                "relationships": {
+                    "posts": {
+                        "type": "one_to_many",
+                        "target": "Post",
+                        "back_populates": "author",
+                    },
+                },
+            },
+            "Post": {
+                "table": "posts",
+                "fields": {
+                    "id": {"type": "uuid", "primary_key": True, "auto_generate": True},
+                    "title": {"type": "text", "max_length": 200, "required": True},
+                    "author_id": {
+                        "type": "reference",
+                        "reference_entity": "Author",
+                        "reference_table": "authors",
+                        "required": True,
+                    },
+                },
+                "relationships": {
+                    "author": {
+                        "type": "many_to_one",
+                        "target": "Author",
+                        "back_populates": "posts",
+                    },
+                    # Cross-domain: Comment lives in the `engagement` model.
+                    "comments": {
+                        "type": "one_to_many",
+                        "target": "Comment",
+                        "back_populates": "post",
+                    },
+                },
+            },
+        },
+    }
+    engagement = {
+        "domain": "engagement",
+        "entities": {
+            "Comment": {
+                "table": "comments",
+                "fields": {
+                    "id": {"type": "uuid", "primary_key": True, "auto_generate": True},
+                    "body": {"type": "text", "max_length": 500, "required": True},
+                    # Cross-domain FK back to blog.Post.
+                    "post_id": {
+                        "type": "reference",
+                        "reference_entity": "Post",
+                        "reference_table": "posts",
+                        "required": True,
+                    },
+                },
+                "relationships": {
+                    "post": {
+                        "type": "many_to_one",
+                        "target": "Post",
+                        "back_populates": "comments",
+                    },
+                },
+            },
+        },
+    }
+    return [blog, engagement]
+
+
+class TestCrossDomainMapperConfig:
+    """TST-5: probe SQLAlchemy mapper configuration across domain boundaries.
+
+    Generates two independent domain specs, merges every emitted model file
+    into one shared registry (exactly what happens at import time in a real
+    project), and calls ``registry.configure()`` — the step that raises if a
+    cross-domain ``back_populates`` / join condition is misconfigured.
+    """
+
+    def _merged_namespace(
+        self,
+        models: list[dict[str, Any]],
+        project_env_per_entity: Any,
+    ) -> dict[str, Any]:
+        from sqlalchemy import String
+        from sqlalchemy.orm import DeclarativeBase
+
+        project_root, config, env = project_env_per_entity
+        contents: list[str] = []
+        for model in models:
+            result = generate_database_model(model, config, env, project_root)
+            assert isinstance(result, list)  # per-entity → one file per entity
+            contents.extend(entry["content"] for entry in result)
+
+        merged = "\n".join(contents)
+        # Strip relative + project-local imports; Base + PortableUuid are supplied.
+        merged = re.sub(r"^from (?:\.|src\.)[^\n]+\n", "", merged, flags=re.MULTILINE)
+
+        class Base(DeclarativeBase):
+            pass
+
+        namespace: dict[str, Any] = {"Base": Base, "PortableUuid": String}
+        exec(merged, namespace)
+        return namespace
+
+    def test_cross_domain_configure_mappers_succeeds(
+        self, cross_domain_models: list[dict[str, Any]], project_env_per_entity: Any
+    ) -> None:
+        namespace = self._merged_namespace(cross_domain_models, project_env_per_entity)
+        from sqlalchemy.orm import DeclarativeBase
+
+        base = namespace["Base"]
+        assert issubclass(base, DeclarativeBase)
+        # All three classes from both domains land in one registry.
+        for cls_name in ("Author", "Post", "Comment"):
+            assert cls_name in namespace, f"{cls_name} missing from merged module"
+        # The real assertion: configuring the shared registry must not raise
+        # (ArgumentError / InvalidRequestError on a broken cross-domain rel).
+        base.registry.configure()
+
+    def test_cross_domain_relationships_resolve_both_directions(
+        self, cross_domain_models: list[dict[str, Any]], project_env_per_entity: Any
+    ) -> None:
+        """After configure(), the cross-domain relationship is mapped on both
+        ends with a usable join condition."""
+        namespace = self._merged_namespace(cross_domain_models, project_env_per_entity)
+        post = namespace["Post"]
+        comment = namespace["Comment"]
+        post.registry.configure()
+
+        from sqlalchemy import inspect as sa_inspect
+
+        post_rels = sa_inspect(post).relationships
+        comment_rels = sa_inspect(comment).relationships
+        assert "comments" in post_rels
+        assert "post" in comment_rels
+        # The pair is wired as inverses of each other.
+        assert post_rels["comments"].back_populates == "post"
+        assert comment_rels["post"].back_populates == "comments"
+
+
+class TestSchemaInvalidSpecHandling:
+    """TST-6: characterize how the pipeline treats schema-invalid-but-plausible
+    specs.
+
+    ``load_model`` is deliberately warn-only (it supports partial/WIP specs),
+    so an invalid spec flows on to the generators. The ``model-val`` validator
+    is the actual gate. These tests pin both halves of that contract so a
+    regression — load_model starting to ``sys.exit``, or the validator going
+    silent — is caught.
+    """
+
+    def _write(self, tmp_path: Path, spec: dict[str, Any]) -> Path:
+        path = tmp_path / "bad.model.json"
+        path.write_text(json.dumps(spec), encoding="utf-8")
+        return path
+
+    # Plausible spec with a typo'd field type — passes a human eyeball, fails
+    # the schema's `type` enum.
+    _UNKNOWN_TYPE_SPEC: ClassVar[dict[str, Any]] = {
+        "domain": "shop",
+        "entities": {
+            "Widget": {
+                "table": "widgets",
+                "fields": {
+                    "id": {"type": "uuid", "primary_key": True, "auto_generate": True},
+                    "price": {"type": "frobnicate", "required": True},
+                },
+            }
+        },
+    }
+
+    # Plausible spec missing a primary key — a semantic, not schema, violation.
+    _NO_PK_SPEC: ClassVar[dict[str, Any]] = {
+        "domain": "shop",
+        "entities": {
+            "Widget": {
+                "table": "widgets",
+                "fields": {
+                    "name": {"type": "text", "max_length": 50, "required": True},
+                },
+            }
+        },
+    }
+
+    def test_load_model_is_warn_only_on_unknown_field_type(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = self._write(tmp_path, self._UNKNOWN_TYPE_SPEC)
+        # Must NOT sys.exit — load_model tolerates partial/WIP specs.
+        data = load_model(path)
+        out = capsys.readouterr().out
+        assert "validation warning" in out
+        assert "frobnicate" in out
+        # The invalid spec is returned intact (it flows on to the generators).
+        assert data["entities"]["Widget"]["fields"]["price"]["type"] == "frobnicate"
+
+    def test_validator_flags_unknown_field_type(self, tmp_path: Path) -> None:
+        path = self._write(tmp_path, self._UNKNOWN_TYPE_SPEC)
+        errors = validate_model(path, load_schema())
+        # The gate catches what load_model only warned about.
+        assert errors
+        assert any("frobnicate" in e for e in errors)
+
+    def test_validator_flags_missing_primary_key(self, tmp_path: Path) -> None:
+        path = self._write(tmp_path, self._NO_PK_SPEC)
+        errors = validate_model(path, load_schema())
+        assert any("primary key" in e.lower() for e in errors)
+
+    def test_load_model_tolerates_missing_primary_key(self, tmp_path: Path) -> None:
+        """A missing PK is a semantic gap the schema doesn't enforce, so
+        load_model returns it silently — proving the generators are reachable
+        with such a spec (which is exactly why model-val must be run first)."""
+        path = self._write(tmp_path, self._NO_PK_SPEC)
+        data = load_model(path)
+        assert "Widget" in data["entities"]
+
+
+class TestGeneratedOutputLintClean:
+    """TST-7: the emitted source is lint-clean after the generator's own
+    quality pass.
+
+    The "exemplary, mypy-strict" claim is otherwise only checked by the
+    out-of-tree smoke job. Here we run the SAME ``ruff`` select/ignore set the
+    generated ``pyproject.toml`` ships, apply the auto-fix pass the generator
+    performs on every write (import sorting / formatting), then assert no
+    residual — i.e. no *non-auto-fixable* lint (B007/F841/UP…) slipped into a
+    template.
+    """
+
+    # Mirrors infrastructure/pyproject.toml.j2's [tool.ruff.lint] config.
+    _SELECT = "E,W,F,I,B,C4,UP"
+    _IGNORE = "E501,B008,B904,W191"
+
+    def _ruff(
+        self, args: list[str], files: list[str]
+    ) -> "subprocess.CompletedProcess[str]":
+        return subprocess.run(
+            [
+                "ruff",
+                *args,
+                "--no-cache",
+                "--select",
+                self._SELECT,
+                "--ignore",
+                self._IGNORE,
+                *files,
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+    @pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff not installed")
+    def test_generated_models_are_lint_clean_after_fix(
+        self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
+    ) -> None:
+        project_root, config, env = project_env_per_entity
+        written: list[str] = []
+        for generator in (generate_database_model, generate_api_models):
+            generated = generator(multi_entity_model, config, env, project_root)
+            assert generated is not None
+            entries = generated if isinstance(generated, list) else [generated]
+            for entry in entries:
+                path = entry["path"]
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(entry["content"], encoding="utf-8")
+                written.append(str(path))
+
+        assert written, "expected the generator to emit at least one file"
+
+        # The generator's own quality pass: ruff --fix then ruff format.
+        self._ruff(["check", "--fix"], written)
+        subprocess.run(["ruff", "format", *written], capture_output=True, text=True)
+
+        # No residual lint — anything left here is NOT auto-fixable and is a
+        # real template defect.
+        check = self._ruff(["check"], written)
+        assert check.returncode == 0, (
+            "generated output is not lint-clean after the standard quality "
+            f"pass:\n{check.stdout}"
+        )
