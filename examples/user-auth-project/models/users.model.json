@@ -192,6 +192,41 @@
                     "max_length": 500,
                     "description": "Client user agent string"
                 },
+                "max_duration_minutes": {
+                    "type": "integer",
+                    "required": true,
+                    "constraints": [
+                        {
+                            "type": "range",
+                            "min": 1,
+                            "max": 100000
+                        }
+                    ],
+                    "description": "Max session duration - demonstrates the integer alias and a range constraint"
+                },
+                "connection_priority": {
+                    "type": "counter",
+                    "required": true,
+                    "constraints": [
+                        {
+                            "type": "positive"
+                        }
+                    ],
+                    "description": "Connection priority - demonstrates a positive constraint"
+                },
+                "device_label": {
+                    "type": "text",
+                    "max_length": 50,
+                    "required": true,
+                    "constraints": [
+                        {
+                            "type": "pattern",
+                            "regex": "^[a-z][a-z0-9_]*$",
+                            "message": "Device label must be a lowercase slug (letters, digits, underscores)"
+                        }
+                    ],
+                    "description": "Machine-friendly device label - demonstrates a pattern (regex) constraint"
+                },
                 "expires_at": {
                     "type": "datetime",
                     "required": true,
@@ -313,41 +348,6 @@
                     ],
                     "description": "Max API calls per minute"
                 },
-                "max_calls_per_day": {
-                    "type": "integer",
-                    "required": true,
-                    "constraints": [
-                        {
-                            "type": "range",
-                            "min": 1,
-                            "max": 100000
-                        }
-                    ],
-                    "description": "Daily call cap - demonstrates the integer alias and a range constraint"
-                },
-                "priority": {
-                    "type": "counter",
-                    "required": true,
-                    "constraints": [
-                        {
-                            "type": "positive"
-                        }
-                    ],
-                    "description": "Scheduling priority - demonstrates a positive constraint"
-                },
-                "label": {
-                    "type": "text",
-                    "max_length": 50,
-                    "required": true,
-                    "constraints": [
-                        {
-                            "type": "pattern",
-                            "regex": "^[a-z][a-z0-9_]*$",
-                            "message": "Label must be a lowercase slug (letters, digits, underscores)"
-                        }
-                    ],
-                    "description": "Machine-friendly label - demonstrates a pattern (regex) constraint"
-                },
                 "expires_at": {
                     "type": "datetime",
                     "description": "Optional expiration date"
@@ -400,7 +400,12 @@
             "api": {
                 "scope": {"owner_field": "user_id"},
                 "enabled": true,
-                "prefix": "api-keys"
+                "prefix": "api-keys",
+                "endpoints": [
+                    "list",
+                    "get",
+                    "delete"
+                ]
             },
             "tests": {
                 "enabled": true

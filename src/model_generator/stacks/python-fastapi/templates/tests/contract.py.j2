@@ -1810,7 +1810,7 @@ class Test{{ entity_name }}sAPI:
     # Add additional business logic tests here as needed for {{ entity_name }}
 
 {% set scope = entity.api.scope if entity.api is defined else none %}
-{% if scope %}
+{% if scope and 'create' in endpoints %}
 {% set auth_dep_path = config.get('auth', {}).get('dependency_path') %}
 {% if auth_dep_path %}
 {% set auth_dep_module = auth_dep_path.rsplit('.', 1)[0] %}
