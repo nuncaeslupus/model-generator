@@ -248,7 +248,8 @@ def load_config(stack: str = "python-fastapi") -> dict[str, Any]:
         python_root = merged_config.get("python_root", "")
         auth_path = auth.get("path", "backend/src/auth/router.py")
         if strategy == "api-key":
-            module_path = str(Path(auth_path).parent / "api_key")
+            # as_posix() so path_to_import gets forward slashes on Windows too.
+            module_path = (Path(auth_path).parent / "api_key").as_posix()
             func = "require_api_key"
         else:
             module_path = auth_path[:-3] if auth_path.endswith(".py") else auth_path

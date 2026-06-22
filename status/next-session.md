@@ -372,7 +372,7 @@ strict), `make smoke-example` → 141/141. The existing
 `test_resolves_session_secret_via_helper` assertion was updated for the new
 salted serializer construction.
 
-### P2 SEC-6 shipped — ApiKey creation out of generic CRUD + scope-test gating fix (PR pending)
+### P2 SEC-6 shipped — ApiKey creation out of generic CRUD + scope-test gating fix (merged, #51)
 
 Branch `claude/practical-babbage-k2yj34` (rebased onto main after #50 merged).
 Owner chose **option 1**: move ApiKey creation out of generic CRUD, mirroring the

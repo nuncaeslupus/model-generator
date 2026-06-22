@@ -48,9 +48,11 @@ def _expected_api_key() -> str:
 
     Mirrors the SESSION_SECRET_KEY guard in the session strategy: a missing
     key is a hard error under APP_ENV=production, and a clearly-marked dev
-    fallback otherwise so local runs work without configuration.
+    fallback otherwise so local runs work without configuration. The value is
+    stripped so stray whitespace from deployment config can't cause silent
+    auth failures (and a whitespace-only value is treated as unset).
     """
-    key = os.environ.get(_KEY_ENV)
+    key = os.environ.get(_KEY_ENV, "").strip()
     if key:
         return key
     if os.environ.get("APP_ENV") == "production":

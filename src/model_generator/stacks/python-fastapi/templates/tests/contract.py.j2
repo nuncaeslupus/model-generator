@@ -1811,7 +1811,7 @@ class Test{{ entity_name }}sAPI:
 
 {% set scope = entity.api.scope if entity.api is defined else none %}
 {% if scope and 'create' in endpoints %}
-{% set auth_dep_path = config.get('auth', {}).get('dependency_path') %}
+{% set auth_dep_path = (config.get('auth') or {}).get('dependency_path') %}
 {% if auth_dep_path %}
 {% set auth_dep_module = auth_dep_path.rsplit('.', 1)[0] %}
 {% set auth_dep_func = auth_dep_path.rsplit('.', 1)[1] %}

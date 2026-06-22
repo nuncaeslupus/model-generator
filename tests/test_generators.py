@@ -5317,6 +5317,9 @@ class TestApiKeyAuthGenerator:
         assert 'alias="X-API-Key"' in content
         assert "secrets.compare_digest(" in content
         assert 'os.environ.get("APP_ENV") == "production"' in content
+        # Env value is stripped: stray deploy whitespace can't cause silent auth
+        # failures, and a whitespace-only value is treated as unset.
+        assert 'os.environ.get(_KEY_ENV, "").strip()' in content
         # No session machinery leaks in.
         assert "bcrypt" not in content
         assert "URLSafeTimedSerializer" not in content
@@ -5344,6 +5347,30 @@ class TestApiKeyAuthGenerator:
         assert 'alias="X-Service-Token"' in content
         # Header param identifier is the snake_cased header name.
         assert "x_service_token: str | None = Header(" in content
+
+    def test_pathological_header_name_yields_valid_identifier(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """A header with spaces/dots/symbols must not break the generated code."""
+        import ast
+
+        from model_generator.generators.infrastructure import generate_api_key_auth
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "api-key", "header_name": "1 Weird.Header!"},
+        }
+        result = generate_api_key_auth(
+            config, env, project_root, self._project_config()
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # The real header name is preserved in the alias...
+        assert 'alias="1 Weird.Header!"' in content
+        # ...and the param is a valid identifier, so the module parses cleanly.
+        ast.parse(content)
+        assert "_1_weird_header_: str | None = Header(" in content
 
     def test_returns_none_when_file_exists(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_api_key_auth

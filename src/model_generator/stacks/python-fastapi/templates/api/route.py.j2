@@ -124,7 +124,7 @@ from {{ config.paths.database_models | path_to_import }}.enums import {{ ns.enum
 {% endif %}
 {#- Auth dependency: get_current_user (scope) or require_api_key (api-key gate).
     Hoisted so both the import below and the per-route decorators can use it. -#}
-{% set auth_dep_path = config.get('auth', {}).get('dependency_path') %}
+{% set auth_dep_path = (config.get('auth') or {}).get('dependency_path') %}
 {% set auth_dep_func = auth_dep_path.rsplit('.', 1)[1] if auth_dep_path else none %}
 {% if (ns.has_scoped_endpoints or ns.has_auth_gate) and auth_dep_path %}
 from {{ auth_dep_path.rsplit('.', 1)[0] }} import {{ auth_dep_func }}

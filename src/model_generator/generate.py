@@ -310,7 +310,7 @@ def generate_conftest(
     # a no-op (CRUD tests don't carry the header); it needs the dotted path the
     # loader inferred onto auth.dependency_path.
     api_key_dependency = (
-        config.get("auth", {}).get("dependency_path")
+        (config.get("auth") or {}).get("dependency_path")
         if auth_strategy == "api-key"
         else None
     )

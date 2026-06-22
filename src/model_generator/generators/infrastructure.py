@@ -640,9 +640,14 @@ def generate_api_key_auth(
 
     header_name = auth.get("header_name", "X-API-Key")
     key_env = auth.get("key_env", "API_KEY")
-    # Python identifier for the FastAPI Header parameter (the alias carries the
-    # real header name, so this only needs to be a valid, stable identifier).
-    header_param = header_name.lower().replace("-", "_")
+    # Python identifier for the FastAPI Header parameter. The alias carries the
+    # real header name, so this only needs to be a valid, stable identifier —
+    # sanitize any non-alphanumeric char (space, dot, symbol) to an underscore
+    # so a custom header_name can't produce a SyntaxError in the generated code.
+    sanitized = "".join(c if c.isalnum() else "_" for c in header_name.lower())
+    header_param = sanitized if sanitized.strip("_") else "api_key"
+    if header_param[0].isdigit():
+        header_param = "_" + header_param
 
     template = env.get_template("infrastructure/api_key_auth.py.j2")
     content = template.render(
