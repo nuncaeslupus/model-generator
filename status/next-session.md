@@ -290,17 +290,60 @@ generation spot-checked: `profile` `Mapped["UserProfile | None"]` relationship,
 `avatar: Mapped[bytes | None]` `LargeBinary`, range/positive CHECKs, and the
 `validate_label_format` regex validator all emit.
 
+### P2/P3 auth-security cluster shipped — SEC-5 + SEC-4 + SEC-7 (PR pending)
+
+Branch `claude/practical-babbage-k2yj34`. Template-only auth-router/rate-limit
+hardening — no example spec or generated CRUD touched, so the smoke-example gate
+is unaffected (still 141/141; the contract suite imports the auth router via its
+`/auth/register` fixture, so the new paths load at import time).
+
+- **SEC-5 — forgot-password account-enumeration oracle closed.** The endpoint
+  raised `501` only when the email *existed* (the hook is invoked solely in the
+  `user is not None` branch), while a missing email returned `200` — directly
+  contradicting its own docstring and leaking which addresses have accounts.
+  `forgot_password` now returns the uniform `200` regardless; a missing
+  `_send_password_reset_email` hook is surfaced via a module-level
+  `logger.warning(...)` (new `import logging` + `logger = logging.getLogger(...)`)
+  instead of an HTTP status. Docstring rewritten to state the no-oracle contract.
+- **SEC-4 — session-cookie / reset-token serializer salt separation.** The single
+  `_serializer` signed both session cookies and reset tokens off the same key.
+  Split into `_session_serializer` (`salt="session-cookie"`) and
+  `_reset_serializer` (`salt="password-reset"`); login/logout/`get_current_user`
+  use the session one, forgot/reset use the reset one. A token minted in one
+  context can no longer be replayed in the other (defense in depth).
+- **SEC-7 — reverse-proxy client-IP caveat documented.** `rate_limit.py.j2`'s
+  `get_remote_address` keys on the socket peer — behind a proxy that's the
+  *proxy's* IP, collapsing all clients into one bucket. Added a "Client IP /
+  reverse proxies" docstring section + inline comment explaining the footgun and
+  how to safely read `X-Forwarded-For` from a trusted proxy (doc/comment only — a
+  safe forwarded-IP keyfunc needs the deployment's trusted-proxy count).
+
+**Verified:** 570 unit tests (+3: salt separation, no-oracle, proxy caveat — all
+RED→GREEN confirmed against reverted templates), `make lint` clean (ruff + mypy
+strict), `make smoke-example` → 141/141. The existing
+`test_resolves_session_secret_via_helper` assertion was updated for the new
+salted serializer construction.
+
+**SEC-6 deferred (needs a design decision, not an in-place spec edit).** Excluding
+`key_hash`/`permissions`/`is_active` from `CreateApiKeyRequest` is correct
+hardening, but `key_hash` is `required`/NOT-NULL with no server-side generation in
+the generic CRUD route, so `api_exclude_create` on it would 500 every ApiKey
+create and break the contract suite. Proper fix mirrors `User`: move ApiKey
+creation out of generic CRUD (drop `create` from its endpoints + a custom
+key-minting route), or add a server-side default. Left for an owner decision.
+
 ### Next: remaining P2 cluster
 
 Consult the review doc (`status/code-review-2026-06-21.md`, Part B/D). Still open:
 **EX-8** (minimal no-auth example + per-domain-layout demo — needs a *new* bundled
 example + smoke wiring, deferred per the "extend in place" decision), the
-composite-FK half of **EX-3**, and the test-depth-adjacent items. If
-`api.filters`/`api.validators` should be real features rather than dead config,
-that's a template-wiring task (not example coverage). TST-5/6/7 are closed.
-Note: the generated tree still has the pre-existing main/auth I001 + pagination-
-PEP695-on-py311 lint quirks (auto-fixed by `ruff check --fix`) — TPL-22 territory,
-not gated by the smoke job.
+composite-FK half of **EX-3**, **SEC-6** (ApiKey-create design decision, see
+above), **PROD-4** (auth: first-class vs optional add-on — owner decision), and
+the test-depth-adjacent items. If `api.filters`/`api.validators` should be real
+features rather than dead config, that's a template-wiring task (not example
+coverage). TST-5/6/7 are closed. Note: the generated tree still has the
+pre-existing main/auth I001 + pagination-PEP695-on-py311 lint quirks (auto-fixed
+by `ruff check --fix`) — TPL-22 territory, not gated by the smoke job.
 
 ### P1 template-correctness trio shipped — TPL-5 + TPL-14 + TPL-16 (PR pending)
 

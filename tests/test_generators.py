@@ -4965,8 +4965,10 @@ class TestAuthRouterGenerator:
         assert "SESSION_SECRET_KEY environment variable must be set" in content
         # The dev fallback string still exists for non-production use.
         assert '"DEV-ONLY-CHANGE-ME-IN-PRODUCTION"' in content
-        # Serializer is initialized via the helper, not the inline get-with-default.
-        assert "URLSafeTimedSerializer(\n    _resolve_session_secret()\n)" in content
+        # Serializers are initialized via the helper, not the inline get-with-default.
+        assert (
+            "URLSafeTimedSerializer(\n    _resolve_session_secret(), salt=" in content
+        )
 
     def test_password_reset_email_is_async(self, project_env_per_entity: Any) -> None:
         """Email send must be async to avoid blocking the event loop."""
@@ -5021,6 +5023,60 @@ class TestAuthRouterGenerator:
         assert '"pw": _token_fingerprint(user.password_hash)' in content
         # ...and reset-password rejects a token whose fingerprint no longer matches.
         assert 'fingerprint = data.get("pw")' in content
+
+    def test_session_and_reset_tokens_use_separate_salts(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """SEC-4: cookie and reset-token serializers are salt-separated."""
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
+        }
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
+        content = result["content"]
+        # Two distinct serializers with distinct salts.
+        assert "_session_serializer = URLSafeTimedSerializer(" in content
+        assert "_reset_serializer = URLSafeTimedSerializer(" in content
+        assert 'salt="session-cookie"' in content
+        assert 'salt="password-reset"' in content
+        # Session paths use the session serializer; the bare `_serializer` is gone.
+        assert "_session_serializer.dumps(session_token)" in content
+        assert "\n_serializer = " not in content
+        assert "= _serializer." not in content
+        # Reset paths use the reset serializer for both mint and verify.
+        assert "_reset_serializer.dumps(" in content
+        assert "_reset_serializer.loads(" in content
+
+    def test_forgot_password_has_no_enumeration_oracle(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """SEC-5: forgot-password returns uniformly; missing hook is logged, not 501."""
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
+        }
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
+        content = result["content"]
+        # Module logger is wired.
+        assert "import logging" in content
+        assert "logger = logging.getLogger(__name__)" in content
+        # The forgot-password body raises no status that leaks account existence.
+        forgot_block = content.split("async def forgot_password(")[1].split(
+            "@router.post"
+        )[0]
+        assert "501" not in forgot_block
+        assert "HTTP_501_NOT_IMPLEMENTED" not in forgot_block
+        # The missing-config gap is surfaced via a log warning instead.
+        assert "except NotImplementedError:" in forgot_block
+        assert "logger.warning(" in forgot_block
 
 
 class TestCsrfGenerator:
@@ -5419,6 +5475,23 @@ class TestRateLimitGenerator:
         assert isinstance(result, dict)
         # rate_limit.py is sibling of auth.path
         assert result["path"] == project_root / "src/api/rate_limit.py"
+
+    def test_documents_reverse_proxy_ip_caveat(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """SEC-7: the socket-peer-IP-behind-a-proxy footgun is documented."""
+        from model_generator.generators.infrastructure import generate_rate_limit
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+        result = generate_rate_limit(config, env, project_root)
+        assert isinstance(result, dict)
+        lowered = result["content"].lower()
+        assert "x-forwarded-for" in lowered
+        assert "proxy" in lowered
 
 
 class TestApiTestsEndpointGates:
