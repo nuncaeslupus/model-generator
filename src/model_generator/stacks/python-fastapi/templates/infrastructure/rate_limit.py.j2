@@ -25,6 +25,15 @@ Storage:
 Customization:
     Adopters can edit the constants below or override them via
     `auth.rate_limit.{login, register, forgot}` in the generator config.
+
+Client IP / reverse proxies:
+    `get_remote_address` keys on the socket peer (`request.client.host`).
+    Behind a reverse proxy or load balancer that is the *proxy's* IP, so
+    every client collapses into one bucket and the limit becomes effectively
+    global. If you deploy behind a trusted proxy, replace `key_func` with one
+    that reads the client IP from a forwarded header (e.g. `X-Forwarded-For`)
+    — but only trust that header for requests arriving from a proxy you
+    control, otherwise clients can spoof it and trivially bypass the limit.
 """
 
 import os
@@ -38,4 +47,6 @@ FORGOT_LIMIT = "{{ forgot_limit }}"
 
 _storage_uri = os.environ.get("RATELIMIT_STORAGE_URI", "{{ default_storage_uri }}")
 
+# key_func reads the socket peer IP; see "Client IP / reverse proxies" above
+# before deploying behind a proxy/load balancer.
 limiter = Limiter(key_func=get_remote_address, storage_uri=_storage_uri)
