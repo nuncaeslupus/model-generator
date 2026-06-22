@@ -59,7 +59,10 @@ Changes (all in **shared** code, regression-guarded by existing smoke jobs):
 - `src/model_generator/generate.py` — replace module-level `GENERATORS`,
   `INFRASTRUCTURE_TARGETS`, `DOMAIN_TARGETS` (and the top-of-file generator
   imports) with `STACKS[args.stack]` lookups. Wrap the existing python-fastapi
-  generators in a `StackSpec` (mechanical refactor, no behavior change).
+  generators in a `StackSpec` (mechanical refactor, no behavior change). Defer
+  `--target` validation out of `argparse` (the current static `choices=TARGETS`
+  is python-only) — resolve the stack first, then validate `--target` against
+  that stack's registered targets.
 - Guard Python-only steps behind the registry: `_validate_paths_base`
   (`generate.py:578`, asserts `paths.base` is `…/base.py`), the auth validators
   + `_compute_auth_extra` in `_prepare_infra_modules` (`generate.py:926`), and
@@ -70,6 +73,11 @@ Changes (all in **shared** code, regression-guarded by existing smoke jobs):
   hardcoded `_find_ruff`/`ruff`. Add a `dart`-locating helper mirroring
   `_find_ruff`, and **no-op gracefully when the SDK is absent** (generation must
   succeed without Flutter installed — mirrors the existing "ruff not found" warn).
+  Note the formatter vs analyzer asymmetry: `dart format` accepts the generated
+  file paths (like `ruff format`), but `dart analyze` must run on the **package
+  root**, not individual files — it needs `pubspec.yaml`/`analysis_options.yaml`
+  context to resolve imports. The `quality_runner` abstraction must allow a
+  command to target the package root rather than the per-file list.
 - `src/model_generator/utils/templates.py` — add a `camel_case` Jinja filter
   (sibling of the existing `snake_case`) to map snake_case spec keys → Dart
   camelCase fields.
@@ -172,7 +180,11 @@ stubs here so offline stays additive.
   --delete-conflicting-outputs` (proves annotated source is codegen-valid) →
   `dart analyze` (zero errors) → optional `flutter test` round-trip.
 - New CI job `generated-flutter` (via `subosito/flutter-action`), gated to PRs
-  touching `stacks/flutter/**` — analogue of the existing `generated-example` job.
+  touching `stacks/flutter/**` **or the shared engine** (`src/model_generator/**`,
+  e.g. `generate.py`, `utils/loaders.py`, `utils/templates.py`, `utils/quality.py`)
+  — since the Phase-0 registry changes shared code, gating on `stacks/flutter/**`
+  alone would miss engine regressions. Analogue of the existing `generated-example`
+  job.
 - Docs: stack `README.md`, `docs/user/` Flutter usage, update
   `docs/agent/template-extension-guide.md` and `status/next-session.md`.
 
