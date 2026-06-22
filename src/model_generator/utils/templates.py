@@ -94,6 +94,36 @@ def snake_case(name: str) -> str:
     return "".join(parts)
 
 
+def camel_case(name: str) -> str:
+    """Convert a snake_case spec key to Dart-style lowerCamelCase.
+
+    Used by the Flutter stack to map snake_case field names (the wire/JSON
+    form) onto Dart class members. The first segment stays lowercase; each
+    subsequent underscore-delimited segment is capitalized. A leading
+    underscore is preserved (Dart's private-member convention), and runs of
+    underscores collapse so ``__init`` doesn't emit empty segments.
+
+    Examples:
+        user_id         → userId
+        last_login_at   → lastLoginAt
+        already          → already
+        _private_field  → _privateField
+        ID              → iD (single already-mixed tokens pass through lower-first)
+    """
+    if not name:
+        return name
+
+    leading = "_" if name.startswith("_") else ""
+    segments = [seg for seg in name.split("_") if seg]
+    if not segments:
+        # The whole string was underscores; return it untouched.
+        return name
+
+    head = segments[0][:1].lower() + segments[0][1:]
+    tail = "".join(seg[:1].upper() + seg[1:] for seg in segments[1:])
+    return f"{leading}{head}{tail}"
+
+
 def get_template_env(
     stack: str = "python-fastapi", config: dict[str, Any] | None = None
 ) -> Environment:
@@ -124,5 +154,6 @@ def get_template_env(
     env.filters["wrap"] = wrap_text
     env.filters["normalize_decimal"] = _normalize_decimal
     env.filters["snake_case"] = snake_case
+    env.filters["camel_case"] = camel_case
 
     return env

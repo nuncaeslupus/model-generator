@@ -1,6 +1,7 @@
 """Tests for template utilities and custom Jinja2 filters."""
 
 from model_generator.utils.templates import (
+    camel_case,
     get_template_env,
     path_to_import,
     snake_case,
@@ -93,6 +94,44 @@ class TestSnakeCase:
         assert filter_fn("UserRole") == "user_role"
 
 
+class TestCamelCase:
+    """Test snake_case → lowerCamelCase conversion (Flutter field names)."""
+
+    def test_multi_segment(self) -> None:
+        assert camel_case("last_login_at") == "lastLoginAt"
+
+    def test_two_segments(self) -> None:
+        assert camel_case("user_id") == "userId"
+
+    def test_single_word_passthrough(self) -> None:
+        assert camel_case("already") == "already"
+
+    def test_empty_string(self) -> None:
+        assert camel_case("") == ""
+
+    def test_leading_underscore_preserved(self) -> None:
+        # Dart private-member convention; the underscore stays.
+        assert camel_case("_private_field") == "_privateField"
+
+    def test_collapses_repeated_underscores(self) -> None:
+        assert camel_case("a__b") == "aB"
+
+    def test_trailing_underscore_ignored(self) -> None:
+        assert camel_case("name_") == "name"
+
+    def test_all_underscores_returned_unchanged(self) -> None:
+        assert camel_case("__") == "__"
+
+    def test_preserves_inner_capitals(self) -> None:
+        # First segment keeps its original casing past the first char.
+        assert camel_case("api_URL") == "apiURL"
+
+    def test_filter_registered(self) -> None:
+        env = get_template_env("python-fastapi")
+        filter_fn = env.filters["camel_case"]
+        assert filter_fn("created_at") == "createdAt"
+
+
 class TestWrapText:
     """Test text wrapping utility."""
 
@@ -176,6 +215,8 @@ class TestTemplateEnv:
         assert "dict2items" in env.filters
         assert "path_to_import" in env.filters
         assert "wrap" in env.filters
+        assert "snake_case" in env.filters
+        assert "camel_case" in env.filters
 
     def test_dict2items_filter(self) -> None:
         env = get_template_env("python-fastapi")

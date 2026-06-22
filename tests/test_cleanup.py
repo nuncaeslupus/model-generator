@@ -3,7 +3,14 @@
 from pathlib import Path
 from typing import Any
 
-from model_generator.generate import _cleanup_full, _cleanup_selective
+from model_generator.generate import (
+    PYTHON_FASTAPI_STACK,
+    _cleanup_full,
+    _cleanup_selective,
+)
+
+# The python-fastapi cleanup descriptor drives these helpers post stack-registry.
+SPEC = PYTHON_FASTAPI_STACK.cleanup_spec
 
 # Reusable paths config matching the example project layout
 PATHS = {
@@ -68,7 +75,7 @@ def _scaffold(root: Any, paths: Any = PATHS) -> None:
 class TestCleanupFull:
     def test_deletes_generated_directories(self, tmp_path: Path) -> None:
         _scaffold(tmp_path)
-        _cleanup_full(tmp_path, PATHS, dry_run=False)
+        _cleanup_full(tmp_path, PATHS, dry_run=False, spec=SPEC)
 
         assert not (tmp_path / "src").exists()
         assert not (tmp_path / "tests").exists()
@@ -76,26 +83,26 @@ class TestCleanupFull:
 
     def test_deletes_alembic_ini(self, tmp_path: Path) -> None:
         _scaffold(tmp_path)
-        _cleanup_full(tmp_path, PATHS, dry_run=False)
+        _cleanup_full(tmp_path, PATHS, dry_run=False, spec=SPEC)
 
         assert not (tmp_path / "alembic.ini").exists()
 
     def test_deletes_cache_directories(self, tmp_path: Path) -> None:
         _scaffold(tmp_path)
-        _cleanup_full(tmp_path, PATHS, dry_run=False)
+        _cleanup_full(tmp_path, PATHS, dry_run=False, spec=SPEC)
 
         assert not (tmp_path / ".pytest_cache").exists()
 
     def test_preserves_non_generated_files(self, tmp_path: Path) -> None:
         _scaffold(tmp_path)
-        _cleanup_full(tmp_path, PATHS, dry_run=False)
+        _cleanup_full(tmp_path, PATHS, dry_run=False, spec=SPEC)
 
         assert (tmp_path / "pyproject.toml").exists()
         assert (tmp_path / "models/users.model.json").exists()
 
     def test_dry_run_deletes_nothing(self, tmp_path: Path) -> None:
         _scaffold(tmp_path)
-        _cleanup_full(tmp_path, PATHS, dry_run=True)
+        _cleanup_full(tmp_path, PATHS, dry_run=True, spec=SPEC)
 
         assert (tmp_path / "src").exists()
         assert (tmp_path / "tests").exists()
@@ -105,12 +112,13 @@ class TestCleanupFull:
 
     def test_handles_missing_directories_gracefully(self, tmp_path: Path) -> None:
         """Should not error if directories don't exist."""
-        _cleanup_full(tmp_path, PATHS, dry_run=False)  # Nothing to delete
+        # Nothing to delete
+        _cleanup_full(tmp_path, PATHS, dry_run=False, spec=SPEC)
 
     def test_handles_missing_alembic_ini(self, tmp_path: Path) -> None:
         _scaffold(tmp_path)
         (tmp_path / "alembic.ini").unlink()
-        _cleanup_full(tmp_path, PATHS, dry_run=False)  # Should not error
+        _cleanup_full(tmp_path, PATHS, dry_run=False, spec=SPEC)  # Should not error
 
 
 # ── _cleanup_selective ──────────────────────────────────────────────────────
@@ -119,7 +127,7 @@ class TestCleanupFull:
 class TestCleanupSelective:
     def test_deletes_generated_python_files(self, tmp_path: Path) -> None:
         _scaffold(tmp_path)
-        _cleanup_selective(tmp_path, PATHS, dry_run=False)
+        _cleanup_selective(tmp_path, PATHS, dry_run=False, spec=SPEC)
 
         # Generated .py files should be gone
         assert not (tmp_path / "src/database/models/users.py").exists()
@@ -130,7 +138,7 @@ class TestCleanupSelective:
 
     def test_deletes_infrastructure_files(self, tmp_path: Path) -> None:
         _scaffold(tmp_path)
-        _cleanup_selective(tmp_path, PATHS, dry_run=False)
+        _cleanup_selective(tmp_path, PATHS, dry_run=False, spec=SPEC)
 
         assert not (tmp_path / "src/database/models/base.py").exists()
         assert not (tmp_path / "src/database/engine.py").exists()
@@ -139,7 +147,7 @@ class TestCleanupSelective:
 
     def test_deletes_alembic_ini(self, tmp_path: Path) -> None:
         _scaffold(tmp_path)
-        _cleanup_selective(tmp_path, PATHS, dry_run=False)
+        _cleanup_selective(tmp_path, PATHS, dry_run=False, spec=SPEC)
 
         assert not (tmp_path / "alembic.ini").exists()
 
@@ -148,7 +156,7 @@ class TestCleanupSelective:
         # Add script.py.mako to scaffold manually for this test if needed
         (tmp_path / "alembic/script.py.mako").write_text("# mako")
 
-        _cleanup_selective(tmp_path, PATHS, dry_run=False)
+        _cleanup_selective(tmp_path, PATHS, dry_run=False, spec=SPEC)
 
         assert not (tmp_path / "alembic/versions/001_init.py").exists()
         assert not (tmp_path / "alembic/env.py").exists()
@@ -157,7 +165,7 @@ class TestCleanupSelective:
     def test_preserves_directories(self, tmp_path: Path) -> None:
         """Selective mode deletes files, not directories."""
         _scaffold(tmp_path)
-        _cleanup_selective(tmp_path, PATHS, dry_run=False)
+        _cleanup_selective(tmp_path, PATHS, dry_run=False, spec=SPEC)
 
         assert (tmp_path / "src/database/models").is_dir()
         assert (tmp_path / "tests/api").is_dir()
@@ -165,14 +173,14 @@ class TestCleanupSelective:
 
     def test_preserves_non_generated_files(self, tmp_path: Path) -> None:
         _scaffold(tmp_path)
-        _cleanup_selective(tmp_path, PATHS, dry_run=False)
+        _cleanup_selective(tmp_path, PATHS, dry_run=False, spec=SPEC)
 
         assert (tmp_path / "pyproject.toml").exists()
         assert (tmp_path / "models/users.model.json").exists()
 
     def test_dry_run_deletes_nothing(self, tmp_path: Path) -> None:
         _scaffold(tmp_path)
-        _cleanup_selective(tmp_path, PATHS, dry_run=True)
+        _cleanup_selective(tmp_path, PATHS, dry_run=True, spec=SPEC)
 
         assert (tmp_path / "src/database/models/users.py").exists()
         assert (tmp_path / "src/main.py").exists()
@@ -185,16 +193,20 @@ class TestCleanupSelective:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         cache_file.write_bytes(b"\x00")
 
-        _cleanup_selective(tmp_path, PATHS, dry_run=False)
+        _cleanup_selective(tmp_path, PATHS, dry_run=False, spec=SPEC)
 
         assert not cache_file.exists()
         assert not cache_file.parent.exists()
 
     def test_handles_empty_project(self, tmp_path: Path) -> None:
         """Should not error when nothing exists to delete."""
-        _cleanup_selective(tmp_path, PATHS, dry_run=False)  # No files to delete
+        _cleanup_selective(
+            tmp_path, PATHS, dry_run=False, spec=SPEC
+        )  # No files to delete
 
     def test_handles_missing_alembic_ini(self, tmp_path: Path) -> None:
         _scaffold(tmp_path)
         (tmp_path / "alembic.ini").unlink()
-        _cleanup_selective(tmp_path, PATHS, dry_run=False)  # Should not error
+        _cleanup_selective(
+            tmp_path, PATHS, dry_run=False, spec=SPEC
+        )  # Should not error
