@@ -20,7 +20,6 @@ TDD Generation Order (when --target all):
 import argparse
 import shutil
 import sys
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +39,14 @@ from .generators import (
     generate_migration_autogen,
     generate_migration_init,
 )
+from .generators.registry import (
+    CleanupSpec,
+    GenContext,
+    StackSpec,
+    TargetGenerator,
+    get_stack,
+    register_stack,
+)
 from .utils import (
     get_layout,
     get_template_env,
@@ -50,55 +57,15 @@ from .utils import (
 )
 from .utils import load_model as load_model
 from .utils.conftest_generator import generate_conftest_content
+from .utils.quality import run_ruff_quality
 from .utils.templates import path_to_import, snake_case
-
-# TDD-ordered generation targets
-INFRASTRUCTURE_TARGETS = [
-    "base",
-    "engine",
-    "main",
-    "test-conftest-root",
-]
-
-DOMAIN_TARGETS = [
-    "enums",
-    "constraints",
-    "init",
-    "database",
-    "factories",
-    "api-models",
-    "api-init",
-    "api-pagination",
-    "api-tests",
-    "api-tests-config",
-    "api-routes",
-    "migration-init",
-    "migration-autogen",
-]
-
-TARGETS = INFRASTRUCTURE_TARGETS + DOMAIN_TARGETS + ["infrastructure", "all"]
-
-
-# Generator dispatch table
-_GeneratorFn = Callable[
-    [dict[str, Any], dict[str, Any], Any, Path, Path],
-    dict[str, Any] | list[dict[str, Any]] | None,
-]
-
-GENERATORS: dict[str, _GeneratorFn] = {
-    "enums": lambda m, c, e, p, mp: generate_enums(m, c, e, p, mp),
-    "constraints": lambda m, c, e, p, mp: generate_constraints(m, c, e, p, mp),
-    "init": lambda m, c, e, p, mp: generate_init(m, c, e, p),
-    "database": lambda m, c, e, p, mp: generate_database_model(m, c, e, p),
-    "factories": lambda m, c, e, p, mp: generate_factories(m, c, e, p, mp),
-    "api-models": lambda m, c, e, p, mp: generate_api_models(m, c, e, p, mp),
-    "api-init": lambda m, c, e, p, mp: generate_api_init(m, c, e, p),
-    "api-pagination": lambda m, c, e, p, mp: generate_api_pagination(m, c, e, p),
-}
 
 
 def cleanup_generated(
-    project_root: Path, scope: str = "selective", dry_run: bool = False
+    project_root: Path,
+    scope: str = "selective",
+    dry_run: bool = False,
+    cleanup_spec: CleanupSpec | None = None,
 ) -> None:
     """
     Delete generated code files.
@@ -107,64 +74,68 @@ def cleanup_generated(
         project_root: Project root directory
         scope: "selective" (generated files only) or "full" (entire directories)
         dry_run: Show what would be deleted without deleting
+        cleanup_spec: stack cleanup descriptor; defaults to python-fastapi.
     """
     config = load_config()
     paths = config.get("paths", {})
+    spec = cleanup_spec or PYTHON_FASTAPI_STACK.cleanup_spec
 
     if scope == "full":
-        _cleanup_full(project_root, paths, dry_run)
+        _cleanup_full(project_root, paths, dry_run, spec)
     else:
-        _cleanup_selective(project_root, paths, dry_run)
+        _cleanup_selective(project_root, paths, dry_run, spec)
 
 
-def _cleanup_full(project_root: Path, paths: dict[str, Any], dry_run: bool) -> None:
+def _cleanup_full(
+    project_root: Path,
+    paths: dict[str, Any],
+    dry_run: bool,
+    spec: CleanupSpec,
+) -> None:
     """Delete entire source directories and generated files."""
     dirs_to_delete = set()
     files_to_delete = set()
 
     # Generated source directories
-    for key in ["database_models", "factories", "api_models", "api_routes"]:
+    for key in spec.source_path_keys:
         if key in paths:
             path_parts = paths[key].split("/")
             if path_parts:
                 dirs_to_delete.add(project_root / path_parts[0])
 
     # Test directory
-    api_tests = paths.get("api_tests", "tests/contract/api")
+    api_tests = paths.get(spec.test_path_key, "tests/contract/api")
     test_root = api_tests.split("/")[0]
     dirs_to_delete.add(project_root / test_root)
 
     # Migrations directory
-    dirs_to_delete.add(project_root / paths.get("migrations", "alembic"))
+    if spec.migrations_path_key is not None:
+        dirs_to_delete.add(
+            project_root / paths.get(spec.migrations_path_key, "alembic")
+        )
 
-    # Cache directories
-    cache_dirs = [
-        ".pytest_cache",
-        ".mypy_cache",
-        ".ruff_cache",
-        "__pycache__",
-        ".venv",
-        "venv",
-    ]
-    for cache_dir in cache_dirs:
+    # Cache / build directories (stack-specific)
+    for cache_dir in spec.full_cleanup_dirs:
         cache_path = project_root / cache_dir
         if cache_path.exists():
             dirs_to_delete.add(cache_path)
 
-    # Find all __pycache__ recursively in project source/tests
-    for src_dir in [
-        project_root / "backend",
-        project_root / "tests",
-        project_root / "src",
-    ]:
-        if src_dir.exists():
-            for pycache in src_dir.rglob("__pycache__"):
-                dirs_to_delete.add(pycache)
+    # Find all __pycache__ recursively in project source/tests (python only)
+    if spec.file_glob == "*.py":
+        for src_dir in [
+            project_root / "backend",
+            project_root / "tests",
+            project_root / "src",
+        ]:
+            if src_dir.exists():
+                for pycache in src_dir.rglob("__pycache__"):
+                    dirs_to_delete.add(pycache)
 
-    # Generated files
-    alembic_ini = project_root / "alembic.ini"
-    if alembic_ini.exists():
-        files_to_delete.add(alembic_ini)
+    # Generated top-level files (stack-specific)
+    for file_name in spec.full_cleanup_files:
+        file_path = project_root / file_name
+        if file_path.exists():
+            files_to_delete.add(file_path)
 
     print("🗑️  Full cleanup mode:")
 
@@ -186,94 +157,85 @@ def _cleanup_full(project_root: Path, paths: dict[str, Any], dry_run: bool) -> N
 
 
 def _cleanup_selective(
-    project_root: Path, paths: dict[str, Any], dry_run: bool
+    project_root: Path,
+    paths: dict[str, Any],
+    dry_run: bool,
+    spec: CleanupSpec,
 ) -> None:
     """Delete only generated files, not entire directories."""
     files_to_delete: list[Path] = []
     dirs_to_delete: list[Path] = []
 
+    glob = spec.file_glob
+    init_name = "__init__.py" if glob == "*.py" else None
+
     patterns = []
-    for key in ["database_models", "factories", "api_models", "api_routes"]:
+    for key in spec.source_path_keys:
         if key in paths:
-            patterns.append(f"{paths[key]}/*.py")
-            # Also include __init__.py in these directories
-            patterns.append(f"{paths[key]}/__init__.py")
+            patterns.append(f"{paths[key]}/{glob}")
+            # Also include __init__.py in these directories (python packages)
+            if init_name:
+                patterns.append(f"{paths[key]}/{init_name}")
 
-    api_tests = paths.get("api_tests", "tests/contract/api")
-    patterns.append(f"{api_tests}/*.py")
-    patterns.append(f"{api_tests}/__init__.py")
+    api_tests = paths.get(spec.test_path_key, "tests/contract/api")
+    patterns.append(f"{api_tests}/{glob}")
+    if init_name:
+        patterns.append(f"{api_tests}/{init_name}")
 
-    # Add parent __init__.py for tests
-    test_dir = api_tests
-    while "/" in test_dir:
-        test_dir = str(Path(test_dir).parent)
-        patterns.append(f"{test_dir}/__init__.py")
+        # Add parent __init__.py for tests (python packages)
+        test_dir = api_tests
+        while "/" in test_dir:
+            test_dir = str(Path(test_dir).parent)
+            patterns.append(f"{test_dir}/{init_name}")
 
-    migrations = paths.get("migrations", "alembic")
-    patterns.append(f"{migrations}/versions/*.py")
-    # Alembic infra files
-    patterns.append(f"{migrations}/env.py")
-    patterns.append(f"{migrations}/script.py.mako")
-    patterns.append(f"{migrations}/README.md")
-    patterns.append(f"{migrations}/versions/.gitkeep")
+    if spec.migrations_path_key is not None:
+        migrations = paths.get(spec.migrations_path_key, "alembic")
+        patterns.append(f"{migrations}/versions/*.py")
+        # Alembic infra files
+        patterns.append(f"{migrations}/env.py")
+        patterns.append(f"{migrations}/script.py.mako")
+        patterns.append(f"{migrations}/README.md")
+        patterns.append(f"{migrations}/versions/.gitkeep")
 
     # All explicit file paths in config
     for path in paths.values():
         if isinstance(path, str) and (path.endswith(".py") or path.endswith(".ini")):
             files_to_delete.append(project_root / path)
 
-    # Derived infrastructure files
-    if "api_models" in paths:
-        api_dir = Path(paths["api_models"]).parent
-        files_to_delete.append(project_root / api_dir / "utils.py")
-        files_to_delete.append(project_root / api_dir / "__init__.py")
-
-    if "database_models" in paths:
-        db_dir = Path(paths["database_models"]).parent
-        files_to_delete.append(project_root / db_dir / "types.py")
-        files_to_delete.append(project_root / db_dir / "__init__.py")
-
-    if "main" in paths:
-        src_dir = Path(paths["main"]).parent
-        files_to_delete.append(project_root / src_dir / "__init__.py")
-
-    # Also include alembic.ini
-    alembic_ini = project_root / "alembic.ini"
-    if alembic_ini.exists():
-        files_to_delete.append(alembic_ini)
+    # Stack-derived infrastructure files (e.g. python's utils.py/types.py siblings,
+    # __init__.py packages, alembic.ini).
+    if spec.derived_files is not None:
+        files_to_delete.extend(spec.derived_files(project_root, paths))
 
     for pattern in patterns:
         files_to_delete.extend(project_root.glob(pattern))
 
     # Find __pycache__ in generated directories (recursive) and their parents
     # (non-recursive — parents may contain user-written code whose __pycache__
-    # must not be touched).
-    generated_dirs: set[Path] = set()
-    parent_dirs: set[Path] = set()
-    for key in [
-        "database_models",
-        "factories",
-        "api_models",
-        "api_routes",
-        "api_tests",
-        "migrations",
-    ]:
-        if key in paths:
-            path = project_root / paths[key]
-            if path.exists():
-                generated_dirs.add(path)
-                if key != "migrations":
-                    parent_dirs.add(path.parent)
+    # must not be touched). Python only.
+    if glob == "*.py":
+        generated_dirs: set[Path] = set()
+        parent_dirs: set[Path] = set()
+        pycache_keys = [*spec.source_path_keys, spec.test_path_key]
+        if spec.migrations_path_key is not None:
+            pycache_keys.append(spec.migrations_path_key)
+        for key in pycache_keys:
+            if key in paths:
+                path = project_root / paths[key]
+                if path.exists():
+                    generated_dirs.add(path)
+                    if key != spec.migrations_path_key:
+                        parent_dirs.add(path.parent)
 
-    for d in generated_dirs:
-        if d.is_dir():
-            for pycache in d.rglob("__pycache__"):
-                dirs_to_delete.append(pycache)
+        for d in generated_dirs:
+            if d.is_dir():
+                for pycache in d.rglob("__pycache__"):
+                    dirs_to_delete.append(pycache)
 
-    for d in parent_dirs:
-        if d.is_dir():
-            for pycache in d.glob("__pycache__"):
-                dirs_to_delete.append(pycache)
+        for d in parent_dirs:
+            if d.is_dir():
+                for pycache in d.glob("__pycache__"):
+                    dirs_to_delete.append(pycache)
 
     print("🗑️  Selective cleanup mode:")
     deleted_count = 0
@@ -422,15 +384,14 @@ def generate(
     no_root_files: bool = False,
 ) -> None:
     """Generate code from model definition."""
+    spec = get_stack(stack)
     project_root = _find_project_root(model_path)
     _validate_project_root(project_root)
 
     model = load_model(model_path)
     config = load_config(stack)
-    _validate_auth_config(model, config)
-    _validate_generation_config(config)
-    _validate_paths_base(config)
-    _validate_composite_foreign_keys(model)
+    for validator in spec.validators:
+        validator(model, config)
     env = get_template_env(stack, config)
 
     domain = model.get("domain", "unknown")
@@ -441,24 +402,28 @@ def generate(
     print(f"   Stack: {stack}")
 
     outputs = []
-    targets_to_generate = TARGETS[:-1] if target == "all" else [target]
+    # When "all", iterate every concrete target plus the "infrastructure"
+    # aggregate (a no-op in per-model dispatch, kept for byte-identical order).
+    targets_to_generate = (
+        [*spec.generation_targets, "infrastructure"] if target == "all" else [target]
+    )
 
     # Pre-load shared data to avoid duplicate loading
     enums = load_shared_enums(model_path)
     constraints = load_shared_constraints(model_path)
 
     for t in targets_to_generate:
-        result = _generate_target(
-            t,
-            model,
-            config,
-            env,
-            project_root,
-            model_path,
-            enums,
-            constraints,
+        ctx = GenContext(
+            model=model,
+            config=config,
+            env=env,
+            project_root=project_root,
+            model_path=model_path,
+            enums=enums,
+            constraints=constraints,
             no_root_files=no_root_files,
         )
+        result = _generate_target(t, spec, ctx)
         if result is None:
             continue
         if isinstance(result, list):
@@ -469,7 +434,7 @@ def generate(
     generated_files = _process_outputs(outputs, diff, dry_run)
 
     if generated_files and not dry_run and not diff:
-        run_quality_tools(config, project_root, generated_files)
+        run_quality_tools(config, project_root, generated_files, spec.quality_runner)
 
     if not diff and not dry_run:
         print(f"\n✅ Generated {len(generated_files)} file(s)")
@@ -843,37 +808,19 @@ def _validate_auth_scope_coverage(
 
 def _generate_target(
     target: str,
-    model: dict[str, Any],
-    config: dict[str, Any],
-    env: Any,
-    project_root: Path,
-    model_path: Path,
-    enums: dict[str, Any],
-    constraints: dict[str, Any],
-    no_root_files: bool = False,
+    spec: StackSpec,
+    ctx: GenContext,
 ) -> dict[str, Any] | list[dict[str, Any]] | None:
-    """Generate a single target, returning output dict(s) or None."""
-    # Use dispatch table for simple generators
-    if target in GENERATORS:
-        return GENERATORS[target](model, config, env, project_root, model_path)
+    """Generate a single target via the stack's generator dispatch table.
 
-    # Handle special cases
-    if target == "api-tests":
-        return generate_api_tests(model, config, env, project_root, enums, constraints)
-    elif target == "api-tests-config":
-        return generate_conftest(model, config, env, project_root, model_path)
-    elif target == "api-routes":
-        return generate_api_routes(model, config, env, project_root, enums, constraints)
-    elif target == "migration-init":
-        return generate_migration_init(
-            model, config, env, project_root, no_root_files=no_root_files
-        )
-    elif target == "migration-autogen":
-        # Instruction-only target: prints guidance, emits no file.
-        generate_migration_autogen(model, config, env, project_root)
+    Targets not registered as domain generators (infrastructure targets and the
+    ``infrastructure`` aggregate) are no-ops here — infrastructure is emitted by
+    ``spec.infra_orchestrator`` in ``main()``.
+    """
+    generator = spec.generators.get(target)
+    if generator is None:
         return None
-
-    return None
+    return generator(ctx)
 
 
 def _process_outputs(
@@ -926,12 +873,16 @@ def _process_outputs(
 def _prepare_infra_modules(
     model_files: list[Path],
     config: dict[str, Any],
+    spec: StackSpec | None = None,
 ) -> tuple[list[str], list[str], list[str], list[str], list[dict[str, Any]]]:
     """Collect module lists and extra deps for infrastructure generation.
 
     Shared by main() and the interactive wizard so both paths produce an
-    identical pyproject.toml and validate auth prerequisites.
+    identical pyproject.toml and validate auth prerequisites. ``spec`` supplies
+    the stack's cross-model infra validators and extra-deps computation;
+    defaults to python-fastapi.
     """
+    spec = spec or PYTHON_FASTAPI_STACK
     layout = get_layout(config)
     domains: list[str] = []
     route_modules: list[str] = []
@@ -965,18 +916,220 @@ def _prepare_infra_modules(
 
     extra_deps = sorted(set(extra_deps))
 
-    _validate_auth_strategy(loaded_models, config)
-    _validate_auth_scope_coverage(loaded_models, config)
+    for infra_validator in spec.infra_validators:
+        infra_validator(loaded_models, config)
 
-    auth_extra = _compute_auth_extra(config)
-    if auth_extra:
-        extra_deps = sorted(set(extra_deps + auth_extra))
+    if spec.extra_deps_fn is not None:
+        stack_extra = spec.extra_deps_fn(config)
+        if stack_extra:
+            extra_deps = sorted(set(extra_deps + stack_extra))
 
     if layout != "per-entity":
         route_modules = list(domains)
         factory_modules = list(domains)
 
     return domains, route_modules, factory_modules, extra_deps, loaded_models
+
+
+# ===================================================================
+# python-fastapi stack registration
+# ===================================================================
+#
+# Wraps the existing generator set into a StackSpec. This is a mechanical
+# refactor of the former module-level GENERATORS/TARGET lists/validators —
+# behavior is byte-identical to the pre-registry orchestration.
+
+
+def _python_derived_cleanup_files(
+    project_root: Path, paths: dict[str, Any]
+) -> list[Path]:
+    """Extra explicit files python-fastapi cleanup must remove.
+
+    Reproduces the former inline derivation in ``_cleanup_selective``: the
+    ``utils.py``/``types.py`` infrastructure siblings, the package ``__init__.py``
+    files next to the api/db/main modules, and ``alembic.ini``.
+    """
+    files: list[Path] = []
+
+    if "api_models" in paths:
+        api_dir = Path(paths["api_models"]).parent
+        files.append(project_root / api_dir / "utils.py")
+        files.append(project_root / api_dir / "__init__.py")
+
+    if "database_models" in paths:
+        db_dir = Path(paths["database_models"]).parent
+        files.append(project_root / db_dir / "types.py")
+        files.append(project_root / db_dir / "__init__.py")
+
+    if "main" in paths:
+        src_dir = Path(paths["main"]).parent
+        files.append(project_root / src_dir / "__init__.py")
+
+    alembic_ini = project_root / "alembic.ini"
+    if alembic_ini.exists():
+        files.append(alembic_ini)
+
+    return files
+
+
+_PYTHON_FASTAPI_CLEANUP = CleanupSpec(
+    source_path_keys=("database_models", "factories", "api_models", "api_routes"),
+    test_path_key="api_tests",
+    migrations_path_key="migrations",
+    file_glob="*.py",
+    derived_files=_python_derived_cleanup_files,
+    full_cleanup_dirs=(
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        "__pycache__",
+        ".venv",
+        "venv",
+    ),
+    full_cleanup_files=("alembic.ini",),
+)
+
+
+# Domain-target generators wrapped into the uniform GenContext signature. The
+# wrappers thread only the arguments each underlying generator actually reads,
+# matching the former GENERATORS dispatch table + special cases exactly.
+_PYTHON_FASTAPI_GENERATORS: dict[str, TargetGenerator] = {
+    "enums": lambda c: generate_enums(
+        c.model, c.config, c.env, c.project_root, c.model_path
+    ),
+    "constraints": lambda c: generate_constraints(
+        c.model, c.config, c.env, c.project_root, c.model_path
+    ),
+    "init": lambda c: generate_init(c.model, c.config, c.env, c.project_root),
+    "database": lambda c: generate_database_model(
+        c.model, c.config, c.env, c.project_root
+    ),
+    "factories": lambda c: generate_factories(
+        c.model, c.config, c.env, c.project_root, c.model_path
+    ),
+    "api-models": lambda c: generate_api_models(
+        c.model, c.config, c.env, c.project_root, c.model_path
+    ),
+    "api-init": lambda c: generate_api_init(c.model, c.config, c.env, c.project_root),
+    "api-pagination": lambda c: generate_api_pagination(
+        c.model, c.config, c.env, c.project_root
+    ),
+    "api-tests": lambda c: generate_api_tests(
+        c.model, c.config, c.env, c.project_root, c.enums, c.constraints
+    ),
+    "api-tests-config": lambda c: generate_conftest(
+        c.model, c.config, c.env, c.project_root, c.model_path
+    ),
+    "api-routes": lambda c: generate_api_routes(
+        c.model, c.config, c.env, c.project_root, c.enums, c.constraints
+    ),
+    "migration-init": lambda c: generate_migration_init(
+        c.model, c.config, c.env, c.project_root, no_root_files=c.no_root_files
+    ),
+    "migration-autogen": lambda c: _run_migration_autogen(c),
+}
+
+
+def _run_migration_autogen(
+    ctx: GenContext,
+) -> dict[str, Any] | list[dict[str, Any]] | None:
+    """Instruction-only target: prints guidance, emits no file."""
+    generate_migration_autogen(ctx.model, ctx.config, ctx.env, ctx.project_root)
+    return None
+
+
+# The StackSpec wires its orchestrator / validators / deps through thin wrappers
+# that resolve the underlying module-level functions *at call time* rather than
+# capturing references at construction. This keeps the historical
+# patch-the-module-attribute test seams working (e.g. patching
+# ``generate.generate_infrastructure`` or ``generate._validate_auth_strategy``)
+# and stays byte-identical to the pre-registry call sites.
+
+
+def _infra_orchestrator(**kwargs: Any) -> list[Path]:
+    return generate_infrastructure(**kwargs)
+
+
+def _validate_generation_config_v(
+    model: dict[str, Any], config: dict[str, Any]
+) -> None:
+    _validate_generation_config(config)
+
+
+def _validate_paths_base_v(model: dict[str, Any], config: dict[str, Any]) -> None:
+    _validate_paths_base(config)
+
+
+def _validate_composite_foreign_keys_v(
+    model: dict[str, Any], config: dict[str, Any]
+) -> None:
+    _validate_composite_foreign_keys(model)
+
+
+def _validate_auth_config_v(model: dict[str, Any], config: dict[str, Any]) -> None:
+    _validate_auth_config(model, config)
+
+
+def _validate_auth_strategy_v(
+    models: list[dict[str, Any]], config: dict[str, Any]
+) -> None:
+    _validate_auth_strategy(models, config)
+
+
+def _validate_auth_scope_coverage_v(
+    models: list[dict[str, Any]], config: dict[str, Any]
+) -> None:
+    _validate_auth_scope_coverage(models, config)
+
+
+def _compute_auth_extra_v(config: dict[str, Any]) -> list[str]:
+    return _compute_auth_extra(config)
+
+
+PYTHON_FASTAPI_STACK = StackSpec(
+    name="python-fastapi",
+    infrastructure_targets=[
+        "base",
+        "engine",
+        "main",
+        "test-conftest-root",
+    ],
+    domain_targets=[
+        "enums",
+        "constraints",
+        "init",
+        "database",
+        "factories",
+        "api-models",
+        "api-init",
+        "api-pagination",
+        "api-tests",
+        "api-tests-config",
+        "api-routes",
+        "migration-init",
+        "migration-autogen",
+    ],
+    generators=_PYTHON_FASTAPI_GENERATORS,
+    infra_orchestrator=_infra_orchestrator,
+    quality_runner=run_ruff_quality,
+    cleanup_spec=_PYTHON_FASTAPI_CLEANUP,
+    # Normalized to the (model, config) ModelValidator signature. Several
+    # underlying validators read only one of the two; the wrappers adapt them
+    # without changing their behavior or call order.
+    validators=[
+        _validate_auth_config_v,
+        _validate_generation_config_v,
+        _validate_paths_base_v,
+        _validate_composite_foreign_keys_v,
+    ],
+    infra_validators=[
+        _validate_auth_strategy_v,
+        _validate_auth_scope_coverage_v,
+    ],
+    extra_deps_fn=_compute_auth_extra_v,
+)
+
+register_stack(PYTHON_FASTAPI_STACK)
 
 
 def main() -> None:
@@ -1000,9 +1153,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--target",
-        choices=TARGETS,
         default="all",
-        help="Generation target (default: all)",
+        help=(
+            "Generation target (default: all). Valid targets depend on the "
+            "resolved --stack; validated after the stack is known."
+        ),
     )
     parser.add_argument(
         "--diff",
@@ -1053,6 +1208,11 @@ def main() -> None:
         run_wizard()
         return
 
+    # Resolve the stack registry entry. Done here (not in argparse) so --target
+    # is validated against the stack's registered targets, not a static
+    # python-only list.
+    spec = get_stack(args.stack)
+
     # Handle --clear-only: just cleanup and exit (doesn't require model argument)
     if args.clear_only:
         project_root = Path.cwd()
@@ -1061,8 +1221,22 @@ def main() -> None:
             if (parent / ".model-generator.yaml").exists():
                 project_root = parent
         _validate_project_root(project_root)
-        cleanup_generated(project_root, scope=args.scope, dry_run=args.dry_run)
+        cleanup_generated(
+            project_root,
+            scope=args.scope,
+            dry_run=args.dry_run,
+            cleanup_spec=spec.cleanup_spec,
+        )
         return
+
+    # Validate --target against the resolved stack's registered targets.
+    if args.target not in spec.all_targets:
+        valid = ", ".join(spec.all_targets)
+        print(
+            f'Error: unknown --target "{args.target}" for stack '
+            f'"{spec.name}".\nValid targets: {valid}.'
+        )
+        sys.exit(1)
 
     # Model is required for all other operations
     if args.model is None:
@@ -1092,7 +1266,12 @@ def main() -> None:
 
     # Cleanup if requested
     if args.clean:
-        cleanup_generated(project_root, scope=args.scope, dry_run=args.dry_run)
+        cleanup_generated(
+            project_root,
+            scope=args.scope,
+            dry_run=args.dry_run,
+            cleanup_spec=spec.cleanup_spec,
+        )
         if not args.dry_run:
             print()
 
@@ -1105,16 +1284,16 @@ def main() -> None:
         factory_modules,
         extra_deps,
         loaded_models,
-    ) = _prepare_infra_modules(model_files, config)
+    ) = _prepare_infra_modules(model_files, config, spec)
 
     has_encrypted_binary = _has_encrypted_binary_field(loaded_models)
 
     # Generate infrastructure
     if (
         args.target in ("all", "infrastructure")
-        or args.target in INFRASTRUCTURE_TARGETS
+        or args.target in spec.infrastructure_targets
     ):
-        infra_files = generate_infrastructure(
+        infra_files = spec.infra_orchestrator(
             config=config,
             env=env,
             project_root=project_root,
@@ -1129,7 +1308,7 @@ def main() -> None:
             no_root_files=args.no_root_files,
         )
         if infra_files and not args.dry_run and not args.diff:
-            run_quality_tools(config, project_root, infra_files)
+            run_quality_tools(config, project_root, infra_files, spec.quality_runner)
 
     if args.target == "infrastructure":
         print("\n✅ Infrastructure generation complete")
