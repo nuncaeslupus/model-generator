@@ -59,6 +59,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Release notes scoped per version.** The release workflow now publishes only
   the tagged version's CHANGELOG section instead of the entire file, and the
   CHANGELOG no longer names specific downstream projects.
+- **Infra upgrade path documented per CHANGELOG entry (SEC-9).** Previous entries
+  said "adopters should regenerate," but infra files (`main.py`, `errors.py`,
+  `validators.py`, `alembic/env.py`, …) are skip-if-exists — a standard re-run
+  does **not** touch them. Each past entry that patched an infra file now names
+  the file and the manual steps to apply the fix. A `--force-infra` flag for
+  selective infra-only overwrite is tracked as a future improvement.
 
 ### Added
 
@@ -96,7 +102,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 Two generator-template fixes surfaced by the 0.1.3 downstream regen.
-**Adopters should regenerate to pick these up.** No wire contract changed.
+No wire contract changed. The password-example fix is in a domain template and
+is picked up by a normal re-run. The alembic fix is in a skip-if-exists infra
+file and requires a manual step (noted below).
 
 - **Alembic `env.py`: async driver + custom-type autogenerate.** The generated
   `migrations/env.py` built a synchronous Alembic engine straight from
@@ -108,6 +116,8 @@ Two generator-template fixes surfaced by the 0.1.3 downstream regen.
   `NameError`; a `render_item` hook (wired into both the offline and online
   `context.configure(...)` calls) now renders those types and adds the matching
   import. These were previously carried as hand-edits in downstream repos.
+  *(Infra fix — `alembic/env.py` is skip-if-exists. To apply: delete that
+  file and re-run `model-gen --target migration-init`, or port the diff by hand.)*
 - **Password field OpenAPI example is no longer a secret-like value.** The
   request-model example for any `password`-named field was hardcoded to
   `SecureP@ssw0rd!`, which secret scanners (GitGuardian) flagged in every
@@ -127,9 +137,10 @@ Two generator-template fixes surfaced by the 0.1.3 downstream regen.
 ### Fixed
 
 Signed financial fields no longer fail validation on legitimate negative
-values. **Adopters built from generator output should regenerate to pick this
-up.** No wire contract changed — field names, types, and status codes are
-identical.
+values. No wire contract changed — field names, types, and status codes are
+identical. The route/response/request template fixes are picked up by a normal
+re-run. The new `validate_decimal` function is in a skip-if-exists infra file
+and requires a manual step (noted below).
 
 - **`financial` field validator selection is now constraint-aware.** The API
   response template (`api/response.py.j2`) hardcoded
@@ -148,15 +159,21 @@ identical.
 - **New `validate_decimal` validator.** `infrastructure/validators.py.j2` now
   emits a sign-agnostic `validate_decimal` that accepts negative, zero, and
   positive well-formed decimals.
+  *(Infra fix — `validators.py` is skip-if-exists. **Apply this before
+  regenerating domain files:** the regenerated `response.py` and `request.py`
+  will import `validate_decimal`, which will be missing from an old
+  `validators.py`, causing an `ImportError`. To apply: delete `validators.py`
+  and re-run `model-gen --target infrastructure`.)*
 
 ## [0.1.2] — 2026-06-11
 
 ### Security
 
-Two template fixes surfaced by a downstream PR-review pass over the 0.1.1
-adoption. **Adopters built from generator output should regenerate to pick
-these up.** No wire contract changed — field names, enums, and happy-path status
-codes are identical.
+Two security fixes surfaced by a downstream PR-review pass over the 0.1.1
+adoption. No wire contract changed — field names, enums, and happy-path status
+codes are identical. The datetime filter fix is in a domain template and is
+picked up by a normal re-run. The Content-Length fix is in a skip-if-exists
+infra file and requires a manual step (noted below).
 
 - **Request-body size limit: negative `Content-Length` bypass (defense-in-depth).**
   The `request_limit.py` middleware read `Content-Length` with `int(value)`
@@ -167,6 +184,9 @@ codes are identical.
   through to the chunked-counting path and is still rejected with a 413 on
   overflow. Compliant servers reject a negative `Content-Length` at the protocol
   layer; the middleware no longer relies on that pre-filtering.
+  *(Infra fix — `request_limit.py` is skip-if-exists. To apply: delete that
+  file and re-run `model-gen --target infrastructure`, or change `int(value)` to
+  `v if (v := int(value)) >= 0 else None` in `_content_length`.)*
 - **List filters: naive vs. tz-aware datetime comparison.** A `datetime | None`
   list filter parses input without an offset (e.g. `2026-06-11T12:00:00`) as a
   naive datetime, then compared it directly against a tz-aware
@@ -181,11 +201,25 @@ codes are identical.
 ### Security
 
 Hardened the generated FastAPI CRUD surface (follow-ups from a downstream
-security audit). **Adopters built from generator output should regenerate to
-pick these up.** No wire contract changed — field names, enums, and happy-path
+security audit). No wire contract changed — field names, enums, and happy-path
 status codes are identical; every change below affects only the malformed-input
-/ error paths.
+/ error paths. The list-filter fix is in a domain template and is picked up by
+a normal re-run. The other four fixes touch skip-if-exists infra files and
+require manual steps (noted per entry).
 
+- **CORS: wildcard origin with credentials disabled.** The generated `main.py`
+  defaulted to `allow_origins=["*"]` with `allow_credentials=True` — a
+  browser-security hole (a wildcard + credentials causes the server to reflect
+  the caller's `Origin` and return `Access-Control-Allow-Credentials: true`,
+  enabling cross-site requests from any origin). The default is now a concrete
+  dev origin (`http://localhost:3000`); `allow_credentials` is automatically
+  `False` when any wildcard is in the list; `allow_methods` and `allow_headers`
+  are narrowed to the verbs and headers the generated stack actually uses.
+  *(Infra fix — `main.py` is skip-if-exists. To apply: delete `main.py` and
+  re-run `model-gen --target main`, or apply directly: remove `"*"` from the
+  `allow_origins` default; set `allow_credentials="*" not in cors_origins`;
+  narrow `allow_methods` to `["GET","POST","PUT","DELETE","OPTIONS","HEAD"]` and
+  `allow_headers` to `["Content-Type","X-CSRF-Token"]`.)*
 - **List filters validate at the boundary (no more 500s).** Numeric and date
   `list_*` query params are now emitted with their real types
   (`Decimal | None`, `datetime | None`) instead of `str | None` coerced inside
@@ -198,16 +232,24 @@ status codes are identical; every change below affects only the malformed-input
   offending DB column name by default ("A &lt;entity&gt; with these values
   already exists"). Set `app.expose_integrity_error_fields: true` to restore the
   field-named message. The structured error shape is unchanged.
+  *(Infra fix — `errors.py` is skip-if-exists. To apply: delete `errors.py` and
+  re-run `model-gen --target base`, or change the `format_integrity_error` return
+  to a generic message and remove the column-name parsing branch.)*
 - **Request-body size limit (defense-in-depth).** Generated apps install an
   ASGI middleware (`request_limit.py`) that rejects request bodies larger than
   `app.max_request_body_bytes` (default 10 MiB, generous so normal payloads are
   unaffected) with a 413, before the body is read into memory. Set the value to
   0 to disable; the middleware is then not emitted.
+  *(Infra fix — `request_limit.py` is skip-if-exists (or not present on older
+  generations). To apply: delete the file if it exists and re-run `model-gen --target infrastructure`.)*
 - **Trimmed validation errors.** A `RequestValidationError` handler
   (`errors.py`, `validation_exception_handler`, registered in `main.py`)
   summarizes pydantic errors to a `field` + `message` list instead of returning
   the raw `exc.errors()`, which echoed submitted input values and internal
   locator detail.
+  *(Infra fix — `errors.py` and `main.py` are skip-if-exists. Apply alongside
+  the generic-409 fix above; the `validation_exception_handler` function and its
+  `app.add_exception_handler(...)` registration in `main.py` are the two changes.)*
 
 ### Added
 

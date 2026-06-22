@@ -97,19 +97,23 @@ The stack is **async** end to end: `AsyncSession`, `async_sessionmaker`,
 ## Upgrading After a One-Shot Generation
 
 There is **no automatic upgrade channel.** Once you edit generated code, it is
-yours. When a new generator version ships a template fix you want (the CHANGELOG
-flags these with "adopters should regenerate"):
+yours. When a new generator version ships a template fix you want, the CHANGELOG
+entry names the affected file and whether it is a domain file (normal re-run
+picks it up) or an infra file (skip-if-exists — apply manually):
 
 - **Domain files** (models, routes, schemas, tests) are overwritten on a normal
   re-run, so to adopt a fix: re-run generation, then `git diff` and keep what you
   want. Your hand edits to these files are at risk — review the diff.
 - **Infrastructure files** are skip-if-exists, so a re-run will **not** touch
   them. To pick up an infra fix (e.g. a security patch to `main.py`'s CORS or
-  `engine.py`):
-  1. Generate the single file into a throwaway directory:
-     `model-gen models/ --target <infra-target>` in an empty tree, **or**
-  2. Delete just that file in your project and re-run, **or**
+  `errors.py`):
+  1. Delete just that file in your project and re-run `model-gen --target infrastructure`, **or**
+  2. Generate into a throwaway directory (`model-gen models/ --target <infra-target>`
+     in an empty tree) and copy the file across, **or**
   3. Read the CHANGELOG entry and port the diff by hand.
+
+A `--force-infra` flag for selective infra-only overwrite without touching domain
+code is tracked as a future improvement.
 
 Treat generator upgrades like a careful `git merge`, not a `pip upgrade`. Keep
 your specs (`models/`) and `.model-generator.yaml` under version control so a

@@ -157,8 +157,8 @@ model-gen --clear-only --scope full
 > already-generated project automatically.** To pick one up, regenerate the
 > single affected file into a scratch tree (`--target <infra-target>` in an
 > empty dir) and port the diff by hand, or delete that one file and re-run.
-> When a CHANGELOG entry says "adopters should regenerate," this is the workflow
-> it means.
+> CHANGELOG entries that touch infra files name the specific file and the manual
+> apply steps.
 
 ### Generating into an existing project
 
