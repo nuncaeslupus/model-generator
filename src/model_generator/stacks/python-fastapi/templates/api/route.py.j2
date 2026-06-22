@@ -167,6 +167,9 @@ router = APIRouter(tags=["{{ model.domain }}"])
 {% endif %}
 {% set endpoints = entity.api.endpoints if (entity.api is defined and entity.api.endpoints is defined) else ["list", "create", "get", "update", "delete"] %}
 {% set scope = entity.api.scope if entity.api is defined else none %}
+{#- api.filters whitelist: when set, only those field names get filter params on
+    the list endpoint. When absent (none), the auto-detection logic applies. -#}
+{% set api_filters = entity.api.filters if (entity.api is defined and entity.api.filters is defined) else none %}
 {% if scope %}
 {% set inject_from = scope.inject_from | default('current_user') %}
 {% set miss_status = scope.miss_status | default(404) %}
@@ -189,6 +192,7 @@ async def list_{{ entity_plural }}(
     page_size: int = Query(50, ge=1, le=1000, description="Items per page"),
 {% for field_name, field in entity.fields.items() %}
 {% if not field.api_exclude_response | default(false) and not field.primary_key | default(false) %}
+{% if api_filters is none or field_name in api_filters %}
 {% if field.type == 'enum' %}
     {{ field_name }}: {{ field.enum_name }} | None = Query(None, description="Filter by {{ field_name }}"),
 {% elif field.type == 'boolean' %}
@@ -210,6 +214,7 @@ async def list_{{ entity_plural }}(
 {% endif %}
 {% elif field.type == 'text' and field.unique | default(false) %}
     {{ field_name }}: str | None = Query(None, description="Filter by {{ field_name }}"),
+{% endif %}
 {% endif %}
 {% endif %}
 {% endfor %}
@@ -234,6 +239,7 @@ async def list_{{ entity_plural }}(
     # Apply filters
 {% for field_name, field in entity.fields.items() %}
 {% if not field.api_exclude_response | default(false) and not field.primary_key | default(false) %}
+{% if api_filters is none or field_name in api_filters %}
 {% if field.type == 'enum' %}
     if {{ field_name }} is not None:
         stmt = stmt.where({{ entity_name }}.{{ field_name }} == {{ field_name }})
@@ -277,6 +283,7 @@ async def list_{{ entity_plural }}(
     if {{ field_name }} is not None:
         stmt = stmt.where({{ entity_name }}.{{ field_name }} == {{ field_name }})
         count_stmt = count_stmt.where({{ entity_name }}.{{ field_name }} == {{ field_name }})
+{% endif %}
 {% endif %}
 {% endif %}
 {% endfor %}
