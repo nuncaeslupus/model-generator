@@ -92,6 +92,6 @@ import '{{ api_uri }}';
 /// (Phase 4) or other app-specific behavior layers in — override methods here
 /// without touching the regenerated base class.
 class {{ custom_class }} extends {{ base_class }} {
-  {{ custom_class }}({{ client_class }} client) : super(client);
+  {{ custom_class }}(super.client);
 }
 {% endif %}

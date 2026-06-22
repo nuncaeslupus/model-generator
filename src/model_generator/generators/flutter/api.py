@@ -125,12 +125,13 @@ def _build_ops(
     Each op carries everything the retrofit/repository templates render: the
     ``kind`` (list/get/create/update/delete), HTTP path, method name, return and
     body types, and the id path-param name. ``immutable`` entities drop the
-    ``update`` and ``delete`` ops even if listed, mirroring the python stack
-    (no Update DTO ⇒ no update route).
+    ``update`` op even if listed, mirroring the python stack (no Update DTO ⇒ no
+    update route); ``delete`` is *kept* for immutable entities, matching the
+    python route template which gates delete only on ``"delete" in endpoints``.
     """
     prefix = _api_prefix(entity)
     base_path = f"/{prefix}" if prefix else "/"
-    pk = primary_key_field(entity)
+    pk = primary_key_field(entity, config)
     paginated = bool((entity.get("api") or {}).get("pagination", False))
     immutable = _is_immutable(entity)
 

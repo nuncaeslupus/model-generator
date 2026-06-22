@@ -400,6 +400,49 @@ class TestModelsIndex:
         assert "enums.dart" not in content
         assert "export 'gadget.dart';" in content
 
+    def test_first_run_barrel_exports_requests_dtos(
+        self,
+        flutter_config: dict[str, Any],
+        env: Any,
+        tmp_path: Path,
+    ) -> None:
+        # First run: the models dir does not exist yet, so the directory glob
+        # finds no files and the barrel is built purely from the entity loop.
+        # Entities with create/update endpoints emit a ``<entity>_requests.dart``
+        # DTO into the models dir, so the barrel must export it too — otherwise
+        # the api client's `import '<entity>_requests.dart'` fails to compile on
+        # the very first build.
+        models_dir = tmp_path / resolve_path(flutter_config, "models")
+        assert not models_dir.exists()  # truly first-run
+
+        model = {
+            "entities": {
+                # Full CRUD (default endpoints) -> emits a requests DTO.
+                "Gadget": {
+                    "table": "gadgets",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                        "name": {"type": "text", "required": True},
+                    },
+                },
+                # list/get only -> NO requests DTO, must NOT be exported.
+                "Note": {
+                    "table": "notes",
+                    "fields": {"id": {"type": "uuid", "primary_key": True}},
+                    "api": {"endpoints": ["list", "get"]},
+                },
+            }
+        }
+        result = generate_flutter_models_index(model, flutter_config, env, tmp_path)
+        assert result is not None
+        content = str(result["content"])
+        assert "export 'gadget.dart';" in content
+        assert "export 'gadget_requests.dart';" in content
+        assert "export 'note.dart';" in content
+        assert "export 'note_requests.dart';" not in content
+        # No enum fields declared -> enums export still correctly suppressed.
+        assert "enums.dart" not in content
+
 
 # --------------------------------------------------------------------------- #
 # Infrastructure: converters & pubspec

@@ -60,6 +60,22 @@ class AuthInterceptor extends Interceptor {
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    // Runtime caveat — cookie availability on `options.headers`:
+    //
+    // Reading the CSRF token from the `cookie` request header (see
+    // `_readCookie`) depends on the cookie actually being present there, which
+    // is NOT guaranteed across platforms:
+    //   * On Web, the browser owns the cookie jar and auto-attaches cookies to
+    //     same-origin requests; it never exposes them in `RequestOptions.headers`.
+    //     The double-submit header is therefore typically unnecessary there (the
+    //     browser already sends the cookie), and this read will simply find
+    //     nothing — that is expected, not a bug.
+    //   * On mobile/desktop, Dio does not manage cookies on its own. The cookie
+    //     only appears here if `dio_cookie_manager` (or an equivalent manager)
+    //     is installed and ordered to run BEFORE this interceptor, so the
+    //     stored cookie is populated onto the request first.
+    // If you rely on the double-submit header off the Web, ensure a cookie
+    // manager precedes this interceptor in the Dio interceptor chain.
     if (_unsafeMethods.contains(options.method.toUpperCase())) {
       final token = _readCookie(options, csrfCookieName);
       if (token != null && token.isNotEmpty) {

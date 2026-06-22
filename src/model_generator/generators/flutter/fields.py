@@ -213,20 +213,26 @@ def _scope_owner_field(entity: dict[str, Any]) -> str | None:
     return str(owner) if owner else None
 
 
-def primary_key_field(entity: dict[str, Any]) -> dict[str, Any]:
+def primary_key_field(entity: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     """Resolve the entity's primary-key descriptor for path params.
 
     Returns ``{"name": <camelCase member>, "json_key": <snake wire key>,
-    "dart_type": <Dart type>}`` for the field flagged ``primary_key``, defaulting
-    to a synthetic ``id``/``String`` when none is declared (every spec entity has
-    an id, but the fallback keeps generation crash-free).
+    "dart_type": <Dart type>}`` for the field flagged ``primary_key``. The Dart
+    type is resolved from the config ``types`` table via :func:`_dart_type`, so an
+    integer PK yields ``int`` and a uuid/string PK yields ``String`` — keeping the
+    ``@Path`` param type aligned with the model field type (a hardcoded ``String``
+    would mismatch and fail to compile for an integer PK).
+
+    Defaults to a synthetic ``id``/``String`` when no PK is declared (every spec
+    entity has an id, but the fallback keeps generation crash-free).
     """
+    type_map = config.get("types", {}) or {}
     for field_name, field in (entity.get("fields") or {}).items():
         if isinstance(field, dict) and field.get("primary_key"):
             return {
                 "name": camel_case(field_name),
                 "json_key": _json_key(field_name, field),
-                "dart_type": "String",
+                "dart_type": _dart_type(field, type_map),
             }
     return {"name": "id", "json_key": "id", "dart_type": "String"}
 
