@@ -190,12 +190,10 @@ def _cleanup_selective(
 
     if spec.migrations_path_key is not None:
         migrations = paths.get(spec.migrations_path_key, "alembic")
-        patterns.append(f"{migrations}/versions/*.py")
-        # Alembic infra files
-        patterns.append(f"{migrations}/env.py")
-        patterns.append(f"{migrations}/script.py.mako")
-        patterns.append(f"{migrations}/README.md")
-        patterns.append(f"{migrations}/versions/.gitkeep")
+        # Generated migration revisions (stack-agnostic — uses the stack's glob).
+        # Stack-specific migration scaffold files (alembic's env.py/script.py.mako/
+        # README.md/.gitkeep) are contributed by the stack's ``derived_files``.
+        patterns.append(f"{migrations}/versions/{glob}")
 
     # All explicit file paths in config
     for path in paths.values():
@@ -947,7 +945,9 @@ def _python_derived_cleanup_files(
 
     Reproduces the former inline derivation in ``_cleanup_selective``: the
     ``utils.py``/``types.py`` infrastructure siblings, the package ``__init__.py``
-    files next to the api/db/main modules, and ``alembic.ini``.
+    files next to the api/db/main modules, ``alembic.ini``, and the alembic
+    migration scaffold (``env.py``/``script.py.mako``/``README.md``/``.gitkeep``)
+    — all Python/Alembic-specific, so the shared selective-cleanup stays generic.
     """
     files: list[Path] = []
 
@@ -968,6 +968,16 @@ def _python_derived_cleanup_files(
     alembic_ini = project_root / "alembic.ini"
     if alembic_ini.exists():
         files.append(alembic_ini)
+
+    migrations_dir = project_root / paths.get("migrations", "alembic")
+    files.extend(
+        [
+            migrations_dir / "env.py",
+            migrations_dir / "script.py.mako",
+            migrations_dir / "README.md",
+            migrations_dir / "versions" / ".gitkeep",
+        ]
+    )
 
     return files
 

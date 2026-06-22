@@ -17,8 +17,10 @@ Two distinct runners ship:
   when the underlying tool/SDK is absent, so generation always succeeds.
 """
 
+import shlex
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -51,16 +53,21 @@ def _find_dart(project_root: Path) -> str:
 
     Mirrors :func:`_find_ruff`: looks for a vendored SDK under the project before
     falling back to a ``dart`` on PATH. Common local-SDK layouts are checked so a
-    project that pins its own Dart toolchain is honored.
+    project that pins its own Dart toolchain is honored. On Windows the SDK
+    executable may carry an ``.exe`` / ``.bat`` / ``.cmd`` extension, so those are
+    probed too.
     """
-    candidates = [
+    extensions = [".exe", ".bat", ".cmd", ""] if sys.platform == "win32" else [""]
+    base_candidates = [
         project_root / ".dart_tool" / "bin" / "dart",
         project_root / "flutter" / "bin" / "dart",
         project_root / "bin" / "dart",
     ]
-    for dart_path in candidates:
-        if dart_path.exists():
-            return str(dart_path)
+    for base in base_candidates:
+        for ext in extensions:
+            dart_path = base.with_suffix(ext) if ext else base
+            if dart_path.exists():
+                return str(dart_path)
     return "dart"
 
 
@@ -154,7 +161,8 @@ def run_config_quality(
 
     Each command value is either a shell-style string (e.g. ``"dart format ."``)
     or a mapping ``{command: "...", target: "package-root"}``. Tokens are split
-    on whitespace; a trailing ``"."`` placeholder is replaced by the explicit
+    with :func:`shlex.split` (honoring quotes/escapes); a trailing ``"."``
+    placeholder is replaced by the explicit
     file path list for per-file tools (formatters), or dropped for package-root
     tools.
 
@@ -194,7 +202,9 @@ def run_config_quality(
         if not isinstance(command, str) or not command.strip():
             continue
 
-        tokens = command.split()
+        tokens = shlex.split(command)
+        if not tokens:
+            continue
         executable = _resolve_tool(tokens[0], project_root)
 
         if shutil.which(executable) is None:
