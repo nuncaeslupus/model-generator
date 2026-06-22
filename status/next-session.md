@@ -252,13 +252,52 @@ correct current behavior the suite never exercised.
 **Verified:** 567 unit tests (+7), `make lint` clean (ruff + mypy strict). No
 templates touched → smoke-example unaffected (still 135/135 from the prior PR).
 
+### P2 example-coverage cluster shipped (in-place) — EX-3/EX-4 + part of EX-2 (PR pending)
+
+Branch `claude/peaceful-feynman-g0k3kn`. Extends the **flagship example in place**
+(no new bundled example) so the `make smoke-example` job exercises the
+previously-uncovered field types, constraints, and relationship kinds. Generator
+templates untouched — `examples/user-auth-project/models/users.model.json` only.
+
+- **New `UserProfile` entity** demonstrates **`one_to_one`** (EX-3: `User.profile`
+  `one_to_one` ↔ `UserProfile.user` `one_to_one_inverse`, unique `user_id` FK
+  enforcing 1:1), the **`binary`** type (`avatar` → `LargeBinary`/`bytes`, EX-4),
+  and the **`integer`→`counter` alias** (`profile_views`, EX-4). It's `list`/`get`
+  only (no `create`): a *unique* owner FK collides with the contract suite's
+  shared session fixtures on repeated creates, and a scoped entity without a
+  `create` endpoint trips the auto-generated scope-access-denied test (which
+  POSTs) → 405. Left **unscoped** for the same reason (scope is already
+  demonstrated by Portfolio/UserSession/ApiKey/UserRole).
+- **`ApiKey` gains three constraint demos** (EX-4), all on create-flow fields so
+  the request validators + DB CHECKs are actually exercised: `max_calls_per_day`
+  (**`integer`** alias + **`range`** 1–100000 → `CheckConstraint(... >= 1 AND ...
+  <= 100000)`), `priority` (**`positive`** → `CheckConstraint("priority > 0")`),
+  and `label` (**`pattern`** `^[a-z][a-z0-9_]*$` → a `@field_validator` with
+  `re.compile`; pattern emits **no** DB CHECK, so factories that bypass Pydantic
+  are unaffected, and the create/update literals `test_value`/`updatetest_value`
+  match the regex).
+- **Deliberately skipped:** `many_to_many` (schema-enum only — the model template
+  has no `many_to_many`/`secondary` branch, so it would emit nothing/broken) and
+  entity-level **`api.validators`/`api.filters`** (consumed by **no** template —
+  validators/filters are auto-derived from field types/constraints, so adding the
+  config blocks would demonstrate dead knobs). `api.scope` (EX-2) was already
+  wired by SEC-1. Composite-FK-in-example (EX-3) and a minimal no-auth/per-domain
+  example (EX-8) remain open — the user chose "extend in place," not a new example.
+
+**Verified:** `make smoke-example` → **141/141** (was 135; +6 = UserProfile
+list/get + filter tests). 567 unit tests still green, `make lint` clean. Fresh
+generation spot-checked: `profile` `Mapped["UserProfile | None"]` relationship,
+`avatar: Mapped[bytes | None]` `LargeBinary`, range/positive CHECKs, and the
+`validate_label_format` regex validator all emit.
+
 ### Next: remaining P2 cluster
 
-Consult the review doc (`status/code-review-2026-06-21.md`, Part B/D). The
-remaining P2s are the **example-coverage** gaps (EX-2/3/4/8: `api.scope`/
-`validators`/`filters` unused, composite-FK + one_to_one/many_to_many never
-exercised, `integer`/`binary` + `pattern`/`range`/`positive` zero coverage, no
-minimal no-auth example / per-domain demo). TST-5/6/7 are now closed.
+Consult the review doc (`status/code-review-2026-06-21.md`, Part B/D). Still open:
+**EX-8** (minimal no-auth example + per-domain-layout demo — needs a *new* bundled
+example + smoke wiring, deferred per the "extend in place" decision), the
+composite-FK half of **EX-3**, and the test-depth-adjacent items. If
+`api.filters`/`api.validators` should be real features rather than dead config,
+that's a template-wiring task (not example coverage). TST-5/6/7 are closed.
 Note: the generated tree still has the pre-existing main/auth I001 + pagination-
 PEP695-on-py311 lint quirks (auto-fixed by `ruff check --fix`) — TPL-22 territory,
 not gated by the smoke job.

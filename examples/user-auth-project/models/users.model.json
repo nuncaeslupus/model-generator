@@ -116,6 +116,12 @@
                     "target": "Portfolio",
                     "back_populates": "user",
                     "cascade": "all, delete-orphan"
+                },
+                "profile": {
+                    "type": "one_to_one",
+                    "target": "UserProfile",
+                    "back_populates": "user",
+                    "cascade": "all, delete-orphan"
                 }
             },
             "indexes": [
@@ -306,6 +312,41 @@
                         }
                     ],
                     "description": "Max API calls per minute"
+                },
+                "max_calls_per_day": {
+                    "type": "integer",
+                    "required": true,
+                    "constraints": [
+                        {
+                            "type": "range",
+                            "min": 1,
+                            "max": 100000
+                        }
+                    ],
+                    "description": "Daily call cap - demonstrates the integer alias and a range constraint"
+                },
+                "priority": {
+                    "type": "counter",
+                    "required": true,
+                    "constraints": [
+                        {
+                            "type": "positive"
+                        }
+                    ],
+                    "description": "Scheduling priority - demonstrates a positive constraint"
+                },
+                "label": {
+                    "type": "text",
+                    "max_length": 50,
+                    "required": true,
+                    "constraints": [
+                        {
+                            "type": "pattern",
+                            "regex": "^[a-z][a-z0-9_]*$",
+                            "message": "Label must be a lowercase slug (letters, digits, underscores)"
+                        }
+                    ],
+                    "description": "Machine-friendly label - demonstrates a pattern (regex) constraint"
                 },
                 "expires_at": {
                     "type": "datetime",
@@ -526,6 +567,68 @@
                 "scope": {"owner_field": "user_id"},
                 "enabled": true,
                 "prefix": "user-roles"
+            },
+            "tests": {
+                "enabled": true
+            }
+        },
+        "UserProfile": {
+            "table": "user_profiles",
+            "description": "Per-user profile data - demonstrates one_to_one, binary, and integer-alias field types",
+            "fields": {
+                "id": {
+                    "type": "uuid",
+                    "primary_key": true,
+                    "auto_generate": true,
+                    "description": "Unique profile identifier"
+                },
+                "user_id": {
+                    "type": "reference",
+                    "reference_table": "users",
+                    "required": true,
+                    "unique": true,
+                    "on_delete": "CASCADE",
+                    "api_exclude_update": true,
+                    "description": "Owner of this profile (unique - enforces one-to-one)"
+                },
+                "bio": {
+                    "type": "longtext",
+                    "description": "Free-form user biography"
+                },
+                "avatar": {
+                    "type": "binary",
+                    "description": "Raw avatar image bytes (LargeBinary) - demonstrates the binary field type"
+                },
+                "profile_views": {
+                    "type": "integer",
+                    "default": 0,
+                    "api_readonly": true,
+                    "constraints": [
+                        {
+                            "type": "non_negative"
+                        }
+                    ],
+                    "description": "View counter - demonstrates the integer->counter type alias"
+                }
+            },
+            "timestamps": {
+                "created": true,
+                "updated": true
+            },
+            "relationships": {
+                "user": {
+                    "type": "one_to_one_inverse",
+                    "target": "User",
+                    "back_populates": "profile"
+                }
+            },
+            "api": {
+                "enabled": true,
+                "prefix": "user-profiles",
+                "endpoints": [
+                    "list",
+                    "get"
+                ]
             },
             "tests": {
                 "enabled": true
