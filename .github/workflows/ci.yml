@@ -50,3 +50,17 @@ jobs:
           python-version: "3.12"
       - run: uv sync --extra dev
       - run: make smoke-example
+
+  # Smoke-tests the catalog-api example: per-domain layout, api-key auth,
+  # composite-FK (Warehouse/StockEntry with api.enabled: false), and a
+  # shared enum (_shared/enums.json ProductStatus).
+  generated-catalog-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - run: make smoke-catalog-api

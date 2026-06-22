@@ -1,4 +1,4 @@
-.PHONY: lint format test test-all smoke-example clean sync build publish publish-force version-sync check-version-sync tag-release update-skills
+.PHONY: lint format test test-all smoke-example smoke-catalog-api clean sync build publish publish-force version-sync check-version-sync tag-release update-skills
 
 sync:
 	uv sync --extra dev
@@ -89,6 +89,11 @@ test-all:
 # suite (requires Python 3.12 for the generated PEP 695 generics).
 smoke-example:
 	./scripts/smoke_generated_example.sh
+
+# Regenerate the catalog-api example into a temp tree and run its emitted contract
+# suite (requires Python 3.12 for the generated PEP 695 generics).
+smoke-catalog-api:
+	./scripts/smoke_generated_catalog_api.sh
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

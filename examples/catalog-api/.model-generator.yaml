@@ -1,0 +1,47 @@
+project:
+  name: catalog-api
+  description: "Minimal catalog API — demonstrates per-domain layout, api-key auth, and composite-FK patterns"
+  version: "0.1.0"
+
+stack: python-fastapi
+
+# Strip the `src/` prefix when forming import strings so generated code uses
+# clean package-relative imports (e.g. `from database.models import ...`).
+python_root: src
+
+# Per-domain layout: one file per spec domain rather than one file per entity.
+# This example exists specifically to demonstrate that layout alongside
+# the default per-entity layout in examples/user-auth-project/.
+generation:
+  layout: per-domain
+
+paths:
+  # Infrastructure (generated once — skip-if-exists)
+  base: src/database/models/base.py
+  engine: src/database/engine.py
+  main: src/main.py
+  errors: src/api/errors.py
+  validators: src/api/validators.py
+  test_conftest_root: tests/conftest.py
+  # Domain-specific (generated per domain)
+  database_models: src/database/models
+  factories: src/database/factories
+  api_models: src/api/models
+  api_routes: src/api/routes
+  api_tests: tests/contract
+  enums: src/database/models/enums.py
+  constraints: src/database/models/constraints.py
+  migrations: alembic
+
+auth:
+  # Lightweight static api-key strategy: a single shared secret read from
+  # CATALOG_API_KEY is checked (constant-time) on every protected route.
+  # No user model, sessions, or password hashing — suited for service-to-
+  # service or internal tool APIs.
+  strategy: api-key
+  key_env: CATALOG_API_KEY
+  header_name: X-Catalog-Key
+  # auth.path drives where api_key.py is emitted and how dependency_path is
+  # inferred. With python_root: src, the generated import becomes
+  # `from auth.api_key import require_api_key`.
+  path: src/auth/router.py

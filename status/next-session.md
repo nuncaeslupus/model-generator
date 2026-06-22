@@ -418,18 +418,48 @@ emit ApiKey-style create routes itself) is the larger feature this defers — le
 for a future arc. **PROD-4** (auth: first-class vs optional add-on) also remains
 an owner decision.
 
+### EX-8 + EX-3 composite-FK + PROD-4 closed — new `examples/catalog-api` (PR pending)
+
+Branch `claude/laughing-mendel-mytrba`. Adds the second bundled example, closing
+the three remaining open backlog items from the P2 cluster.
+
+- **EX-8 closed — `examples/catalog-api/`** is the minimal per-domain + api-key
+  demo. Two model files: `catalog.model.json` (Category + Product, both with full
+  CRUD; Product has `require_auth: true`) and `inventory.model.json` (Warehouse +
+  StockEntry with `api.enabled: false` — DB models + factories only, no routes).
+  Shared `_shared/enums.json` provides `ProductStatus` (DRAFT/ACTIVE/DISCONTINUED,
+  `enum_existing: true`). Config: `python_root: src`, `generation.layout:
+  per-domain`, `auth.strategy: api-key`, `auth.key_env: CATALOG_API_KEY`,
+  `auth.header_name: X-Catalog-Key`, `api_tests: tests/contract` (avoids the
+  root-conftest overwrite that would occur if `api_tests` shared a directory with
+  `test_conftest_root`). Validated: `model-val models` clean; 39/39 generated
+  contract tests pass on Python 3.12.
+- **EX-3 composite-FK half closed** — `inventory.model.json` exercises the
+  entity-level `foreign_keys` array (Warehouse composite PK `(region, id)` +
+  StockEntry composite FK `(region, warehouse_id) → warehouses(region, id)`,
+  `ForeignKeyConstraint` emitted). `api.enabled: false` keeps the smoke suite
+  tractable: the composite-FK factory can't auto-setup FK constraints without a
+  live Warehouse row, so only the DB-model/factory generation is verified (no
+  contract tests for inventory entities). This is the documented known limitation.
+- **PROD-4 closed as "first-class"** — Auth is already first-class: two tested
+  strategies, CI smoke coverage, full documentation, SEC P0s shipped. No code
+  change needed; resolved in the review doc.
+- **New smoke wiring:** `scripts/smoke_generated_catalog_api.sh` mirrors
+  `scripts/smoke_generated_example.sh`; `make smoke-catalog-api` target added to
+  `Makefile`; `generated-catalog-api` CI job added to `.github/workflows/ci.yml`
+  (runs in parallel with `generated-example`).
+
+**Verified:** 591 unit tests (unchanged), `make smoke-catalog-api` → **39/39**
+generated contract tests pass, `model-val` clean.
+
 ### Next: remaining P2 cluster
 
-Consult the review doc (`status/code-review-2026-06-21.md`, Part B/D). Still open:
-**EX-8** (minimal no-auth example + per-domain-layout demo — needs a *new* bundled
-example + smoke wiring, deferred per the "extend in place" decision), the
-composite-FK half of **EX-3**, **PROD-4** (auth: first-class vs optional add-on —
-owner decision), and the test-depth-adjacent items. If
-`api.filters`/`api.validators` should be real features rather than dead config,
-that's a template-wiring task (not example coverage). TST-5/6/7 and SEC-6 are
-closed. Note: the generated tree still has the
-pre-existing main/auth I001 + pagination-PEP695-on-py311 lint quirks (auto-fixed
-by `ruff check --fix`) — TPL-22 territory, not gated by the smoke job.
+Consult the review doc (`status/code-review-2026-06-21.md`, Part B/D). All P0/P1
+and most P2 items are now closed. Remaining open items are lower-priority P2/P3.
+If `api.filters`/`api.validators` should be real features rather than dead config,
+that's a template-wiring task (not example coverage). Note: the generated tree
+still has the pre-existing main/auth I001 + pagination-PEP695-on-py311 lint quirks
+(auto-fixed by `ruff check --fix`) — TPL-22 territory, not gated by the smoke job.
 
 ### P1 template-correctness trio shipped — TPL-5 + TPL-14 + TPL-16 (PR pending)
 

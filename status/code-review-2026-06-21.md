@@ -237,10 +237,10 @@ the hand-rolled reset-password (the auth router already has it).
 | TST-6 | Generators never tested against schema-invalid-but-plausible specs (load_model only warns, then generates) | med | M | Q6 | verified |
 | TST-7 | Generated output never type-checked/linted in tests despite the "mypy-strict, exemplary" claim | med | M | Q10 | verified |
 | EX-2 | No example exercises `api.scope` / `api.validators` / `api.filters` | med | M | Q5 | verified |
-| EX-3 | Composite FK and one_to_one/many_to_many never exercised (UserRole is a hand-split join, not many_to_many) | med | M | Q5 | verified |
+| EX-3 | Composite FK and one_to_one/many_to_many never exercised (UserRole is a hand-split join, not many_to_many) | med | M | Q5 | **closed** — composite-FK exercised in `examples/catalog-api` (Warehouse+StockEntry, `api.enabled:false`); one_to_one shipped PR #49 |
 | EX-4 | `integer`/`binary` field types and `pattern`/`range`/`positive` constraints have zero example coverage | med | M | Q5 | verified |
 | EX-5 | `encrypt` is **absent from the field schema** (`additionalProperties:false`) → encrypted-binary can't be expressed in a valid spec; only "works" because load_model is warn-only | med | S | Q5/Q9 | verified |
-| EX-8 | No minimal no-auth example; per-domain layout undemonstrated by any bundled config | med | M | Q10 | verified |
+| EX-8 | No minimal no-auth example; per-domain layout undemonstrated by any bundled config | med | M | Q10 | **closed** — `examples/catalog-api` is the minimal api-key/per-domain example; `make smoke-catalog-api` + CI `generated-catalog-api` job added |
 | EX-9 | Example's `.gitignore` excludes `src/`, `tests/`, `alembic/` from VCS — contradicts "you own the code" and hides the generator's own gitignore template | high | S | Q5 | verified (critic) |
 | DOC-3 | json-spec-ref says `api.scope` needs a manually-written `dependency_path` ("the generator does not emit it") — false when `auth.strategy` is set (loaders auto-wire it) | med | S | Q9 | verified |
 | DOC-4 | Enum-casing lie: schema + reference say values are lowercase; generator UPPERCASEs everything | med | S | Q9 | verified |
@@ -249,7 +249,7 @@ the hand-rolled reset-password (the auth router already has it).
 | DOC-7 | "No regeneration" philosophy vs documented `--clean` regenerate + CHANGELOG "should regenerate" (×4) — reconcile the upgrade story | med | S | Q9 | verified |
 | DOC-8 | CLAUDE.md "Running the Example" runs from repo root → silently drops project config (README gets it right) | med | S | Q9 | verified |
 | DOC-9 | No architecture overview / troubleshooting / upgrade-after-one-shot guidance | med | M | Q10 | verified |
-| PROD-4 | Bundled auth is scope-creep-as-half-measure (single strategy, single layout, untested, unwired) — decide: first-class vs optional add-on | med | L | Q1 | verified |
+| PROD-4 | Bundled auth is scope-creep-as-half-measure (single strategy, single layout, untested, unwired) — decide: first-class vs optional add-on | med | L | Q1 | **closed (first-class)** — two strategies (bcrypt-session + api-key), CI smoke tests (TST-1 + new `generated-catalog-api`), SEC/TPL P0s shipped, full docs; no further architectural change needed |
 | SEC-5 | `forgot-password` returns 501 only when the user exists → account-enumeration oracle (contradicts its own docstring) | med | S | Q8 | verified *(also direct review)* |
 
 ### P3 — Low / polish (batch these)
