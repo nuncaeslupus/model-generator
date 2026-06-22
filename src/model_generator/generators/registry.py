@@ -81,6 +81,11 @@ class CleanupSpec:
         full_cleanup_dirs: extra top-level directory names removed in full
             cleanup (caches, build output).
         full_cleanup_files: extra top-level file names removed in full cleanup.
+        path_resolver: callable mapping the loaded ``config`` to a concrete
+            ``paths`` dict, applied before cleanup runs. Lets a stack expand
+            placeholders in its path templates (e.g. flutter's ``{pkg}``) so the
+            cleanup globs and ``derived_files`` see real directories. Defaults to
+            ``config["paths"]`` verbatim when ``None`` (python-fastapi).
     """
 
     source_path_keys: tuple[str, ...]
@@ -90,6 +95,7 @@ class CleanupSpec:
     derived_files: Callable[[Path, dict[str, Any]], list[Path]] | None = None
     full_cleanup_dirs: tuple[str, ...] = ()
     full_cleanup_files: tuple[str, ...] = ()
+    path_resolver: Callable[[dict[str, Any]], dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True)

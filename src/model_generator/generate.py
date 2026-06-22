@@ -24,6 +24,11 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+
+# Importing the flutter package registers its StackSpec into STACKS at import
+# time (mirrors the inline python-fastapi registration below). Kept for the
+# registration side effect.
+from .generators import flutter as _flutter  # noqa: F401
 from .generators import (
     generate_api_init,
     generate_api_models,
@@ -77,8 +82,15 @@ def cleanup_generated(
         cleanup_spec: stack cleanup descriptor; defaults to python-fastapi.
     """
     config = load_config()
-    paths = config.get("paths", {})
     spec = cleanup_spec or PYTHON_FASTAPI_STACK.cleanup_spec
+    # Expand stack-specific path placeholders (e.g. flutter's {pkg}) so the
+    # cleanup globs and derived_files target real directories; python-fastapi
+    # has no resolver and uses config["paths"] verbatim.
+    paths = (
+        spec.path_resolver(config)
+        if spec.path_resolver is not None
+        else config.get("paths", {})
+    )
 
     if scope == "full":
         _cleanup_full(project_root, paths, dry_run, spec)

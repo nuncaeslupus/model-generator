@@ -1,0 +1,38 @@
+{#-
+  README documenting the required post-generation codegen step. Bootstrap-only.
+-#}
+# {{ project_name | default(package_name) }}
+
+{% if project_description %}
+{{ project_description }}
+
+{% endif %}
+Generated Dart client (freezed models + enums) produced by **model-generator**'s
+`flutter` stack from the project's `*.model.json` specifications.
+
+## Post-generation: run the code generator
+
+The generated `.dart` files are **hand-authored annotated source**. Dart's macro
+support was cancelled, so the companion `*.freezed.dart` and `*.g.dart` files are
+produced by `build_runner`. After generating (or regenerating) the models, run:
+
+```bash
+dart pub get
+dart run build_runner build --delete-conflicting-outputs
+```
+
+This produces the freezed unions and the `fromJson` / `toJson` implementations
+the models reference via their `part` directives.
+
+## Layout
+
+- `{{ models_dir }}/` — freezed model classes, the `enums.dart` file, and the
+  `models_index.dart` barrel.
+- `lib/{{ package_name }}/core/converters.dart` — JsonConverters bridging
+  Dart types (`Decimal`, `Uint8List`, `DateTime`) to the backend's wire format.
+
+## Wire compatibility
+
+Models deserialize the same JSON the FastAPI backend (generated from the same
+spec) emits: money as decimal **strings**, timestamps as ISO8601 + `Z`, binary
+as base64, and enum members as `UPPER_CASE`.
