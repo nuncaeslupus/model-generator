@@ -290,7 +290,7 @@ generation spot-checked: `profile` `Mapped["UserProfile | None"]` relationship,
 `avatar: Mapped[bytes | None]` `LargeBinary`, range/positive CHECKs, and the
 `validate_label_format` regex validator all emit.
 
-### P2/P3 auth-security cluster shipped — SEC-5 + SEC-4 + SEC-7 (PR pending)
+### P2/P3 auth-security cluster shipped — SEC-5 + SEC-4 + SEC-7 (merged, #50)
 
 Branch `claude/practical-babbage-k2yj34`. Template-only auth-router/rate-limit
 hardening — no example spec or generated CRUD touched, so the smoke-example gate
@@ -324,24 +324,62 @@ strict), `make smoke-example` → 141/141. The existing
 `test_resolves_session_secret_via_helper` assertion was updated for the new
 salted serializer construction.
 
-**SEC-6 deferred (needs a design decision, not an in-place spec edit).** Excluding
-`key_hash`/`permissions`/`is_active` from `CreateApiKeyRequest` is correct
-hardening, but `key_hash` is `required`/NOT-NULL with no server-side generation in
-the generic CRUD route, so `api_exclude_create` on it would 500 every ApiKey
-create and break the contract suite. Proper fix mirrors `User`: move ApiKey
-creation out of generic CRUD (drop `create` from its endpoints + a custom
-key-minting route), or add a server-side default. Left for an owner decision.
+### P2 SEC-6 shipped — ApiKey creation out of generic CRUD + scope-test gating fix (PR pending)
+
+Branch `claude/practical-babbage-k2yj34` (rebased onto main after #50 merged).
+Owner chose **option 1**: move ApiKey creation out of generic CRUD, mirroring the
+`User` precedent (user creation is owned by the auth router; ApiKey creation
+belongs in a custom key-minting route that the generic CRUD generator can't
+produce — the secret must be server-minted and shown once).
+
+- **Generator fix (the enabler).** `contract.py.j2`'s `test_{entity}_scope_access_denied`
+  was gated only on `scope`, but it POSTs to seed a row and asserts `201`. A scoped
+  entity *without* a `create` endpoint therefore emitted a guaranteed-failing test
+  (POST → 405). Gated it on `'create' in endpoints` too — consistent with how the
+  other POST-seeding tests (`put`/`delete`/`list_filtering`/`get_by_id`) are
+  already gated (§12.6). This is what previously blocked making any scoped entity
+  read-only (the UserProfile note in the EX-3/EX-4 entry called this out).
+- **Example: ApiKey is now `list`/`get`/`delete` (no `create`).** Dropping `create`
+  removes the POST route entirely, so the mass-assignment surface
+  (`key_hash`/`permissions`/`is_active` settable by the caller, esp. the
+  server-secret `key_hash`) is **unreachable** — verified: the generated
+  `api_key.py` route has only list/get/delete handlers and does not import
+  `CreateApiKeyRequest`. (The `CreateApiKeyRequest` *model* is still emitted but
+  dead — identical to the pre-existing `CreateUserRequest`, since `User` is also
+  create-less; api-models emit Create/Update independent of endpoints. Not a
+  regression, shared precedent.) Kept `delete` so an owner can still revoke a key
+  (safe generic-CRUD op). ApiKey stays `scope`d (keys are per-user); the gating
+  fix is what lets scoped+create-less coexist.
+- **EX-4 coverage preserved (relocated, not lost).** ApiKey's three create-flow
+  constraint demos moved to **UserSession** (which keeps `create`+`scope`, so they
+  stay exercised on create *and* in its scope-denial test): `max_duration_minutes`
+  (`integer` alias + `range` 1–100000), `connection_priority` (`counter` +
+  `positive`), `device_label` (`text` + `pattern` `^[a-z][a-z0-9_]*$`). ApiKey
+  keeps `rate_limit_per_minute` (`counter` + `non_negative`).
+
+**Verified:** 571 unit tests (+1: `test_scope_access_denied_gated_on_create`,
+RED→GREEN confirmed), `make lint` clean (ruff + mypy strict), `make smoke-example`
+→ **128/128** (was 141: ApiKey shed its create/update/scope-denied cases; the
+relocated UserSession fields add no new cases). `model-val` valid. Fresh
+generation spot-checked: ApiKey route = list/get/delete only, no POST; UserSession
+`CreateUserSessionRequest` carries the relocated fields + `validate_device_label_format`.
+
+**Still open (owner decisions):** a *first-class* server-minted-secret capability
+(a `server_generated`/`server_default_factory` field flag so the generator could
+emit ApiKey-style create routes itself) is the larger feature this defers — left
+for a future arc. **PROD-4** (auth: first-class vs optional add-on) also remains
+an owner decision.
 
 ### Next: remaining P2 cluster
 
 Consult the review doc (`status/code-review-2026-06-21.md`, Part B/D). Still open:
 **EX-8** (minimal no-auth example + per-domain-layout demo — needs a *new* bundled
 example + smoke wiring, deferred per the "extend in place" decision), the
-composite-FK half of **EX-3**, **SEC-6** (ApiKey-create design decision, see
-above), **PROD-4** (auth: first-class vs optional add-on — owner decision), and
-the test-depth-adjacent items. If `api.filters`/`api.validators` should be real
-features rather than dead config, that's a template-wiring task (not example
-coverage). TST-5/6/7 are closed. Note: the generated tree still has the
+composite-FK half of **EX-3**, **PROD-4** (auth: first-class vs optional add-on —
+owner decision), and the test-depth-adjacent items. If
+`api.filters`/`api.validators` should be real features rather than dead config,
+that's a template-wiring task (not example coverage). TST-5/6/7 and SEC-6 are
+closed. Note: the generated tree still has the
 pre-existing main/auth I001 + pagination-PEP695-on-py311 lint quirks (auto-fixed
 by `ruff check --fix`) — TPL-22 territory, not gated by the smoke job.
 

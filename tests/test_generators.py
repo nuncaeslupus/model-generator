@@ -1,5 +1,6 @@
 """Tests for individual code generators."""
 
+import copy
 import json
 import os
 import re
@@ -2730,6 +2731,34 @@ class TestApiTestsGeneratorScope:
         assert "# Missing name" in content
         # ...but the owner field does not (it's injected from current_user).
         assert "# Missing owner_id" not in content
+
+    def test_scope_access_denied_gated_on_create(
+        self, scoped_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """The cross-owner denial test POSTs to seed, so it requires `create`.
+
+        A scoped entity without a `create` endpoint can't be seeded via POST
+        (the POST would 405), so the test must be suppressed rather than emit a
+        guaranteed failure — mirrors how the other POST-seeding tests are gated.
+        """
+        project_root, config, env = project_env
+        config_with_auth = {**config, "auth": {"dependency_path": self.AUTH_PATH}}
+
+        # With `create` present the denial test is emitted.
+        with_create = generate_api_tests(
+            scoped_model, config_with_auth, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(with_create, dict)
+        assert "def test_widget_scope_access_denied(" in with_create["content"]
+
+        # Drop `create`: the denial test must no longer be emitted.
+        no_create = copy.deepcopy(scoped_model)
+        no_create["entities"]["Widget"]["api"]["endpoints"] = ["list", "get"]
+        result = generate_api_tests(
+            no_create, config_with_auth, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        assert "def test_widget_scope_access_denied(" not in result["content"]
 
 
 class TestComputeConftestAuthImports:
