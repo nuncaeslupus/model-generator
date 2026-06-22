@@ -294,9 +294,11 @@ alembic upgrade head
 
 ## Authentication and Route Scoping
 
-When `auth.strategy` is set in `.model-generator.yaml`, the generator scaffolds authentication infrastructure (login, session management, password hashing). However, CRUD endpoints are **unauthenticated by default** — the auth scaffold is only wired into a route when the entity declares `api.scope`.
+The generator supports two `auth.strategy` values in `.model-generator.yaml`. In both cases CRUD endpoints are **unauthenticated by default** — auth is wired into a route only when the entity opts in.
 
-**Note:** When `auth.strategy` is set, add `api.scope` to owner-bound entities so routes inject `Depends(get_current_user)` and enforce per-row ownership. Entities without `api.scope` remain publicly accessible.
+### `bcrypt-session` — per-user sessions
+
+Scaffolds a full session-cookie auth subsystem (login, session management, bcrypt password hashing, CSRF, rate limiting). Owner-bound entities opt in with `api.scope`, which injects `Depends(get_current_user)` and enforces per-row ownership:
 
 ```json
 "api": {
@@ -305,7 +307,31 @@ When `auth.strategy` is set in `.model-generator.yaml`, the generator scaffolds 
 }
 ```
 
-The generator warns at generation time if `auth.strategy` is set but no API-enabled entity declares `api.scope` — this combination results in a fully open API, which is almost always unintentional.
+This strategy requires a `User` entity (with `password_hash`/`username`/`email`/`last_login_at`) and `auth.pepper_env`, and the per-entity layout.
+
+### `api-key` — single shared secret
+
+A lightweight alternative for service-to-service or internal APIs that don't need per-user identity. It emits one dependency, `require_api_key`, that constant-time-compares the inbound header against a shared secret read from an environment variable. No user model, sessions, or password hashing.
+
+```yaml
+# .model-generator.yaml
+auth:
+  strategy: api-key
+  key_env: API_KEY          # optional, default API_KEY
+  header_name: X-API-Key    # optional, default X-API-Key
+```
+
+Entities opt in with `api.require_auth: true`, which gates every one of their routes with `Depends(require_api_key)` (no owner filtering — every caller presents the same key):
+
+```json
+"api": {
+    "require_auth": true
+}
+```
+
+Set the secret via the env var (e.g. `API_KEY=...`); it is **required when `APP_ENV=production`** and falls back to a clearly-marked dev value otherwise. Rotate by updating the env var and clients — there is no stored state.
+
+The generator warns at generation time if `auth.strategy` is set but no API-enabled entity opts in (`api.scope` for `bcrypt-session`, `api.require_auth` for `api-key`) — that combination ships a fully open API, which is almost always unintentional.
 
 ---
 

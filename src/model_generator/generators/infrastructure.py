@@ -248,11 +248,15 @@ def generate_env_example(
         return None
 
     auth = config.get("auth") or {}
-    auth_enabled = bool(auth.get("strategy"))
+    strategy = auth.get("strategy")
+    session_auth = strategy == "bcrypt-session"
+    api_key_auth = strategy == "api-key"
+    auth_enabled = bool(strategy)
     pepper_env = auth.get("pepper_env", "APP_PASSWORD_PEPPER")
+    key_env = auth.get("key_env", "API_KEY")
 
     rate_limit_redis = False
-    if auth_enabled:
+    if session_auth:
         rate_limit = auth.get("rate_limit") or {}
         if rate_limit.get("enabled") is not False:
             rate_limit_redis = rate_limit.get("backend") == "redis"
@@ -261,7 +265,10 @@ def generate_env_example(
     content = template.render(
         project=project_config.get("project", {}),
         auth_enabled=auth_enabled,
+        session_auth=session_auth,
+        api_key_auth=api_key_auth,
         pepper_env=pepper_env,
+        key_env=key_env,
         rate_limit_redis=rate_limit_redis,
         has_encrypted_binary=has_encrypted_binary,
     )
@@ -404,21 +411,24 @@ def generate_main(
             str(Path(api_dir) / "request_limit"), python_root=python_root
         )
 
+    # Session-strategy infrastructure (router / CSRF / rate-limit) is mounted in
+    # main only for bcrypt-session. The api-key strategy ships no router — its
+    # require_api_key dependency is imported by the routes, not the app.
     auth_router_import = None
     auth = config.get("auth") or {}
-    if auth.get("strategy"):
+    if auth.get("strategy") == "bcrypt-session":
         auth_path = auth.get("path", "backend/src/auth/router.py")
         auth_module_path = auth_path[:-3] if auth_path.endswith(".py") else auth_path
         auth_router_import = path_to_import(auth_module_path, python_root=python_root)
 
     csrf_module_import = None
-    if auth.get("strategy"):
+    if auth.get("strategy") == "bcrypt-session":
         auth_path = auth.get("path", "backend/src/auth/router.py")
         csrf_module_path = str(Path(auth_path).parent / "csrf")
         csrf_module_import = path_to_import(csrf_module_path, python_root=python_root)
 
     rate_limit_module_import = None
-    if auth.get("strategy"):
+    if auth.get("strategy") == "bcrypt-session":
         rate_limit = auth.get("rate_limit") or {}
         if rate_limit.get("enabled") is not False:
             auth_path = auth.get("path", "backend/src/auth/router.py")
@@ -458,7 +468,7 @@ def generate_auth_router(
     ``auth.path`` so adopters who customize the router are not overwritten
     on regeneration.
     """
-    if not config.get("auth", {}).get("strategy"):
+    if config.get("auth", {}).get("strategy") != "bcrypt-session":
         return None
 
     auth_path = config.get("auth", {}).get("path", "backend/src/auth/router.py")
@@ -504,7 +514,7 @@ def generate_csrf(
     import it via ``from .csrf import set_csrf_cookie``. Bootstrap-only:
     returns None when the file already exists.
     """
-    if not config.get("auth", {}).get("strategy"):
+    if config.get("auth", {}).get("strategy") != "bcrypt-session":
         return None
 
     auth_path = config.get("auth", {}).get("path", "backend/src/auth/router.py")
@@ -566,7 +576,7 @@ def generate_rate_limit(
     when the file already exists.
     """
     auth = config.get("auth") or {}
-    if not auth.get("strategy"):
+    if auth.get("strategy") != "bcrypt-session":
         return None
 
     rate_limit = auth.get("rate_limit") or {}
@@ -591,6 +601,60 @@ def generate_rate_limit(
         register_limit=rate_limit.get("register", "3/hour"),
         forgot_limit=rate_limit.get("forgot", "3/hour"),
         default_storage_uri=default_storage_uri,
+    )
+
+    return {"path": output_path, "content": content}
+
+
+def api_key_dependency_module(auth: dict[str, Any]) -> str:
+    """Return the file path (relative to project root) of the api-key module.
+
+    The ``require_api_key`` dependency lives in the auth package, a sibling of
+    where the session strategy's router would live, so the module path tracks
+    ``auth.path``'s directory (default ``backend/src/auth/``).
+    """
+    auth_path = auth.get("path", "backend/src/auth/router.py")
+    return str(Path(auth_path).parent / "api_key.py")
+
+
+def generate_api_key_auth(
+    config: dict[str, Any],
+    env: Environment,
+    project_root: Path,
+    project_config: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Generate the static API-key auth dependency (``require_api_key``).
+
+    Emitted only when ``config.auth.strategy`` is ``"api-key"``. The module
+    lives in the auth package so routes import it via the inferred
+    ``auth.dependency_path``. Bootstrap-only: returns None when the file
+    already exists so adopter edits survive regeneration.
+    """
+    auth = config.get("auth") or {}
+    if auth.get("strategy") != "api-key":
+        return None
+
+    output_path = project_root / api_key_dependency_module(auth)
+    if output_path.exists():
+        return None
+
+    header_name = auth.get("header_name", "X-API-Key")
+    key_env = auth.get("key_env", "API_KEY")
+    # Python identifier for the FastAPI Header parameter. The alias carries the
+    # real header name, so this only needs to be a valid, stable identifier —
+    # sanitize any non-alphanumeric char (space, dot, symbol) to an underscore
+    # so a custom header_name can't produce a SyntaxError in the generated code.
+    sanitized = "".join(c if c.isalnum() else "_" for c in header_name.lower())
+    header_param = sanitized if sanitized.strip("_") else "api_key"
+    if header_param[0].isdigit():
+        header_param = "_" + header_param
+
+    template = env.get_template("infrastructure/api_key_auth.py.j2")
+    content = template.render(
+        key_env=key_env,
+        header_name=header_name,
+        header_param=header_param,
+        project=project_config.get("project", {}),
     )
 
     return {"path": output_path, "content": content}
@@ -784,6 +848,7 @@ def generate_infrastructure(
             route_modules=route_modules,
         ),
         generate_auth_router(config, env, project_root, project_config),
+        generate_api_key_auth(config, env, project_root, project_config),
         generate_csrf(config, env, project_root),
         generate_encrypted_bytes(
             config, env, project_root, has_encrypted_binary=has_encrypted_binary

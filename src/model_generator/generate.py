@@ -306,12 +306,21 @@ def generate_conftest(
 
     auth_strategy = config.get("auth", {}).get("strategy")
     rate_limiter_import = _compute_rate_limiter_import(config)
+    # For the api-key strategy the contract suite overrides require_api_key with
+    # a no-op (CRUD tests don't carry the header); it needs the dotted path the
+    # loader inferred onto auth.dependency_path.
+    api_key_dependency = (
+        (config.get("auth") or {}).get("dependency_path")
+        if auth_strategy == "api-key"
+        else None
+    )
     content, _count = generate_conftest_content(
         models_dir,
         auth_strategy=auth_strategy,
         rate_limiter_import=rate_limiter_import,
         auth_router_import=_compute_auth_router_import(config),
         main_import=_compute_main_import(config),
+        api_key_dependency=api_key_dependency,
     )
     output_dir = project_root / config["paths"]["api_tests"]
     output_file = output_dir / "conftest.py"
@@ -327,7 +336,9 @@ def _compute_rate_limiter_import(config: dict[str, Any]) -> str | None:
     (the slowapi default-on behavior).
     """
     auth = config.get("auth") or {}
-    if not auth.get("strategy"):
+    # Rate limiting is session-strategy infrastructure only; the api-key strategy
+    # ships no rate_limit module, so the conftest must not try to import one.
+    if auth.get("strategy") != "bcrypt-session":
         return None
     rate_limit = auth.get("rate_limit") or {}
     if rate_limit.get("enabled") is False:
@@ -339,14 +350,15 @@ def _compute_rate_limiter_import(config: dict[str, Any]) -> str | None:
 
 
 def _compute_auth_router_import(config: dict[str, Any]) -> str | None:
-    """Return the import path to the auth router module, or None when auth is off.
+    """Return the import path to the auth router module, or None.
 
     The default-auth contract fixture imports ``get_current_user`` from here to
     override the owner identity. Mirrors the route template's
-    ``from <auth.path> import get_current_user``.
+    ``from <auth.path> import get_current_user``. Session strategy only — the
+    api-key strategy emits no router.
     """
     auth = config.get("auth") or {}
-    if not auth.get("strategy"):
+    if auth.get("strategy") != "bcrypt-session":
         return None
     auth_path = auth.get("path", "backend/src/auth/router.py")
     module = str(Path(auth_path).with_suffix(""))
@@ -683,7 +695,7 @@ def _validate_auth_strategy(
     if not strategy:
         return
 
-    valid_strategies = {"bcrypt-session"}
+    valid_strategies = {"bcrypt-session", "api-key"}
     if strategy not in valid_strategies:
         choices = ", ".join(repr(v) for v in sorted(valid_strategies))
         print(
@@ -695,6 +707,24 @@ def _validate_auth_strategy(
             '    pepper_env: "APP_PASSWORD_PEPPER"'
         )
         sys.exit(1)
+
+    # The api-key strategy is self-contained: a single shared secret read from
+    # an env var (key_env, default API_KEY). It needs no User entity, no pepper,
+    # and works in any layout — so the session-strategy prerequisites below
+    # don't apply.
+    if strategy == "api-key":
+        key_env = auth.get("key_env", "API_KEY")
+        if not isinstance(key_env, str) or not key_env.strip():
+            print(
+                'Error: auth.strategy "api-key" requires auth.key_env to name a '
+                "non-empty environment variable (defaults to API_KEY).\n\n"
+                "Set in .model-generator.yaml:\n\n"
+                "  auth:\n"
+                '    strategy: "api-key"\n'
+                '    key_env: "API_KEY"'
+            )
+            sys.exit(1)
+        return
 
     pepper_env = auth.get("pepper_env")
     if not isinstance(pepper_env, str) or not pepper_env.strip():
@@ -767,17 +797,24 @@ def _validate_auth_strategy(
 def _validate_auth_scope_coverage(
     models: list[dict[str, Any]], config: dict[str, Any]
 ) -> None:
-    """Warn if auth.strategy is set but no API-enabled entity declares api.scope.
+    """Warn if auth.strategy is set but no API-enabled entity opts into auth.
 
     CRUD routes are unauthenticated by default; the auth scaffold is only
-    wired in when an entity sets api.scope. An auth-on project with zero
-    scoped entities ships a fully-open API, which is almost always unintentional.
+    wired in per-entity — via ``api.scope`` (bcrypt-session, owner filtering)
+    or ``api.require_auth`` (api-key, gate on a shared key). An auth-on project
+    with zero protected entities ships a fully-open API, which is almost always
+    unintentional.
     """
     auth = config.get("auth") or {}
-    if not auth.get("strategy"):
+    strategy = auth.get("strategy")
+    if not strategy:
         return
 
-    scoped: list[str] = []
+    # The opt-in key (and the remediation example) depends on the strategy.
+    api_key_strategy = strategy == "api-key"
+    opt_in_key = "require_auth" if api_key_strategy else "scope"
+
+    protected: list[str] = []
     api_enabled: list[str] = []
     for model in models:
         for entity_name, entity in (model.get("entities") or {}).items():
@@ -785,18 +822,21 @@ def _validate_auth_scope_coverage(
             if not api_cfg.get("enabled", True):
                 continue
             api_enabled.append(entity_name)
-            if api_cfg.get("scope"):
-                scoped.append(entity_name)
+            if api_cfg.get(opt_in_key):
+                protected.append(entity_name)
 
-    if api_enabled and not scoped:
+    if api_enabled and not protected:
+        if api_key_strategy:
+            example = '  "api": {\n    "require_auth": true\n  }\n\n'
+        else:
+            example = '  "api": {\n    "scope": {"owner_field": "user_id"}\n  }\n\n'
         print(
             "Warning: auth.strategy is set but no API-enabled entity declares\n"
-            "api.scope. All generated CRUD endpoints will be unauthenticated.\n\n"
-            "Add api.scope to owner-bound entities, for example:\n\n"
-            '  "api": {\n'
-            '    "scope": {"owner_field": "user_id"}\n'
-            "  }\n\n"
-            f"API-enabled entities found: {', '.join(sorted(set(api_enabled)))}\n"
+            f"api.{opt_in_key}. All generated CRUD endpoints will be "
+            "unauthenticated.\n\n"
+            "Add it to the entities you want protected, for example:\n\n"
+            + example
+            + f"API-enabled entities found: {', '.join(sorted(set(api_enabled)))}\n"
             "See docs/user/usage-guide.md for details."
         )
 

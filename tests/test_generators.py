@@ -2052,6 +2052,59 @@ def filter_model() -> dict[str, Any]:
     }
 
 
+class TestApiRoutesGeneratorRequireAuth:
+    """Routes for entities with api.require_auth (the api-key gate)."""
+
+    DEP_PATH = "backend.src.auth.api_key.require_api_key"
+
+    def _gated_model(self) -> dict[str, Any]:
+        return {
+            "domain": "widgets",
+            "entities": {
+                "Widget": {
+                    "table": "widgets",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "name": {"type": "text", "max_length": 100, "required": True},
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                    "api": {"enabled": True, "require_auth": True},
+                }
+            },
+        }
+
+    def test_gates_every_route_with_dependency(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        cfg = {**config, "auth": {"dependency_path": self.DEP_PATH}}
+        result = generate_api_routes(
+            self._gated_model(), cfg, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # Imports the gate dependency...
+        assert "from backend.src.auth.api_key import require_api_key" in content
+        # ...and attaches it to all 5 route decorators (no owner injection).
+        assert content.count("dependencies=[Depends(require_api_key)]") == 5
+        assert "current_user" not in content
+
+    def test_no_gate_without_require_auth(self, project_env: Any) -> None:
+        """An unprotected entity gets neither the import nor the dependency."""
+        project_root, config, env = project_env
+        model = self._gated_model()
+        model["entities"]["Widget"]["api"]["require_auth"] = False
+        cfg = {**config, "auth": {"dependency_path": self.DEP_PATH}}
+        result = generate_api_routes(
+            model, cfg, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        assert "require_api_key" not in result["content"]
+        assert "dependencies=[Depends(" not in result["content"]
+
+
 class TestApiRoutesFilterCoercion:
     """P1: numeric/date list filters are typed so FastAPI validates them.
 
@@ -2342,6 +2395,36 @@ class TestValidateAuthStrategy:
         config = {"auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
         _validate_auth_strategy([self._user_model()], config)
 
+    def test_api_key_strategy_needs_no_user_or_pepper(self) -> None:
+        """api-key is self-contained: no User entity, no pepper required."""
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "api-key"}}
+        # No User entity in the models — must still pass.
+        _validate_auth_strategy([{"entities": {"Item": {"fields": {}}}}], config)
+
+    def test_api_key_strategy_listed_as_valid(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "magic-jwt"}}
+        with pytest.raises(SystemExit):
+            _validate_auth_strategy([self._user_model()], config)
+        out = capsys.readouterr().out
+        assert "api-key" in out
+
+    def test_api_key_blank_key_env_exits(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "api-key", "key_env": "   "}}
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_strategy([self._user_model()], config)
+        assert excinfo.value.code == 1
+        assert "key_env" in capsys.readouterr().out
+
     def test_unknown_strategy_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
         from model_generator.generate import _validate_auth_strategy
 
@@ -2478,6 +2561,65 @@ class TestValidateAuthScopeCoverage:
         ]
         _validate_auth_scope_coverage(models, {"auth": {"strategy": "bcrypt-session"}})
         assert capsys.readouterr().out == ""
+
+    def test_api_key_with_require_auth_passes(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from model_generator.generate import _validate_auth_scope_coverage
+
+        models = [{"entities": {"Widget": {"api": {"require_auth": True}}}}]
+        _validate_auth_scope_coverage(models, {"auth": {"strategy": "api-key"}})
+        assert capsys.readouterr().out == ""
+
+    def test_api_key_no_protected_entities_warns(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Under api-key the warning checks require_auth, not scope."""
+        from model_generator.generate import _validate_auth_scope_coverage
+
+        models = [{"entities": {"Widget": {"api": {"enabled": True}}}}]
+        _validate_auth_scope_coverage(models, {"auth": {"strategy": "api-key"}})
+        out = capsys.readouterr().out
+        assert "Warning" in out
+        assert "require_auth" in out
+        assert "Widget" in out
+
+
+class TestLoadConfigAuthDependency:
+    """load_config auto-wires auth.dependency_path per strategy."""
+
+    def _write_and_load(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, auth: dict[str, Any]
+    ) -> dict[str, Any]:
+        (tmp_path / ".model-generator.yaml").write_text(
+            yaml.dump({"stack": "python-fastapi", "auth": auth})
+        )
+        monkeypatch.chdir(tmp_path)
+        return load_config("python-fastapi")
+
+    def test_api_key_infers_require_api_key(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        loaded = self._write_and_load(tmp_path, monkeypatch, {"strategy": "api-key"})
+        assert loaded["auth"]["dependency_path"].endswith(".api_key.require_api_key")
+
+    def test_session_infers_get_current_user(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        loaded = self._write_and_load(
+            tmp_path, monkeypatch, {"strategy": "bcrypt-session", "pepper_env": "X"}
+        )
+        assert loaded["auth"]["dependency_path"].endswith(".router.get_current_user")
+
+    def test_explicit_dependency_path_preserved(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        loaded = self._write_and_load(
+            tmp_path,
+            monkeypatch,
+            {"strategy": "api-key", "dependency_path": "my.custom.dep"},
+        )
+        assert loaded["auth"]["dependency_path"] == "my.custom.dep"
 
 
 class TestValidateGenerationConfig:
@@ -4035,6 +4177,20 @@ class TestInfrastructureGenerators:
         assert "RATELIMIT_STORAGE_URI" in content
         assert "FERNET_KEY=" in content
 
+    def test_generate_env_example_api_key_vars(self, project_env: Any) -> None:
+        """api-key strategy lists API_KEY, not the session secrets."""
+        project_root, config, env = project_env
+        config = {**config, "auth": {"strategy": "api-key", "key_env": "SVC_TOKEN"}}
+
+        result = generate_env_example(config, env, project_root, config)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "SVC_TOKEN=" in content
+        assert "api-key" in content
+        # Session-only vars must not appear under the api-key strategy.
+        assert "SESSION_SECRET_KEY" not in content
+        assert "PASSWORD_PEPPER" not in content
+
     def test_generate_types(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_types(config, env, project_root)
@@ -5112,6 +5268,143 @@ class TestAuthRouterGenerator:
         assert "logger.exception(" in forgot_block
 
 
+class TestApiKeyAuthGenerator:
+    """The static-API-key auth strategy (auth.strategy: api-key)."""
+
+    def _project_config(self) -> dict[str, Any]:
+        return {"project": {"name": "Test"}}
+
+    def test_returns_none_when_strategy_unset(
+        self, project_env_per_entity: Any
+    ) -> None:
+        from model_generator.generators.infrastructure import generate_api_key_auth
+
+        project_root, config, env = project_env_per_entity
+        assert (
+            generate_api_key_auth(config, env, project_root, self._project_config())
+            is None
+        )
+
+    def test_returns_none_for_session_strategy(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """api-key generator must not fire for the session strategy."""
+        from model_generator.generators.infrastructure import generate_api_key_auth
+
+        project_root, config, env = project_env_per_entity
+        config = {**config, "auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
+        assert (
+            generate_api_key_auth(config, env, project_root, self._project_config())
+            is None
+        )
+
+    def test_emits_dependency_when_strategy_api_key(
+        self, project_env_per_entity: Any
+    ) -> None:
+        from model_generator.generators.infrastructure import generate_api_key_auth
+
+        project_root, config, env = project_env_per_entity
+        config = {**config, "auth": {"strategy": "api-key"}}
+        result = generate_api_key_auth(
+            config, env, project_root, self._project_config()
+        )
+        assert isinstance(result, dict)
+        assert result["path"] == project_root / "backend/src/auth/api_key.py"
+        content = result["content"]
+        assert "async def require_api_key(" in content
+        # Default env var name + header, constant-time compare, prod guard.
+        assert '_KEY_ENV = "API_KEY"' in content
+        assert 'alias="X-API-Key"' in content
+        assert "secrets.compare_digest(" in content
+        assert 'os.environ.get("APP_ENV") == "production"' in content
+        # Env value is stripped: stray deploy whitespace can't cause silent auth
+        # failures, and a whitespace-only value is treated as unset.
+        assert 'os.environ.get(_KEY_ENV, "").strip()' in content
+        # No session machinery leaks in.
+        assert "bcrypt" not in content
+        assert "URLSafeTimedSerializer" not in content
+
+    def test_honors_custom_key_env_and_header(
+        self, project_env_per_entity: Any
+    ) -> None:
+        from model_generator.generators.infrastructure import generate_api_key_auth
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "api-key",
+                "key_env": "SERVICE_TOKEN",
+                "header_name": "X-Service-Token",
+            },
+        }
+        result = generate_api_key_auth(
+            config, env, project_root, self._project_config()
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert '_KEY_ENV = "SERVICE_TOKEN"' in content
+        assert 'alias="X-Service-Token"' in content
+        # Header param identifier is the snake_cased header name.
+        assert "x_service_token: str | None = Header(" in content
+
+    def test_pathological_header_name_yields_valid_identifier(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """A header with spaces/dots/symbols must not break the generated code."""
+        import ast
+
+        from model_generator.generators.infrastructure import generate_api_key_auth
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {"strategy": "api-key", "header_name": "1 Weird.Header!"},
+        }
+        result = generate_api_key_auth(
+            config, env, project_root, self._project_config()
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # The real header name is preserved in the alias...
+        assert 'alias="1 Weird.Header!"' in content
+        # ...and the param is a valid identifier, so the module parses cleanly.
+        ast.parse(content)
+        assert "_1_weird_header_: str | None = Header(" in content
+
+    def test_returns_none_when_file_exists(self, project_env_per_entity: Any) -> None:
+        from model_generator.generators.infrastructure import generate_api_key_auth
+
+        project_root, config, env = project_env_per_entity
+        config = {**config, "auth": {"strategy": "api-key"}}
+        dep_file = project_root / "backend/src/auth/api_key.py"
+        dep_file.parent.mkdir(parents=True, exist_ok=True)
+        dep_file.write_text("# adopter customized\n")
+        assert (
+            generate_api_key_auth(config, env, project_root, self._project_config())
+            is None
+        )
+
+    def test_session_generators_skip_api_key_strategy(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """Router / CSRF / rate-limit are session-only — silent under api-key."""
+        from model_generator.generators.infrastructure import (
+            generate_auth_router,
+            generate_csrf,
+            generate_rate_limit,
+        )
+
+        project_root, config, env = project_env_per_entity
+        config = {**config, "auth": {"strategy": "api-key"}}
+        assert (
+            generate_auth_router(config, env, project_root, self._project_config())
+            is None
+        )
+        assert generate_csrf(config, env, project_root) is None
+        assert generate_rate_limit(config, env, project_root) is None
+
+
 class TestCsrfGenerator:
     """Smoke-test the §12.4 CSRF middleware emission helper."""
 
@@ -6089,6 +6382,71 @@ class TestConftestGeneratorDefaultAuth:
         # A non-UUID PK (int -> AttributeError, None -> TypeError, bad str ->
         # ValueError) must fall back to the raw id rather than crash at startup.
         assert "except (ValueError, TypeError, AttributeError):" in content
+
+    @staticmethod
+    def _api_key_models_dir(tmp_path: Path) -> Path:
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+        (models_dir / "widgets.model.json").write_text(
+            json.dumps(
+                {
+                    "domain": "widgets",
+                    "entities": {
+                        "Widget": {
+                            "table": "widgets",
+                            "fields": {
+                                "id": {
+                                    "type": "uuid",
+                                    "primary_key": True,
+                                    "auto_generate": True,
+                                },
+                                "name": {
+                                    "type": "text",
+                                    "max_length": 100,
+                                    "required": True,
+                                },
+                            },
+                            "api": {"enabled": True, "require_auth": True},
+                        }
+                    },
+                }
+            )
+        )
+        return models_dir
+
+    def test_emits_api_key_bypass_fixture(self, tmp_path: Path) -> None:
+        """api-key + require_auth → autouse fixture overrides require_api_key."""
+        from model_generator.utils.conftest_generator import generate_conftest_content
+
+        content, _ = generate_conftest_content(
+            self._api_key_models_dir(tmp_path),
+            auth_strategy="api-key",
+            main_import="backend.src.main",
+            api_key_dependency="backend.src.auth.api_key.require_api_key",
+        )
+        assert "def _bypass_api_key()" in content
+        assert "from backend.src.auth.api_key import require_api_key" in content
+        assert "app.dependency_overrides[require_api_key] = lambda: None" in content
+        assert "app.dependency_overrides.pop(require_api_key, None)" in content
+
+    def test_no_bypass_fixture_without_require_auth(self, tmp_path: Path) -> None:
+        from model_generator.utils.conftest_generator import generate_conftest_content
+
+        # Same model but require_auth off — no bypass fixture.
+        models_dir = self._api_key_models_dir(tmp_path)
+        spec_path = models_dir / "widgets.model.json"
+        spec_path.write_text(
+            spec_path.read_text().replace(
+                '"require_auth": true', '"require_auth": false'
+            )
+        )
+        content, _ = generate_conftest_content(
+            models_dir,
+            auth_strategy="api-key",
+            main_import="backend.src.main",
+            api_key_dependency="backend.src.auth.api_key.require_api_key",
+        )
+        assert "_bypass_api_key" not in content
 
 
 class TestComputeAuthExtra:

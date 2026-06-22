@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import sessionmaker
 
 from {{ database_models_import }}.base import Base
-{% if auth_strategy %}
+{% if auth_strategy == 'bcrypt-session' %}
 
 # Default the auth env (password pepper + cookie-signing secret) BEFORE the app
 # is imported — the auth router builds its signed-cookie serializer at import
@@ -54,7 +54,7 @@ def client() -> Generator[TestClient, None, None]:
 
     With xdist parallel testing, each worker gets its own session-scoped database.
     """
-{% if auth_strategy %}
+{% if auth_strategy == 'bcrypt-session' %}
     # Imported here, not at module top, so the auth env defaults set above are
     # applied before the auth router's import-time serializer construction.
     from {{ main_import }} import app

@@ -72,6 +72,10 @@ def extract_entities(models: dict[str, dict[str, Any]]) -> dict[str, dict[str, A
                 # and inject the owner from it — so the contract suite must
                 # authenticate (see the default-auth fixture below).
                 "scope": api_config.get("scope"),
+                # api-key gate (``api.require_auth``). When set, the entity's
+                # routes depend on require_api_key; the contract suite overrides
+                # it with a no-op since CRUD tests don't carry the key header.
+                "require_auth": api_config.get("require_auth", False),
                 "timestamps": entity.get("timestamps", {}),
                 # Carry index/constraint metadata so the shared fixtures can
                 # detect unique (incl. composite) indexes and emit distinct
@@ -542,6 +546,7 @@ def generate_conftest(
     rate_limiter_import: str | None = None,
     auth_router_import: str | None = None,
     main_import: str | None = None,
+    api_key_dependency: str | None = None,
 ) -> str:
     """Generate complete conftest.py content."""
     lines = []
@@ -558,6 +563,15 @@ def generate_conftest(
         and main_import
     )
 
+    # For the api-key strategy, override require_api_key with a no-op so the
+    # CRUD contract tests (which don't send the key header) aren't all 401.
+    emit_api_key_override = bool(
+        auth_strategy == "api-key"
+        and any(e.get("require_auth") for e in entities.values())
+        and api_key_dependency
+        and main_import
+    )
+
     # Header
     lines.append(GENERATED_MARKER)
     lines.append('"""')
@@ -571,7 +585,7 @@ def generate_conftest(
     lines.append("dependency order (independent first, then dependent entities).")
     lines.append('"""')
     lines.append("")
-    if emit_default_auth:
+    if emit_default_auth or emit_api_key_override:
         lines.append("from collections.abc import Iterator")
     lines.append("import uuid")
     lines.append("from typing import cast")
@@ -656,6 +670,35 @@ def generate_conftest(
         lines.append("        app.dependency_overrides.pop(get_current_user, None)")
         lines.append("")
 
+    if emit_api_key_override:
+        dep_module, _, dep_func = api_key_dependency.rpartition(".")  # type: ignore[union-attr]
+        lines.append("")
+        lines.append("@pytest.fixture(autouse=True)")
+        lines.append("def _bypass_api_key() -> Iterator[None]:")
+        lines.append('    """Bypass the API-key gate for the contract suite.')
+        lines.append("")
+        lines.append(
+            "    Entities with ``api.require_auth`` depend on ``require_api_key``,"
+        )
+        lines.append("    which rejects requests without a valid key header. The CRUD")
+        lines.append(
+            "    contract tests exercise the handlers, not the gate, so override"
+        )
+        lines.append(
+            "    it with a no-op; a dedicated test can still assert the gate by"
+        )
+        lines.append("    clearing this override.")
+        lines.append('    """')
+        lines.append(f"    from {dep_module} import {dep_func}")
+        lines.append(f"    from {main_import} import app")
+        lines.append("")
+        lines.append(f"    app.dependency_overrides[{dep_func}] = lambda: None")
+        lines.append("    try:")
+        lines.append("        yield")
+        lines.append("    finally:")
+        lines.append(f"        app.dependency_overrides.pop({dep_func}, None)")
+        lines.append("")
+
     # Sort entities by dependency
     entity_names = set(entities.keys())
     sorted_entities = topological_sort(entity_names, dependencies)
@@ -736,6 +779,7 @@ def generate_conftest_content(
     rate_limiter_import: str | None = None,
     auth_router_import: str | None = None,
     main_import: str | None = None,
+    api_key_dependency: str | None = None,
 ) -> tuple[str, int]:
     """
     Generate content for conftest.py based on all models in the directory.
@@ -768,6 +812,7 @@ def generate_conftest_content(
         rate_limiter_import=rate_limiter_import,
         auth_router_import=auth_router_import,
         main_import=main_import,
+        api_key_dependency=api_key_dependency,
     )
 
     return content, len(entities)
