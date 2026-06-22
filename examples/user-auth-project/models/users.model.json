@@ -622,14 +622,6 @@
                     "back_populates": "profile"
                 }
             },
-            "indexes": [
-                {
-                    "fields": [
-                        "user_id"
-                    ],
-                    "unique": true
-                }
-            ],
             "api": {
                 "enabled": true,
                 "prefix": "user-profiles",
