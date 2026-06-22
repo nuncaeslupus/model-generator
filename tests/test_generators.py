@@ -5077,6 +5077,10 @@ class TestAuthRouterGenerator:
         # The missing-config gap is surfaced via a log warning instead.
         assert "except NotImplementedError:" in forgot_block
         assert "logger.warning(" in forgot_block
+        # ANY send failure (SMTP/network/etc.) is swallowed too — a 500 would
+        # only fire when the user exists, reintroducing the enumeration oracle.
+        assert "except Exception:" in forgot_block
+        assert "logger.exception(" in forgot_block
 
 
 class TestCsrfGenerator:
