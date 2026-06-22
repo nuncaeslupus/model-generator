@@ -6525,7 +6525,10 @@ class TestGeneratedOutputLintClean:
 
         # The generator's own quality pass: ruff --fix then ruff format.
         self._ruff(["check", "--fix"], written)
-        subprocess.run(["ruff", "format", *written], capture_output=True, text=True)
+        fmt = subprocess.run(
+            ["ruff", "format", *written], capture_output=True, text=True
+        )
+        assert fmt.returncode == 0, f"ruff format failed:\n{fmt.stderr}"
 
         # No residual lint — anything left here is NOT auto-fixable and is a
         # real template defect.
