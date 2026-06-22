@@ -214,7 +214,7 @@ the hand-rolled reset-password (the auth router already has it).
 | WIZ-2 | `questionary` imported unconditionally though it's an optional extra → `--interactive` crashes on base install; the "plain input" fallback is dead code & the docstring lies | med | S | Q2 | verified (high→med) |
 | WIZ-3 | No Ctrl-C/ESC handling: `.ask()` returns `None` → silent infinite re-prompt / `TypeError` in checkbox | med | S | Q10 | verified |
 | TST-3 | Auth router + CSRF (highest-stakes output) only string-matched, never `ast.parse`/exec'd | med | S→M | Q6 | verified (high→med) |
-| SEC-9 | Infra security fixes (CORS `*`+credentials, error column-name leak) are skip-if-exists → never reach existing adopters; example's local infra is stale | med | S | Q5 | verified |
+| SEC-9 | Infra security fixes (CORS `*`+credentials, error column-name leak) are skip-if-exists → never reach existing adopters; example's local infra is stale | med | S | Q5 | **closed** — CHANGELOG entries now name the specific file + manual apply steps; missing CORS entry added to 0.1.1; `--force-infra` noted as future feature in architecture.md |
 | DOC-1 | §12 auth scaffolding (`auth.strategy`, `pepper_env`, auto-wired `dependency_path`) is entirely undocumented | med | M | Q9 | verified (high→med) |
 | TOOL-1 | CHANGELOG names downstream projects (`oms`, `ml-engine`) **and** is published verbatim as every GitHub release body (`release.yml --notes-file CHANGELOG.md`) | med | S | Q9/Q10 | verified (critic) |
 | TOOL-3 | ruff lint set narrowed to `E/W/F/I` (drops `B/SIM/UP/PTH/RUF`), line-length 88, py311 — no explanatory comment; broader set finds ~33 real issues | med | M | Q10 | verified |

@@ -452,6 +452,23 @@ the three remaining open backlog items from the P2 cluster.
 **Verified:** 591 unit tests (unchanged), `make smoke-catalog-api` → **39/39**
 generated contract tests pass, `model-val` clean.
 
+### P1 docs fix shipped — SEC-9 (PR pending)
+
+Branch `claude/vibrant-cannon-3oj0ra`. Docs-only change — no generator logic,
+templates, or tests touched.
+
+- **SEC-9 — Infra upgrade path documented.** The four past CHANGELOG entries
+  that said "adopters should regenerate" have been replaced with specific
+  domain-vs-infra breakdowns. For each security/correctness fix that touched a
+  skip-if-exists infra file (`main.py`, `errors.py`, `request_limit.py`,
+  `validators.py`, `migrations/env.py`), the entry now names the file and gives
+  the exact manual apply steps (delete + re-run, or inline diff). The CORS
+  wildcard+credentials fix was previously undocumented in the CHANGELOG; it has
+  been added to 0.1.1 as a new security bullet. `architecture.md` updated to
+  clarify that CHANGELOG entries now flag domain vs. infra explicitly and notes
+  a future `--force-infra` selective-overwrite flag. `usage-guide.md` updated to
+  remove the cross-reference to the old CHANGELOG phrasing.
+
 ### Next: remaining P2 cluster
 
 Consult the review doc (`status/code-review-2026-06-21.md`, Part B/D). All P0/P1
