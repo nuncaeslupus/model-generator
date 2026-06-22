@@ -15,7 +15,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXAMPLE="$REPO_ROOT/examples/user-auth-project"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+trap 'cd "$REPO_ROOT" && rm -rf "$WORK"' EXIT
 
 echo "==> Regenerating example into $WORK"
 cp -r "$EXAMPLE/models" "$WORK/models"
