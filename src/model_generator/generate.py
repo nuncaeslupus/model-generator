@@ -24,6 +24,11 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+
+# Importing the flutter package registers its StackSpec into STACKS at import
+# time (mirrors the inline python-fastapi registration below). Kept for the
+# registration side effect.
+from .generators import flutter as _flutter  # noqa: F401
 from .generators import (
     generate_api_init,
     generate_api_models,

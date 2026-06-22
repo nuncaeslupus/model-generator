@@ -1,0 +1,25 @@
+{#-
+  pubspec.yaml — the Dart project manifest (pyproject.toml analogue).
+
+  Bootstrap-only: emitted once when no pubspec.yaml exists, then hand-maintained.
+  Dependency lists are passed in from config; versions are intentionally left
+  unpinned (``any``) so the user resolves them with ``dart pub get`` against the
+  current SDK — the generator never shells out to pub.
+-#}
+name: {{ package_name }}
+description: {{ project_description | default(project_name | default("Generated Dart client.")) }}
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+{% for dep in runtime_deps %}
+  {{ dep }}: any
+{% endfor %}
+
+dev_dependencies:
+{% for dep in dev_deps %}
+  {{ dep }}: any
+{% endfor %}
