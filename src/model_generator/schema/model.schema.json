@@ -663,30 +663,6 @@
                         "delete"
                     ]
                 },
-                "validators": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                        "create": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        },
-                        "update": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        },
-                        "response": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                },
                 "pagination": {
                     "type": "boolean",
                     "default": true
@@ -695,7 +671,8 @@
                     "type": "array",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "description": "Explicit filter whitelist: only these field names get query-parameter filters on the list endpoint. When absent, all filterable field types (enum, boolean, datetime, financial, counter, reference, unique-text) are exposed automatically."
                 },
                 "scope": {
                     "type": "object",

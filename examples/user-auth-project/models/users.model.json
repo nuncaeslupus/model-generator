@@ -471,7 +471,8 @@
             ],
             "api": {
                 "enabled": true,
-                "prefix": "roles"
+                "prefix": "roles",
+                "filters": ["is_system_role"]
             },
             "tests": {
                 "enabled": true

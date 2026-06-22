@@ -62,6 +62,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Auth router and CSRF output is now syntax-checked.** `TestAuthRouterGenerator`
+  and `TestCsrfGenerator` now call `ast.parse()` on every emitted file, catching
+  template regressions (unclosed brackets, bad indentation, etc.) that string-
+  match assertions cannot detect. Two additional test methods cover non-default
+  config paths (custom auth path, custom cookie name).
+- **`api.filters` whitelist for list endpoints.** An entity can now declare
+  `api.filters: ["field_a", "field_b"]` to restrict which fields get query-
+  parameter filters on the list endpoint. When the key is absent the existing
+  auto-detection logic applies (all filterable types — enum, boolean, datetime,
+  financial, counter, reference, unique-text — are exposed). The contract-test
+  template mirrors the whitelist so tests only exercise the filters that are
+  actually emitted. The bundled `Role` entity in `user-auth-project` now
+  demonstrates the feature (`filters: ["is_system_role"]`).
+
+### Removed
+
+- **`api.validators` removed from the field schema.** The property existed in
+  the schema (`additionalProperties: false`) but was never wired to any
+  template — specifying it silently did nothing. Removing it prevents users
+  from adding what appeared to be a valid config key with no effect.
+
+### Added
+
 - **CI runs the generated example end-to-end.** A new `generated-example` CI
   job (and `make smoke-example` / `scripts/smoke_generated_example.sh`)
   regenerates the bundled example into a throwaway tree and runs its emitted

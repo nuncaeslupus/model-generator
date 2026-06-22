@@ -2224,6 +2224,100 @@ class TestApiRoutesDatetimeFilterTzAware:
         compile(content, "<metric_route>", "exec")
 
 
+class TestApiRoutesExplicitFilters:
+    """EX-2: api.filters whitelist restricts the auto-generated list filter params."""
+
+    def _model_with_many_filterable_fields(
+        self, api_filters: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Entity with enum + boolean + financial fields — all filterable by default."""
+        api_config: dict[str, Any] = {"enabled": True}
+        if api_filters is not None:
+            api_config["filters"] = api_filters
+        return {
+            "domain": "items",
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "status": {
+                            "type": "enum",
+                            "enum_name": "ItemStatus",
+                            "enum_values": ["ACTIVE", "INACTIVE"],
+                            "required": True,
+                        },
+                        "is_featured": {"type": "boolean", "default": False},
+                        "price": {"type": "financial"},
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                    "api": api_config,
+                }
+            },
+        }
+
+    def _render(self, model: dict[str, Any], project_env: Any) -> str:
+        project_root, config, env = project_env
+        result = generate_api_routes(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        return str(result["content"])
+
+    def test_all_filterable_fields_emitted_when_no_whitelist(
+        self, project_env: Any
+    ) -> None:
+        """Without api.filters, every filterable type gets a filter param."""
+        content = self._render(self._model_with_many_filterable_fields(), project_env)
+        assert "status: ItemStatus | None = Query(None" in content
+        assert "is_featured: bool | None = Query(None" in content
+        assert "price_min: Decimal | None = Query(None" in content
+        assert "price_max: Decimal | None = Query(None" in content
+
+    def test_whitelist_restricts_to_listed_fields(self, project_env: Any) -> None:
+        """api.filters: ['status'] → only status filter param is emitted."""
+        content = self._render(
+            self._model_with_many_filterable_fields(api_filters=["status"]), project_env
+        )
+        assert "status: ItemStatus | None = Query(None" in content
+        # Non-listed filterable fields must be absent.
+        assert "is_featured: bool | None = Query(None" not in content
+        assert "price_min: Decimal | None = Query(None" not in content
+        assert "price_max: Decimal | None = Query(None" not in content
+
+    def test_whitelist_applies_to_filter_logic_body(self, project_env: Any) -> None:
+        """Restricted fields must also be absent from the 'Apply filters' body."""
+        content = self._render(
+            self._model_with_many_filterable_fields(api_filters=["status"]), project_env
+        )
+        # Only status filter is wired in the handler body.
+        assert "Item.status == status" in content
+        assert "Item.is_featured == is_featured" not in content
+        assert "Item.price >= price_min" not in content
+
+    def test_empty_whitelist_suppresses_all_filters(self, project_env: Any) -> None:
+        """api.filters: [] → no field filter params at all."""
+        content = self._render(
+            self._model_with_many_filterable_fields(api_filters=[]), project_env
+        )
+        assert "status: ItemStatus | None" not in content
+        assert "is_featured: bool | None" not in content
+        assert "price_min: Decimal | None" not in content
+
+    def test_whitelist_with_multi_param_field(self, project_env: Any) -> None:
+        """When price (financial → _min/_max) is listed, both params are emitted."""
+        content = self._render(
+            self._model_with_many_filterable_fields(api_filters=["price"]), project_env
+        )
+        assert "price_min: Decimal | None = Query(None" in content
+        assert "price_max: Decimal | None = Query(None" in content
+        assert "status: ItemStatus | None" not in content
+
+
 class TestValidateAuthConfig:
     """Test the _validate_auth_config helper."""
 
@@ -5004,6 +5098,12 @@ class TestAuthRouterGenerator:
         assert "hmac.new(pepper.encode(), password.encode(), hashlib.sha256)" in content
         # Pepper env name baked in from config
         assert '_PEPPER_ENV = "PEPPER"' in content
+        # The template must produce syntactically valid Python (ast.parse catches
+        # malformed Jinja output such as unclosed brackets or bad indentation that
+        # string-match assertions cannot detect).
+        import ast
+
+        ast.parse(content)
 
     def test_emits_per_entity_imports(self, project_env_per_entity: Any) -> None:
         from model_generator.generators.infrastructure import generate_auth_router
@@ -5267,6 +5367,33 @@ class TestAuthRouterGenerator:
         assert "except Exception:" in forgot_block
         assert "logger.exception(" in forgot_block
 
+    def test_auth_router_is_syntactically_valid_with_custom_path(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """TST-3: auth_router with a non-default auth path must parse cleanly.
+
+        Exercises the import-path derivation code path that differs from the
+        default backend/src layout, so a template regression in that branch
+        would be caught here rather than only in the smoke-example CI job.
+        """
+        import ast
+
+        from model_generator.generators.infrastructure import generate_auth_router
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "MY_PEPPER",
+                "path": "src/api/auth.py",
+                "cookie_name": "sid",
+            },
+        }
+        result = generate_auth_router(config, env, project_root, self._project_config())
+        assert isinstance(result, dict)
+        ast.parse(result["content"])
+
 
 class TestApiKeyAuthGenerator:
     """The static-API-key auth strategy (auth.strategy: api-key)."""
@@ -5450,6 +5577,10 @@ class TestCsrfGenerator:
         assert "/api/v1/auth/login" in content
         assert "/api/v1/auth/forgot-password" in content
         assert "/api/v1/auth/reset-password" in content
+        # TST-3: CSRF is the other highest-stakes output; parse it too.
+        import ast
+
+        ast.parse(content)
 
     def test_session_cookie_name_follows_auth_cookie_name(
         self, project_env_per_entity: Any
@@ -5507,6 +5638,33 @@ class TestCsrfGenerator:
         assert isinstance(result, dict)
         # csrf.py is sibling of auth.path
         assert result["path"] == project_root / "src/api/csrf.py"
+
+    def test_csrf_is_syntactically_valid_with_custom_cookie_name(
+        self, project_env_per_entity: Any
+    ) -> None:
+        """TST-3: CSRF with a non-default cookie_name must parse cleanly.
+
+        A custom cookie name is baked into SESSION_COOKIE_NAME and the exempt-
+        path prefix; verifying this code path parses ensures the interpolation
+        did not break the surrounding Python syntax.
+        """
+        import ast
+
+        from model_generator.generators.infrastructure import generate_csrf
+
+        project_root, config, env = project_env_per_entity
+        config = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "X",
+                "cookie_name": "my_session",
+                "path": "src/api/auth.py",
+            },
+        }
+        result = generate_csrf(config, env, project_root)
+        assert isinstance(result, dict)
+        ast.parse(result["content"])
 
 
 class TestEncryptedBytesGenerator:
