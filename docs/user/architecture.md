@@ -107,7 +107,7 @@ picks it up) or an infra file (skip-if-exists — apply manually):
 - **Infrastructure files** are skip-if-exists, so a re-run will **not** touch
   them. To pick up an infra fix (e.g. a security patch to `main.py`'s CORS or
   `errors.py`):
-  1. Delete just that file in your project and re-run `model-gen`, **or**
+  1. Delete just that file in your project and re-run `model-gen --target infrastructure`, **or**
   2. Generate into a throwaway directory (`model-gen models/ --target <infra-target>`
      in an empty tree) and copy the file across, **or**
   3. Read the CHANGELOG entry and port the diff by hand.

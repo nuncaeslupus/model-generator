@@ -61,7 +61,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   CHANGELOG no longer names specific downstream projects.
 - **Infra upgrade path documented per CHANGELOG entry (SEC-9).** Previous entries
   said "adopters should regenerate," but infra files (`main.py`, `errors.py`,
-  `validators.py`, `migrations/env.py`, …) are skip-if-exists — a standard re-run
+  `validators.py`, `alembic/env.py`, …) are skip-if-exists — a standard re-run
   does **not** touch them. Each past entry that patched an infra file now names
   the file and the manual steps to apply the fix. A `--force-infra` flag for
   selective infra-only overwrite is tracked as a future improvement.
@@ -116,7 +116,7 @@ file and requires a manual step (noted below).
   `NameError`; a `render_item` hook (wired into both the offline and online
   `context.configure(...)` calls) now renders those types and adds the matching
   import. These were previously carried as hand-edits in downstream repos.
-  *(Infra fix — `migrations/env.py` is skip-if-exists. To apply: delete that
+  *(Infra fix — `alembic/env.py` is skip-if-exists. To apply: delete that
   file and re-run `model-gen --target migration-init`, or port the diff by hand.)*
 - **Password field OpenAPI example is no longer a secret-like value.** The
   request-model example for any `password`-named field was hardcoded to
@@ -163,7 +163,7 @@ and requires a manual step (noted below).
   regenerating domain files:** the regenerated `response.py` and `request.py`
   will import `validate_decimal`, which will be missing from an old
   `validators.py`, causing an `ImportError`. To apply: delete `validators.py`
-  and re-run `model-gen --target base`.)*
+  and re-run `model-gen --target infrastructure`.)*
 
 ## [0.1.2] — 2026-06-11
 
@@ -185,7 +185,7 @@ infra file and requires a manual step (noted below).
   overflow. Compliant servers reject a negative `Content-Length` at the protocol
   layer; the middleware no longer relies on that pre-filtering.
   *(Infra fix — `request_limit.py` is skip-if-exists. To apply: delete that
-  file and re-run `model-gen`, or change `int(value)` to
+  file and re-run `model-gen --target infrastructure`, or change `int(value)` to
   `v if (v := int(value)) >= 0 else None` in `_content_length`.)*
 - **List filters: naive vs. tz-aware datetime comparison.** A `datetime | None`
   list filter parses input without an offset (e.g. `2026-06-11T12:00:00`) as a
@@ -218,7 +218,7 @@ require manual steps (noted per entry).
   *(Infra fix — `main.py` is skip-if-exists. To apply: delete `main.py` and
   re-run `model-gen --target main`, or apply directly: remove `"*"` from the
   `allow_origins` default; set `allow_credentials="*" not in cors_origins`;
-  narrow `allow_methods` to `["GET","POST","PUT","DELETE","OPTIONS"]` and
+  narrow `allow_methods` to `["GET","POST","PUT","DELETE","OPTIONS","HEAD"]` and
   `allow_headers` to `["Content-Type","X-CSRF-Token"]`.)*
 - **List filters validate at the boundary (no more 500s).** Numeric and date
   `list_*` query params are now emitted with their real types
@@ -241,7 +241,7 @@ require manual steps (noted per entry).
   unaffected) with a 413, before the body is read into memory. Set the value to
   0 to disable; the middleware is then not emitted.
   *(Infra fix — `request_limit.py` is skip-if-exists (or not present on older
-  generations). To apply: delete the file if it exists and re-run `model-gen`.)*
+  generations). To apply: delete the file if it exists and re-run `model-gen --target infrastructure`.)*
 - **Trimmed validation errors.** A `RequestValidationError` handler
   (`errors.py`, `validation_exception_handler`, registered in `main.py`)
   summarizes pydantic errors to a `field` + `message` list instead of returning
