@@ -1,0 +1,115 @@
+{
+    "$schema": "../../../src/model_generator/schema/model.schema.json",
+    "domain": "inventory",
+    "description": "Warehouse and stock entries — demonstrates the composite-PK and composite-FK spec patterns. These entities have no API block: only the DB models and factories are generated. The factory for StockEntry cannot be called directly (the composite FK requires a live Warehouse row), which is a known limitation documented in the architecture guide.",
+    "section_header": "INVENTORY MODELS",
+    "entities": {
+        "Warehouse": {
+            "table": "warehouses",
+            "description": "Physical warehouse identified by a composite primary key (region, id). The composite PK models the common multi-tenant / multi-region pattern where IDs are only unique within a region.",
+            "fields": {
+                "region": {
+                    "type": "text",
+                    "max_length": 3,
+                    "primary_key": true,
+                    "description": "ISO-3166-2 region code — first part of the composite primary key (e.g. 'US', 'EU', 'AP')"
+                },
+                "id": {
+                    "type": "uuid",
+                    "primary_key": true,
+                    "auto_generate": true,
+                    "description": "Warehouse UUID — second part of the composite primary key"
+                },
+                "name": {
+                    "type": "text",
+                    "max_length": 200,
+                    "required": true,
+                    "description": "Warehouse display name"
+                },
+                "country_code": {
+                    "type": "text",
+                    "max_length": 2,
+                    "required": true,
+                    "description": "ISO-3166-1 alpha-2 country code (e.g. 'US', 'DE')"
+                }
+            },
+            "timestamps": {
+                "created": true,
+                "updated": true
+            },
+            "relationships": {
+                "stock_entries": {
+                    "type": "one_to_many",
+                    "target": "StockEntry",
+                    "back_populates": "warehouse",
+                    "cascade": "all, delete-orphan"
+                }
+            },
+            "api": {
+                "enabled": false
+            }
+        },
+        "StockEntry": {
+            "table": "stock_entries",
+            "description": "Stock level for a product at a warehouse. The (region, warehouse_id) pair is a composite FK to warehouses(region, id), demonstrating the entity-level foreign_keys array that emits a ForeignKeyConstraint in the generated SQLAlchemy model.",
+            "fields": {
+                "id": {
+                    "type": "uuid",
+                    "primary_key": true,
+                    "auto_generate": true,
+                    "description": "Stock entry identifier"
+                },
+                "region": {
+                    "type": "text",
+                    "max_length": 3,
+                    "required": true,
+                    "description": "Warehouse region — first column of the composite FK to warehouses"
+                },
+                "warehouse_id": {
+                    "type": "uuid",
+                    "required": true,
+                    "description": "Warehouse id — second column of the composite FK to warehouses"
+                },
+                "product_sku": {
+                    "type": "text",
+                    "max_length": 64,
+                    "required": true,
+                    "description": "Product SKU cross-reference (plain text; cross-domain from the catalog spec)"
+                },
+                "quantity": {
+                    "type": "counter",
+                    "default": 0,
+                    "constraints": [
+                        {"type": "non_negative"}
+                    ],
+                    "description": "Units currently in stock at this warehouse"
+                },
+                "unit_cost": {
+                    "type": "financial",
+                    "precision": 10,
+                    "scale": 2,
+                    "description": "Cost per unit at last stock update (optional)"
+                }
+            },
+            "foreign_keys": [
+                {
+                    "fields": ["region", "warehouse_id"],
+                    "references_table": "warehouses",
+                    "references_columns": ["region", "id"],
+                    "on_delete": "CASCADE"
+                }
+            ],
+            "relationships": {
+                "warehouse": {
+                    "type": "many_to_one",
+                    "target": "Warehouse",
+                    "back_populates": "stock_entries",
+                    "foreign_keys": ["region", "warehouse_id"]
+                }
+            },
+            "api": {
+                "enabled": false
+            }
+        }
+    }
+}
