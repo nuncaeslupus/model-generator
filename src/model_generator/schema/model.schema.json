@@ -719,6 +719,11 @@
                     "required": [
                         "owner_field"
                     ]
+                },
+                "require_auth": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Require a valid API key (auth.strategy: api-key) for every endpoint of this entity. Gates the routes with the generated require_api_key dependency; unlike scope it does no per-row owner filtering."
                 }
             }
         },

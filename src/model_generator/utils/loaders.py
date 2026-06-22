@@ -234,21 +234,28 @@ def load_config(stack: str = "python-fastapi") -> dict[str, Any]:
     merged_config.setdefault("generation", {})
     merged_config["generation"].setdefault("layout", "per-entity")
 
-    # Auto-wire auth.dependency_path to the emitted get_current_user
-    # when the adopter has set auth.strategy but not dependency_path.
-    # The §9 owner-scoped routes/tests read the dotted path at render
-    # time; wiring it here means every load_config() caller sees the
-    # same processed config (including generate() which re-loads from
-    # disk per-model). Explicit dependency_path values are preserved.
+    # Auto-wire auth.dependency_path to the emitted auth dependency when the
+    # adopter has set auth.strategy but not dependency_path. The dependency
+    # differs per strategy: bcrypt-session injects ``get_current_user`` (router
+    # module), api-key gates with ``require_api_key`` (api_key module). The §9
+    # owner-scoped routes/tests read the dotted path at render time; wiring it
+    # here means every load_config() caller sees the same processed config
+    # (including generate() which re-loads from disk per-model). Explicit
+    # dependency_path values are preserved.
     auth = merged_config.get("auth") or {}
-    if auth.get("strategy") and not auth.get("dependency_path"):
+    strategy = auth.get("strategy")
+    if strategy and not auth.get("dependency_path"):
+        python_root = merged_config.get("python_root", "")
         auth_path = auth.get("path", "backend/src/auth/router.py")
-        module_path = auth_path[:-3] if auth_path.endswith(".py") else auth_path
-        module_import = path_to_import(
-            module_path, python_root=merged_config.get("python_root", "")
-        )
+        if strategy == "api-key":
+            module_path = str(Path(auth_path).parent / "api_key")
+            func = "require_api_key"
+        else:
+            module_path = auth_path[:-3] if auth_path.endswith(".py") else auth_path
+            func = "get_current_user"
+        module_import = path_to_import(module_path, python_root=python_root)
         merged_config.setdefault("auth", {})
-        merged_config["auth"]["dependency_path"] = f"{module_import}.get_current_user"
+        merged_config["auth"]["dependency_path"] = f"{module_import}.{func}"
 
     return merged_config
 

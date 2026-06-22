@@ -290,6 +290,54 @@ generation spot-checked: `profile` `Mapped["UserProfile | None"]` relationship,
 `avatar: Mapped[bytes | None]` `LargeBinary`, range/positive CHECKs, and the
 `validate_label_format` regex validator all emit.
 
+### Feature: static `api-key` auth strategy shipped (PR pending)
+
+Branch `claude/practical-babbage-k2yj34`. Owner-requested follow-up to the SEC-6
+discussion: rather than build a complex server-minted-secret capability (wrong
+altitude for this tool), add a **lightweight second `auth.strategy: api-key`** —
+a single shared secret read from an env var, checked by one generated dependency.
+For service-to-service / internal APIs that don't need the bcrypt-session
+user/session/CSRF stack.
+
+- **New `infrastructure/api_key_auth.py.j2` + `generate_api_key_auth`.** Emits a
+  `require_api_key` FastAPI dependency: constant-time (`secrets.compare_digest`)
+  comparison of a `Header(alias=...)` value against `os.environ[key_env]`,
+  fail-closed under `APP_ENV=production` (mirrors the SESSION_SECRET_KEY guard),
+  dev fallback otherwise. Config: `auth.key_env` (default `API_KEY`),
+  `auth.header_name` (default `X-API-Key`). Bootstrap-only (skip-if-exists).
+- **Opt-in: entity `api.require_auth: true`** (new schema property). The route
+  template gates every endpoint of that entity with
+  `dependencies=[Depends(require_api_key)]` (decorator-level — no owner injection,
+  orthogonal to `api.scope`). New `ns.has_auth_gate` scan flag drives the import;
+  the auth-dep import block was hoisted/generalized to serve both strategies.
+- **Strategy isolation.** Session-only generators (`generate_auth_router`,
+  `generate_csrf`, `generate_rate_limit`) and the main.py router/CSRF/rate-limit
+  wiring now gate on `strategy == "bcrypt-session"` (were truthy) so api-key emits
+  none of them. `_compute_rate_limiter_import`/`_compute_auth_router_import`
+  likewise. **smoke-example still 128/128** confirms the bcrypt-session path is
+  unregressed.
+- **Loader** infers `auth.dependency_path` per strategy: `…api_key.require_api_key`
+  for api-key, `…router.get_current_user` for session (explicit values preserved).
+- **Validation** (`_validate_auth_strategy`): `api-key` added to valid strategies,
+  with its own branch (no User/pepper/layout prerequisites; validates `key_env` is
+  non-empty). `_validate_auth_scope_coverage` warns on the right opt-in key per
+  strategy (`require_auth` vs `scope`).
+- **Contract suite stays green.** The api conftest emits an autouse
+  `_bypass_api_key` fixture (overrides `require_api_key` → no-op) when
+  api-key + any `require_auth` entity, since CRUD tests don't carry the header.
+  `conftest_root` gates the session env-defaults/deferred-import on bcrypt-session
+  (api-key reads its env at call time). `.env.example` lists `key_env` (not the
+  session secrets) under api-key.
+
+**Verified:** 590 unit tests (+19), `make lint` clean (ruff + mypy strict),
+`make smoke-example` → 128/128. **End-to-end probe** (throwaway api-key project,
+Python 3.12): generated `api_key.py` + 5 gated routes + no session files +
+`.env.example` `API_KEY` + conftest bypass; live TestClient confirmed **no key →
+401, bad key → 401, valid key → 200**, and the generated contract suite passes
+(16/16) under the bypass. Docs: usage-guide "Authentication" rewritten to cover
+both strategies. The flagship example stays bcrypt-session (a bundled api-key
+example + smoke wiring is a possible follow-up, overlaps EX-8).
+
 ### P2/P3 auth-security cluster shipped — SEC-5 + SEC-4 + SEC-7 (merged, #50)
 
 Branch `claude/practical-babbage-k2yj34`. Template-only auth-router/rate-limit
