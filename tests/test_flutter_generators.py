@@ -134,7 +134,9 @@ class TestFlutterRegistration:
         assert get_stack("flutter") is FLUTTER_STACK
 
     def test_domain_targets(self) -> None:
-        assert FLUTTER_STACK.domain_targets == ["enums", "models", "models-index"]
+        # Phase 1 targets must remain (Phase 2 appends the api-layer targets).
+        for target in ("enums", "models", "models-index"):
+            assert target in FLUTTER_STACK.domain_targets
 
     def test_every_domain_target_has_a_generator(self) -> None:
         for target in FLUTTER_STACK.domain_targets:

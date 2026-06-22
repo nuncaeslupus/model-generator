@@ -299,11 +299,22 @@ def flutter_infra_orchestrator(
     """
     print("\n🏗️  Generating Flutter infrastructure files...")
 
-    candidates = [
+    # Imported here (not at module top) to avoid a circular import: api.py imports
+    # the Phase-1 field/path helpers this module's siblings expose.
+    from .api import (
+        generate_auth_interceptor,
+        generate_dio_setup,
+        generate_flutter_pagination,
+    )
+
+    candidates: list[dict[str, Any] | None] = [
         generate_pubspec(config, env, project_root, project_config),
         generate_analysis_options(config, env, project_root),
         generate_build_yaml(config, env, project_root),
         generate_converters(config, env, project_root),
+        generate_flutter_pagination(config, env, project_root),
+        *generate_dio_setup(config, env, project_root, project_config),
+        generate_auth_interceptor(config, env, project_root, project_config),
         generate_flutter_readme(config, env, project_root, project_config),
         generate_flutter_gitignore(
             config, env, project_root, no_root_files=no_root_files
@@ -315,6 +326,12 @@ def flutter_infra_orchestrator(
     for output in outputs:
         path = output["path"]
         content = output["content"]
+
+        # The customization-seam files (api_client_custom.dart) are emitted once
+        # and never clobbered, so adopters' edits survive regeneration.
+        if output.get("mode") == "skip-if-exists" and path.exists():
+            print(f"  ℹ️  Exists, skipped: {path}")
+            continue
 
         if diff:
             print(f"\n--- {path} ---")

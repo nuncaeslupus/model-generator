@@ -5,9 +5,10 @@ Importing this package registers the ``flutter`` stack into the shared
 Phase 1 ships freezed models, the enums file, a models barrel, and the project
 scaffold (converters, pubspec, analysis_options, build.yaml, README, .gitignore).
 
-Phase 2 will import the domain generators here (and ``resolve_fields`` /
-``package_uri`` helpers) to add the retrofit API client and request DTOs, and
-register its sibling generators onto :data:`FLUTTER_STACK`.
+Phase 2 adds the retrofit API client, request DTOs, repository wrappers and the
+API barrel (domain), plus the ``Paginated<T>`` envelope, dio setup and the
+conditional auth interceptor (infrastructure). Its generators live in
+:mod:`.api` and are registered onto :data:`FLUTTER_STACK` below.
 """
 
 from __future__ import annotations
@@ -23,6 +24,15 @@ from ..registry import (
     TargetGenerator,
     register_stack,
 )
+from .api import (
+    generate_auth_interceptor,
+    generate_dio_setup,
+    generate_flutter_api_client,
+    generate_flutter_api_index,
+    generate_flutter_pagination,
+    generate_flutter_repositories,
+    generate_flutter_request_dtos,
+)
 from .generators import (
     flutter_infra_orchestrator,
     generate_converters,
@@ -36,10 +46,17 @@ from .paths import package_name, resolve_path
 __all__ = [
     "FLUTTER_STACK",
     "flutter_infra_orchestrator",
+    "generate_auth_interceptor",
     "generate_converters",
+    "generate_dio_setup",
+    "generate_flutter_api_client",
+    "generate_flutter_api_index",
     "generate_flutter_enums",
     "generate_flutter_models",
     "generate_flutter_models_index",
+    "generate_flutter_pagination",
+    "generate_flutter_repositories",
+    "generate_flutter_request_dtos",
     "generate_pubspec",
     "package_name",
     "resolve_path",
@@ -56,6 +73,20 @@ _FLUTTER_GENERATORS: dict[str, TargetGenerator] = {
         c.model, c.config, c.env, c.project_root, c.model_path
     ),
     "models-index": lambda c: generate_flutter_models_index(
+        c.model, c.config, c.env, c.project_root
+    ),
+    # Phase 2 — request DTOs land in the models dir, so they generate before the
+    # api client / repositories that import them (TDD/domain order below).
+    "requests": lambda c: generate_flutter_request_dtos(
+        c.model, c.config, c.env, c.project_root
+    ),
+    "api-client": lambda c: generate_flutter_api_client(
+        c.model, c.config, c.env, c.project_root
+    ),
+    "api-index": lambda c: generate_flutter_api_index(
+        c.model, c.config, c.env, c.project_root
+    ),
+    "repositories": lambda c: generate_flutter_repositories(
         c.model, c.config, c.env, c.project_root
     ),
 }
@@ -110,6 +141,9 @@ FLUTTER_STACK = StackSpec(
         "analysis-options",
         "build-yaml",
         "converters",
+        "pagination",
+        "dio-setup",
+        "auth-interceptor",
         "readme",
         "gitignore",
     ],
@@ -117,6 +151,12 @@ FLUTTER_STACK = StackSpec(
         "enums",
         "models",
         "models-index",
+        # Phase 2: DTOs first (api client + repositories import them), then the
+        # client, its barrel, and the repository wrappers.
+        "requests",
+        "api-client",
+        "api-index",
+        "repositories",
     ],
     generators=_FLUTTER_GENERATORS,
     infra_orchestrator=flutter_infra_orchestrator,

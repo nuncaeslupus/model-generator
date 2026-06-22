@@ -188,6 +188,141 @@ def resolve_fields(
     return descriptors
 
 
+def _is_auto_pk(field: dict[str, Any]) -> bool:
+    """True for an auto-generated primary key (server-assigned id).
+
+    Mirrors the python request template, which omits a primary key from the
+    create payload only when it is auto-generated (``auto_generate`` defaults to
+    ``true``). A client-supplied pk (``auto_generate: false``) stays in.
+    """
+    return bool(field.get("primary_key", False)) and bool(
+        field.get("auto_generate", True)
+    )
+
+
+def _scope_owner_field(entity: dict[str, Any]) -> str | None:
+    """The owner field the server injects from the session, if any.
+
+    Owner-scoped entities (``api.scope.owner_field``) have this field set by the
+    backend from the authenticated user, so the client never sends it on create
+    — matching the python request model.
+    """
+    api = entity.get("api") or {}
+    scope = api.get("scope") or {}
+    owner = scope.get("owner_field")
+    return str(owner) if owner else None
+
+
+def primary_key_field(entity: dict[str, Any]) -> dict[str, Any]:
+    """Resolve the entity's primary-key descriptor for path params.
+
+    Returns ``{"name": <camelCase member>, "json_key": <snake wire key>,
+    "dart_type": <Dart type>}`` for the field flagged ``primary_key``, defaulting
+    to a synthetic ``id``/``String`` when none is declared (every spec entity has
+    an id, but the fallback keeps generation crash-free).
+    """
+    for field_name, field in (entity.get("fields") or {}).items():
+        if isinstance(field, dict) and field.get("primary_key"):
+            return {
+                "name": camel_case(field_name),
+                "json_key": _json_key(field_name, field),
+                "dart_type": "String",
+            }
+    return {"name": "id", "json_key": "id", "dart_type": "String"}
+
+
+def resolve_dto_fields(
+    entity: dict[str, Any], config: dict[str, Any], kind: str
+) -> list[dict[str, Any]]:
+    """Build the field descriptors for a Create/Update request DTO.
+
+    ``kind`` is ``"create"`` or ``"update"``. Excludes the same fields the python
+    request models exclude:
+
+    * ``api_exclude_<kind>`` / ``api_readonly`` flagged fields,
+    * the auto-generated primary key,
+    * the owner field injected by an owner-scoped endpoint.
+
+    Update DTO fields are always nullable (PATCH-style partial update); create DTO
+    nullability follows the field's ``required`` flag.
+    """
+    type_map = config.get("types", {}) or {}
+    exclude_flag = "api_exclude_create" if kind == "create" else "api_exclude_update"
+    owner_field = _scope_owner_field(entity)
+    descriptors: list[dict[str, Any]] = []
+
+    for field_name, field in (entity.get("fields") or {}).items():
+        if not isinstance(field, dict):
+            continue
+        if field.get(exclude_flag, False) or field.get("api_readonly", False):
+            continue
+        if _is_auto_pk(field):
+            continue
+        if owner_field is not None and field_name == owner_field:
+            continue
+
+        spec = type_map.get(field.get("type", ""), {}) or {}
+        dart_member = camel_case(field_name)
+        json_key = _json_key(field_name, field)
+        # Create DTO fields follow the field's ``required`` flag; Update DTO
+        # fields are always nullable (PATCH-style partial update).
+        nullable = not bool(field.get("required", False)) if kind == "create" else True
+
+        descriptors.append(
+            {
+                "name": dart_member,
+                "json_key": json_key,
+                "dart_type": _dart_type(field, type_map),
+                "nullable": nullable,
+                "converter": spec.get("converter"),
+                "needs_json_key": json_key != dart_member,
+                "doc": _doc_comment(field),
+            }
+        )
+
+    return descriptors
+
+
+def collect_dto_imports(
+    entity: dict[str, Any], config: dict[str, Any], kinds: tuple[str, ...]
+) -> dict[str, Any]:
+    """Collect the Dart imports the request-DTO file needs across ``kinds``.
+
+    Same shape as :func:`collect_model_imports` but scoped to the fields that
+    actually survive DTO exclusion, so a file whose only ``Decimal`` field is
+    create-excluded doesn't drag in the converter import.
+    """
+    type_map = config.get("types", {}) or {}
+    raw_imports: set[str] = set()
+    has_converter = False
+    has_enum = False
+
+    seen: set[str] = set()
+    for kind in kinds:
+        for descriptor in resolve_dto_fields(entity, config, kind):
+            seen.add(descriptor["name"])
+
+    for field_name, field in (entity.get("fields") or {}).items():
+        if not isinstance(field, dict):
+            continue
+        if camel_case(field_name) not in seen:
+            continue
+        abstract = field.get("type", "")
+        spec = type_map.get(abstract, {}) or {}
+        for imp in spec.get("imports", []) or []:
+            raw_imports.add(str(imp))
+        if spec.get("converter"):
+            has_converter = True
+        if abstract == "enum":
+            has_enum = True
+
+    return {
+        "dart_imports": sorted(raw_imports),
+        "has_converter": has_converter,
+        "has_enum": has_enum,
+    }
+
+
 def collect_model_imports(
     entity: dict[str, Any],
     config: dict[str, Any],
