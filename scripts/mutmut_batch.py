@@ -96,6 +96,7 @@ BATCHES: dict[str, list[str]] = {
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def meta_file(src: str) -> pathlib.Path:
     return MUTANTS_DIR / f"{src}.meta"
 
@@ -176,6 +177,7 @@ def ensure_workspace(verbose: bool = True) -> None:
 # Commands
 # ---------------------------------------------------------------------------
 
+
 def cmd_setup(args: argparse.Namespace) -> None:
     """Generate workspace and persist all mutant names to status/mutmut-names.json."""
     ensure_workspace(verbose=True)
@@ -193,8 +195,10 @@ def cmd_setup(args: argparse.Namespace) -> None:
 
     NAMES_FILE.write_text(json.dumps(names, indent=2) + "\n", encoding="utf-8")
     print(f"\nSaved {total} mutant names → {NAMES_FILE.relative_to(ROOT)}")
-    print("Commit this file so future sessions can regenerate the workspace "
-          "and know which names to run without needing the prior mutants/.")
+    print(
+        "Commit this file so future sessions can regenerate the workspace "
+        "and know which names to run without needing the prior mutants/."
+    )
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -304,25 +308,45 @@ def _update_progress() -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Mutmut batch runner with cross-session progress tracking",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--setup", action="store_true",
-                        help="Generate workspace and commit mutant name lists")
-    parser.add_argument("--list", action="store_true",
-                        help="Show all batches with counts and status")
-    parser.add_argument("--run", metavar="BATCH", dest="batch",
-                        help="Run pending mutants for BATCH")
-    parser.add_argument("--update", action="store_true",
-                        help="Refresh status/mutmut-progress.json from .meta files")
-    parser.add_argument("--cmd", metavar="BATCH", dest="cmd_batch",
-                        help="Print run command for BATCH (for manual backgrounding)")
-    parser.add_argument("--max-children", type=int, default=4,
-                        help="Parallel mutmut workers (default: 4)")
-    parser.add_argument("--cmd-only", action="store_true",
-                        help="With --run: print command instead of running it")
+    parser.add_argument(
+        "--setup",
+        action="store_true",
+        help="Generate workspace and commit mutant name lists",
+    )
+    parser.add_argument(
+        "--list", action="store_true", help="Show all batches with counts and status"
+    )
+    parser.add_argument(
+        "--run", metavar="BATCH", dest="batch", help="Run pending mutants for BATCH"
+    )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Refresh status/mutmut-progress.json from .meta files",
+    )
+    parser.add_argument(
+        "--cmd",
+        metavar="BATCH",
+        dest="cmd_batch",
+        help="Print run command for BATCH (for manual backgrounding)",
+    )
+    parser.add_argument(
+        "--max-children",
+        type=int,
+        default=4,
+        help="Parallel mutmut workers (default: 4)",
+    )
+    parser.add_argument(
+        "--cmd-only",
+        action="store_true",
+        help="With --run: print command instead of running it",
+    )
     args = parser.parse_args()
 
     if args.setup:
