@@ -31,7 +31,7 @@ paths:
   test_conftest_root: tests/conftest.py
   # Domain-specific (generated per domain)
   database_models: backend/src/database/models
-  factories: backend/src/database/models/factories
+  factories: backend/tests/factories
   api_models: backend/src/api/models
   api_routes: backend/src/api/routes
   api_tests: tests/contract/api

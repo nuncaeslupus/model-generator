@@ -7,6 +7,11 @@ from typing import Any
 
 from jinja2 import Environment
 
+# Canonical list of custom SQLAlchemy type class names emitted by types.py.j2.
+# This is the single source of truth — env.py.j2 reads this via the template
+# variable ``custom_type_names`` rather than hardcoding the names.
+_CUSTOM_TYPE_NAMES: tuple[str, ...] = ("PortableNumeric", "PortableUuid")
+
 
 def generate_migration_init(
     model: dict[str, Any],
@@ -42,7 +47,7 @@ def generate_migration_init(
 
     # env.py
     template = env.get_template("migrations/env.py.j2")
-    content = template.render(config=config)
+    content = template.render(config=config, custom_type_names=_CUSTOM_TYPE_NAMES)
     outputs.append({"path": migrations_dir / "env.py", "content": content})
 
     # script.py.mako

@@ -819,6 +819,84 @@ class TestValidateSemantics:
         assert validate_semantics({}) == []
         assert validate_semantics({"domain": "x"}) == []
 
+    # ── Identifier Validation (SEC-8) ───────────────────────────────────
+
+    def test_rejects_invalid_entity_name(self) -> None:
+        model = {
+            "domain": "test",
+            "entities": {
+                "bad-entity!": {"fields": {"id": {"type": "uuid", "primary_key": True}}}
+            },
+        }
+        errors = validate_semantics(model)
+        assert any(
+            "entity name" in e.lower() or "identifier" in e.lower() for e in errors
+        )
+
+    def test_rejects_invalid_field_name(self) -> None:
+        model = {
+            "domain": "test",
+            "entities": {
+                "MyEntity": {
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                        "bad-field": {"type": "text"},
+                    }
+                }
+            },
+        }
+        errors = validate_semantics(model)
+        assert any(
+            "field name" in e.lower() or "identifier" in e.lower() for e in errors
+        )
+
+    def test_accepts_valid_names(self) -> None:
+        model = {
+            "domain": "test",
+            "entities": {
+                "MyEntity": {"fields": {"id": {"type": "uuid", "primary_key": True}}}
+            },
+        }
+        errors = validate_semantics(model)
+        assert not any("identifier" in e.lower() for e in errors)
+
+    def test_rejects_invalid_domain_name(self) -> None:
+        model = {
+            "domain": "My-Domain!",
+            "entities": {
+                "MyEntity": {"fields": {"id": {"type": "uuid", "primary_key": True}}}
+            },
+        }
+        errors = validate_semantics(model)
+        assert any(
+            "domain name" in e.lower() or "identifier" in e.lower() for e in errors
+        )
+
+    def test_accepts_valid_existing_names(self) -> None:
+        """Existing valid names like User, Portfolio, user_id, email must pass."""
+        model = {
+            "domain": "users",
+            "entities": {
+                "User": {
+                    "table": "users",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                        "user_id": {"type": "text", "max_length": 50},
+                        "email": {"type": "text", "max_length": 255},
+                        "created_at": {"type": "datetime"},
+                    },
+                },
+                "ApiKey": {
+                    "table": "api_keys",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},
+                    },
+                },
+            },
+        }
+        errors = validate_semantics(model)
+        assert not any("identifier" in e.lower() for e in errors)
+
     def test_entity_with_no_fields_key_reports_no_pk(self) -> None:
         """Entity with no 'fields' key gets a 'No primary key' error."""
         model = self._model({"Bad": {"table": "bads"}})

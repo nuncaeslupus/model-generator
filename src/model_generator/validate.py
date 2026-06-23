@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, cast
@@ -67,6 +68,10 @@ def validate_model(model_path: Path, schema: dict[str, Any]) -> list[str]:
     return errors
 
 
+_ENTITY_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
+_IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
 def validate_semantics(model: dict[str, Any]) -> list[str]:
     """
     Perform semantic validations beyond schema.
@@ -78,13 +83,38 @@ def validate_semantics(model: dict[str, Any]) -> list[str]:
     - Constraint field references exist
     - Relationship targets exist within the domain
     - Immutable entity constraints
+    - Entity names are valid Python class names (PascalCase)
+    - Field names are valid Python identifiers (snake_case)
+    - Domain name is a valid Python identifier
     """
     errors = []
     entities = model.get("entities", {})
 
+    # Validate domain name
+    domain = model.get("domain", "")
+    if domain and not _IDENTIFIER_RE.match(domain):
+        errors.append(
+            f"  Domain name '{domain}' is not a valid Python identifier "
+            f"(must match ^[a-z][a-z0-9_]*$)"
+        )
+
     for entity_name, entity in entities.items():
+        # Validate entity name
+        if not _ENTITY_NAME_RE.match(entity_name):
+            errors.append(
+                f"  [{entity_name}] Entity name '{entity_name}' is not a valid "
+                f"Python identifier (must match ^[A-Za-z][A-Za-z0-9]*$)"
+            )
         prefix = f"  [{entity_name}]"
         fields = entity.get("fields", {})
+
+        # Validate field names
+        for field_name in fields or {}:
+            if not _IDENTIFIER_RE.match(field_name):
+                errors.append(
+                    f"{prefix} Field name '{field_name}' is not a valid "
+                    f"Python identifier (must match ^[a-z][a-z0-9_]*$)"
+                )
 
         # Check for primary key
         has_pk = any(f.get("primary_key", False) for f in fields.values())

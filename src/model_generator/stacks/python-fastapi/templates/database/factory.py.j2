@@ -11,7 +11,7 @@
 """
 {{ model.section_header | default(model.domain | upper + ' FACTORIES') }} - Test Data Factories.
 
-{{ model.description | default('FactoryBoy factories for ' + model.domain + '.') | wrap(88) }}
+{{ model.description | default('FactoryBoy factories for ' + model.domain + '.') | safe_docstring | wrap(88) }}
 
 This module contains factories for:
 {% for entity_name, entity in model.entities.items() %}
@@ -236,7 +236,7 @@ fake = Faker()
 class {{ entity_name }}Factory(factory.alchemy.SQLAlchemyModelFactory):
     """Auto-generated factory for {{ entity_name }} model.
 
-    {{ entity.description | default('Factory for generating ' + entity_name + ' test instances.') | wrap(88, 4, "    ") }}
+    {{ entity.description | default('Factory for generating ' + entity_name + ' test instances.') | safe_docstring | wrap(88, 4, "    ") }}
     """
 
     class Meta:

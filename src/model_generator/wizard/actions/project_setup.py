@@ -28,7 +28,7 @@ def _scan_stacks() -> list[str]:
 _PATH_LAYOUTS: dict[str, dict[str, str]] = {
     "full-stack (backend/src/)": {
         "database_models": "backend/src/database/models",
-        "factories": "backend/src/database/models/factories",
+        "factories": "backend/tests/factories",
         "api_models": "backend/src/api/models",
         "api_routes": "backend/src/api/routes",
         "api_tests": "tests/contract/api",
@@ -43,7 +43,7 @@ _PATH_LAYOUTS: dict[str, dict[str, str]] = {
     },
     "backend-only (src/)": {
         "database_models": "src/database/models",
-        "factories": "src/database/models/factories",
+        "factories": "tests/factories",
         "api_models": "src/api/models",
         "api_routes": "src/api/routes",
         "api_tests": "tests/api",

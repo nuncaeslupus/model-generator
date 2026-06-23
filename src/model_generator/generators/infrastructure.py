@@ -701,9 +701,7 @@ def generate_test_conftest_root(
     engine_dir = str(Path(engine_path).parent)
     engine_import = path_to_import(engine_dir, "engine", python_root=python_root)
 
-    factories_path = config["paths"].get(
-        "factories", "backend/src/database/models/factories"
-    )
+    factories_path = config["paths"].get("factories", "backend/tests/factories")
     factories_import = path_to_import(factories_path, python_root=python_root)
 
     # Auth scaffolding requires a password pepper (and signs cookies); default
@@ -753,7 +751,7 @@ def generate_package_init_files(
     paths_to_init.append(db_models)
 
     # Factories
-    factories = paths_config.get("factories", "backend/src/database/models/factories")
+    factories = paths_config.get("factories", "backend/tests/factories")
     paths_to_init.append(factories)
 
     # API paths
