@@ -844,6 +844,15 @@ def _process_outputs(
         content = output["content"]
         mode = output.get("mode", "write")
 
+        # Customization-seam files (e.g. the Flutter ``*_repository_custom.dart``)
+        # are emitted once and never clobbered, so adopters' edits survive
+        # regeneration. python-fastapi never sets this mode, so behavior there is
+        # unchanged.
+        if mode == "skip-if-exists" and path.exists():
+            if not (diff or dry_run):
+                print(f"  ℹ️  Exists, skipped: {path}")
+            continue
+
         if diff:
             print(f"\n--- {path} ---")
             if mode == "append":

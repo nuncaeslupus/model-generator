@@ -22,6 +22,7 @@ from jinja2 import Environment
 
 from ...utils.loaders import load_shared_enums
 from ...utils.templates import snake_case
+from .api import _has_requests
 from .fields import collect_model_imports, resolve_fields
 from .paths import package_name, package_uri, resolve_path
 
@@ -129,8 +130,15 @@ def generate_flutter_models_index(
                 continue
             exports.add(dart_file.name)
 
-    for entity_name in model.get("entities") or {}:
+    for entity_name, entity in (model.get("entities") or {}).items():
         exports.add(f"{_entity_filename(entity_name)}.dart")
+        # Entities with create/update endpoints also emit a ``<entity>_requests.dart``
+        # DTO file into this same models dir. On the first run the dir does not
+        # exist yet, so the glob above finds nothing — add the requests file here
+        # (sharing api.py's predicate) so the barrel exports it and the generated
+        # tree compiles on the first build. Skip-listed enums handling is untouched.
+        if isinstance(entity, dict) and _has_requests(entity):
+            exports.add(f"{_entity_filename(entity_name)}_requests.dart")
 
     # Only export enums.dart if it was actually generated — exporting a missing
     # file is a hard Dart compile error for specs that declare no enums.
@@ -299,11 +307,22 @@ def flutter_infra_orchestrator(
     """
     print("\n🏗️  Generating Flutter infrastructure files...")
 
-    candidates = [
+    # Imported here (not at module top) to avoid a circular import: api.py imports
+    # the Phase-1 field/path helpers this module's siblings expose.
+    from .api import (
+        generate_auth_interceptor,
+        generate_dio_setup,
+        generate_flutter_pagination,
+    )
+
+    candidates: list[dict[str, Any] | None] = [
         generate_pubspec(config, env, project_root, project_config),
         generate_analysis_options(config, env, project_root),
         generate_build_yaml(config, env, project_root),
         generate_converters(config, env, project_root),
+        generate_flutter_pagination(config, env, project_root),
+        *generate_dio_setup(config, env, project_root, project_config),
+        generate_auth_interceptor(config, env, project_root, project_config),
         generate_flutter_readme(config, env, project_root, project_config),
         generate_flutter_gitignore(
             config, env, project_root, no_root_files=no_root_files
@@ -315,6 +334,12 @@ def flutter_infra_orchestrator(
     for output in outputs:
         path = output["path"]
         content = output["content"]
+
+        # The customization-seam files (api_client_custom.dart) are emitted once
+        # and never clobbered, so adopters' edits survive regeneration.
+        if output.get("mode") == "skip-if-exists" and path.exists():
+            print(f"  ℹ️  Exists, skipped: {path}")
+            continue
 
         if diff:
             print(f"\n--- {path} ---")
