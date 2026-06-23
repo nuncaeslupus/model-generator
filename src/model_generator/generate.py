@@ -60,7 +60,7 @@ from .utils import (
     load_shared_enums,
     run_quality_tools,
 )
-from .utils import load_model as load_model
+from .utils import load_model as load_model  # explicit re-export for mypy strict
 from .utils.conftest_generator import generate_conftest_content
 from .utils.quality import run_ruff_quality
 from .utils.templates import path_to_import, snake_case
@@ -441,6 +441,7 @@ def generate(
             enums=enums,
             constraints=constraints,
             no_root_files=no_root_files,
+            dry_run=dry_run,
         )
         result = _generate_target(t, spec, ctx)
         if result is None:
@@ -1064,7 +1065,12 @@ _PYTHON_FASTAPI_GENERATORS: dict[str, TargetGenerator] = {
         c.model, c.config, c.env, c.project_root, c.enums, c.constraints
     ),
     "migration-init": lambda c: generate_migration_init(
-        c.model, c.config, c.env, c.project_root, no_root_files=c.no_root_files
+        c.model,
+        c.config,
+        c.env,
+        c.project_root,
+        no_root_files=c.no_root_files,
+        dry_run=c.dry_run,
     ),
     "migration-autogen": lambda c: _run_migration_autogen(c),
 }

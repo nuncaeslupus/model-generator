@@ -69,9 +69,16 @@ class TestSnakeCase:
         assert snake_case("User") == "user"
 
     def test_acronym_prefix(self) -> None:
-        # Two adjacent capitals each get their own underscore — matches the
-        # naive macro algorithm. Acceptable for entity names like ApiKey.
         assert snake_case("ApiKey") == "api_key"
+
+    def test_consecutive_capitals_acronym(self) -> None:
+        assert snake_case("APIKey") == "api_key"
+
+    def test_all_caps_acronym_mid_word(self) -> None:
+        assert snake_case("HTTPSConfig") == "https_config"
+
+    def test_leading_acronym(self) -> None:
+        assert snake_case("HTTPRequest") == "http_request"
 
     def test_already_snake_case(self) -> None:
         assert snake_case("user_session") == "user_session"

@@ -4,20 +4,8 @@ Action: Clean generated files.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from ..prompts import confirm, select
-
-
-def _find_project_root() -> Path:
-    """Find project root by looking for .model-generator.yaml."""
-    cwd = Path.cwd()
-    if (cwd / ".model-generator.yaml").exists():
-        return cwd
-    parent = cwd.parent
-    if (parent / ".model-generator.yaml").exists():
-        return parent
-    return cwd
+from ._common import find_project_root as _find_project_root
 
 
 def run_clean() -> None:

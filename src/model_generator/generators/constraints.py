@@ -146,7 +146,6 @@ def generate_constraints(
             mode="append",
             section_header="CONSTRAINTS",
             constraints=new_refs,
-            include_helpers=False,
             config=config,
         )
 
@@ -163,7 +162,6 @@ def generate_constraints(
             mode="create",
             section_header="CONSTRAINTS",
             constraints=all_refs,
-            include_helpers=True,
             config=config,
         )
 

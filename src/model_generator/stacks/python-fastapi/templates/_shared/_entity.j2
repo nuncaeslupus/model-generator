@@ -29,17 +29,11 @@
 {{ name | replace('_', '-') }}
 {%- endmacro %}
 
-{#- Convert CamelCase to snake_case -#}
+{#- Convert CamelCase to snake_case (delegates to the registered snake_case filter
+    so the Python generator and Jinja templates agree byte-for-byte, including
+    consecutive-capitals acronyms: APIKey → api_key). -#}
 {% macro to_snake_case(name) -%}
-{%- set ns = namespace(result='') -%}
-{%- for char in name -%}
-{%- if char.isupper() and loop.index0 > 0 -%}
-{%- set ns.result = ns.result ~ '_' ~ char.lower() -%}
-{%- else -%}
-{%- set ns.result = ns.result ~ char.lower() -%}
-{%- endif -%}
-{%- endfor -%}
-{{ ns.result }}
+{{ name | snake_case }}
 {%- endmacro %}
 
 {#- Get entity display name (snake_case to Title Case) -#}
