@@ -1,36 +1,36 @@
 # Next Session Plan
 
-## Current State (2026-06-23) — P3 batch GEN-5/7/11, TOOL-9, TPL-7 (PR #63, CI running)
+## Current State (2026-06-23) — P3 batch TPL-15/21, SEC-8, TST-8 (PR #64, merged)
 
-Branch `claude/gifted-bohr-f9tdl6`. Five P3 backlog items from the 2026-06-21
-code review. 716 unit tests + `make lint` clean. PR #63 open, CI running.
+Branch `claude/beautiful-shannon-foxzyy`. Four P3 backlog items from the 2026-06-21
+code review. 735 unit tests + `make lint` clean. PR #64 merged.
 
-- **GEN-5** — Extracted duplicated `_find_project_root()` from 4 wizard action
-  modules (`generate.py`, `clean.py`, `test_runner.py`, `project_setup.py`) into
-  a shared `wizard/actions/_common.py` helper — 4 identical implementations → 1.
-- **GEN-7** — Added `dry_run: bool = False` parameter to `generate_migration_init()`;
-  gates both `mkdir` calls so callers can collect file specs without touching the
-  filesystem. `GenContext.dry_run` field wired; dispatch table passes `c.dry_run`
-  for the `migration-init` target.
-- **GEN-11** — Replaced the character-loop `snake_case` with two-pass regex
-  (`([A-Z]+)([A-Z][a-z])` then `([a-z\d])([A-Z])`), fixing consecutive-capitals
-  acronyms: `APIKey → api_key`, `HTTPSConfig → https_config`. Jinja `to_snake_case`
-  macro now delegates to the registered Python filter so both paths agree.
-- **TOOL-9** — Restored `from .utils import load_model as load_model` as a
-  separate explicit re-export line in `generate.py` — required by mypy strict's
-  `no_implicit_reexport`; the `as name` form is NOT redundant.
-- **TPL-7** — Removed ~16 dead helper functions from `constraints.py.j2`
-  (`validate_percentage`, `check_positive`, `check_non_negative`, `validate_range`,
-  `check_range`, `check_percentage`, `check_datetime_order`, etc.) and associated
-  hardcoded constants (`MIN_FILE_SIZE`, `MIN_SESSION_DURATION`, …) that no generated
-  template ever imported.
+- **TPL-21** — Added `_CUSTOM_TYPE_NAMES: tuple[str, ...] = ("PortableNumeric",
+  "PortableUuid")` as a module-level constant in `generators/migrations.py` (single
+  source of truth). Passed as template variable `custom_type_names` so `env.py.j2`
+  loops over it instead of hardcoding the tuple — a rename in the constant propagates
+  automatically to the generated file. +2 tests.
+- **TPL-15** — Changed default `factories` path from `backend/src/database/models/factories`
+  (inside `python_root`) to `backend/tests/factories` in `config.yaml`, both `.get()`
+  fallbacks in `infrastructure.py`, and the wizard preset layouts. Also fixed a latent
+  bug: `generate_factories` was deriving the path from `database_models / "factories"`
+  instead of reading `config["paths"]["factories"]` — the config key was effectively
+  ignored. Example `.model-generator.yaml` updated. +1 regression test.
+- **SEC-8** — (a) Added `_ENTITY_NAME_RE` / `_IDENTIFIER_RE` checks in
+  `validate_semantics()` for domain, entity, and field names. (b) Added `safe_docstring`
+  Jinja filter (`"""` → `'''`) in `utils/templates.py`; applied at all description
+  render sites in `factory.py.j2`, `model.py.j2`, `request.py.j2`, `response.py.j2`.
+  +5 validation tests + 2 generator tests.
+- **TST-8** — Three new test classes (pure additions): `TestUnicodeDescriptions` (7
+  tests — accented chars, emoji, em-dash), `TestSpecialCharDescriptions` (4 tests —
+  backslash + newline xfail, double-quote + triple-quote pass), `TestLargeSpecGeneration`
+  (4 `@pytest.mark.slow` — 15 entities × 8 fields, both layouts, <5 s).
 
-**Tests:** +4 snake_case consecutive-capitals cases (`APIKey`, `HTTPSConfig`,
-`HTTPRequest`, `ApiKey`); +1 `test_generate_migration_init_dry_run_skips_mkdir`
-verifying no dirs created when `dry_run=True`. 712 → 716 tests.
+**Tests:** 518 → 735 (rebased onto main which itself brought in PRs #57–#63). 4 deselected
+(slow), 2 xfailed (backslash/newline in Field descriptions — remaining SEC-8 scope).
 
 **Remaining open items** (from `status/code-review-2026-06-21.md`):
-TPL-15, TPL-21, SEC-8, TST-8, TST-10, TOOL-2, TOOL-4 (env: Any), TOOL-5, TOOL-7, TOOL-8.
+TST-10, TOOL-2, TOOL-4 (env: Any), TOOL-5, TOOL-7, TOOL-8.
 
 **Already confirmed closed / by-design:**
 - GEN-9 (has passing test `test_strip_json_comments_preserves_slashes_in_strings`)
