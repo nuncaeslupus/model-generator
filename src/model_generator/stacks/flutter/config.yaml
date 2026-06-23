@@ -40,11 +40,11 @@ dependencies:
 # Output paths relative to project root. ``{pkg}`` is substituted with
 # ``flutter.package_name`` at generation time so the whole tree is configurable.
 paths:
-  models: "lib/{pkg}/models"
-  enums: "lib/{pkg}/models/enums.dart"
-  api_client: "lib/{pkg}/api"
-  repositories: "lib/{pkg}/repositories"
-  api_core: "lib/{pkg}/core"
+  models: "lib/models"
+  enums: "lib/models/enums.dart"
+  api_client: "lib/api"
+  repositories: "lib/repositories"
+  api_core: "lib/core"
 
 # Quality tools. ``dart format`` accepts the generated file paths (per-file,
 # like ``ruff format``); ``dart analyze`` must run from the package root so it

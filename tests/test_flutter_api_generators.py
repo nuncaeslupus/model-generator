@@ -28,7 +28,6 @@ from model_generator.generators.flutter import (
 from model_generator.generators.flutter.fields import (
     resolve_dto_fields,
 )
-from model_generator.generators.flutter.paths import package_name
 from model_generator.utils.templates import get_template_env
 
 # --------------------------------------------------------------------------- #
@@ -260,9 +259,8 @@ class TestRetrofitClient:
         tmp_path: Path,
     ) -> None:
         outputs = generate_flutter_api_client(model, flutter_config, env, tmp_path)
-        pkg = package_name(flutter_config)
         paths = {Path(o["path"]) for o in outputs}
-        assert tmp_path / "lib" / pkg / "api" / "widget_api.dart" in paths
+        assert tmp_path / "lib" / "api" / "widget_api.dart" in paths
 
 
 # --------------------------------------------------------------------------- #
@@ -471,8 +469,7 @@ class TestPagination:
         self, flutter_config: dict[str, Any], env: Any, tmp_path: Path
     ) -> None:
         result = generate_flutter_pagination(flutter_config, env, tmp_path)
-        pkg = package_name(flutter_config)
-        assert result["path"] == tmp_path / "lib" / pkg / "core" / "pagination.dart"
+        assert result["path"] == tmp_path / "lib" / "core" / "pagination.dart"
 
 
 # --------------------------------------------------------------------------- #

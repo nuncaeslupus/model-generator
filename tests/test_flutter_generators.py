@@ -23,7 +23,7 @@ from model_generator.generators.flutter import (
     generate_pubspec,
 )
 from model_generator.generators.flutter.fields import resolve_fields
-from model_generator.generators.flutter.paths import package_name, resolve_path
+from model_generator.generators.flutter.paths import resolve_path
 from model_generator.generators.registry import STACKS, get_stack
 from model_generator.utils.templates import get_template_env
 
@@ -324,8 +324,7 @@ class TestModelTemplate:
     ) -> None:
         outputs = generate_flutter_models(model, flutter_config, env, tmp_path)
         path = outputs[0]["path"]
-        pkg = package_name(flutter_config)
-        assert path == tmp_path / "lib" / pkg / "models" / "widget.dart"
+        assert path == tmp_path / "lib" / "models" / "widget.dart"
 
 
 # --------------------------------------------------------------------------- #
@@ -494,8 +493,7 @@ class TestConverters:
         self, flutter_config: dict[str, Any], env: Any, tmp_path: Path
     ) -> None:
         result = generate_converters(flutter_config, env, tmp_path)
-        pkg = package_name(flutter_config)
-        assert result["path"] == tmp_path / "lib" / pkg / "core" / "converters.dart"
+        assert result["path"] == tmp_path / "lib" / "core" / "converters.dart"
 
 
 class TestPubspec:
@@ -581,10 +579,11 @@ class TestProjectAgnostic:
         assert "package:custom_pkg/core/converters.dart" in content
         assert "package:custom_pkg/models/enums.dart" in content
 
-    def test_resolve_path_substitutes_package_name(
-        self, flutter_config: dict[str, Any]
-    ) -> None:
-        cfg = dict(flutter_config)
-        cfg["flutter"] = {"package_name": "my_client"}
+    def test_resolve_path_substitutes_package_name(self) -> None:
+        # resolve_path still supports {pkg} in user-overridden path values.
+        cfg = {
+            "flutter": {"package_name": "my_client"},
+            "paths": {"models": "lib/{pkg}/models", "api_core": "lib/{pkg}/core"},
+        }
         assert resolve_path(cfg, "models") == "lib/my_client/models"
         assert resolve_path(cfg, "api_core") == "lib/my_client/core"
