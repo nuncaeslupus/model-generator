@@ -8,7 +8,7 @@
 """
 {{ model.section_header | default(model.domain | upper + ' MODELS') }} - API Response Models.
 
-{{ model.description | default('API response models for ' + model.domain + '.') | wrap(88) }}
+{{ model.description | default('API response models for ' + model.domain + '.') | safe_docstring | wrap(88) }}
 
 This module contains:
 {% for entity_name, entity in model.entities.items() %}
@@ -75,7 +75,7 @@ class {{ entity_name }}Response(BaseModel):
     Attributes:
 {% for field_name, field in entity.fields.items() %}
 {% if not field.api_exclude_response | default(false) %}
-        {{ field_name }}: {{ field.description | default(field_name | replace('_', ' ') | capitalize + '.') | wrap(88, 12, "        " + field_name + ": ") }}
+        {{ field_name }}: {{ field.description | default(field_name | replace('_', ' ') | capitalize + '.') | safe_docstring | wrap(88, 12, "        " + field_name + ": ") }}
 {% endif %}
 {% endfor %}
 {% if entity.timestamps is defined and entity.timestamps.created %}

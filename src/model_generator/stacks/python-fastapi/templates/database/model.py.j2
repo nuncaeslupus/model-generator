@@ -12,11 +12,11 @@
 """
 {{ model.section_header | default(model.domain | upper + ' MODELS') }} - Database Models.
 
-{{ model.description | default('Database models for ' + model.domain + '.') | wrap(88) }}
+{{ model.description | default('Database models for ' + model.domain + '.') | safe_docstring | wrap(88) }}
 
 This module contains:
 {% for entity_name, entity in model.entities.items() %}
-- {{ entity_name }}: {{ entity.description | default(entity_name + ' entity') | truncate(60, true) }}
+- {{ entity_name }}: {{ entity.description | default(entity_name + ' entity') | safe_docstring | truncate(60, true) }}
 {% endfor %}
 """
 {% set ns = namespace(
@@ -182,11 +182,11 @@ if TYPE_CHECKING:
 
 class {{ entity_name }}(Base):
     """
-    {{ entity.description | default(entity_name + ' entity.') | wrap(88, 4, "    ") }}
+    {{ entity.description | default(entity_name + ' entity.') | safe_docstring | wrap(88, 4, "    ") }}
 
     Attributes:
 {% for field_name, field in entity.fields.items() %}
-        {{ field_name }}: {{ field.description | default(field_name | replace('_', ' ') | capitalize + '.') | wrap(88, 12, "        " + field_name + ": ") }}
+        {{ field_name }}: {{ field.description | default(field_name | replace('_', ' ') | capitalize + '.') | safe_docstring | wrap(88, 12, "        " + field_name + ": ") }}
 {% endfor %}
 {% if entity.timestamps is defined and entity.timestamps.created %}
         created_at: Timestamp when the record was created.

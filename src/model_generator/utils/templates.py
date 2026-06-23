@@ -157,6 +157,10 @@ def get_template_env(
     def _path_to_import_filter(file_path: str, module_name: str = "") -> str:
         return path_to_import(file_path, module_name, python_root)
 
+    def _safe_docstring(text: str) -> str:
+        """Escape triple-double-quotes so descriptions can't break docstrings."""
+        return text.replace('"""', "'''")
+
     # Add custom filters
     env.filters["dict2items"] = lambda d: [{"key": k, "value": v} for k, v in d.items()]
     env.filters["path_to_import"] = _path_to_import_filter
@@ -164,5 +168,6 @@ def get_template_env(
     env.filters["normalize_decimal"] = _normalize_decimal
     env.filters["snake_case"] = snake_case
     env.filters["camel_case"] = camel_case
+    env.filters["safe_docstring"] = _safe_docstring
 
     return env

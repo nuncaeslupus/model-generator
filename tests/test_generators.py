@@ -1,5 +1,6 @@
 """Tests for individual code generators."""
 
+import ast
 import copy
 import json
 import os
@@ -7411,3 +7412,62 @@ class TestSortByInvalidFieldRaises422:
         content = result["content"]
         assert "if sort_by in valid_fields:" in content
         assert "sort_column = getattr(" in content
+
+
+class TestDocstringEscaping:
+    """Descriptions with triple-quotes must not break generated docstrings (SEC-8)."""
+
+    @pytest.fixture
+    def triple_quote_model(self) -> dict[str, Any]:
+        return {
+            "domain": "items",
+            "description": 'Has """triple quotes""" in description.',
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "description": 'Entity with """triple""" quotes.',
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                            "description": 'A field with """quotes""".',
+                        },
+                        "name": {
+                            "type": "text",
+                            "max_length": 100,
+                            "required": True,
+                        },
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                }
+            },
+        }
+
+    def test_factory_docstring_escapes_triple_quotes(
+        self,
+        triple_quote_model: dict[str, Any],
+        project_env: Any,
+    ) -> None:
+        project_root, config, env = project_env
+        result = generate_factories(triple_quote_model, config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+
+        # The raw triple-quote sequence must not appear in the output
+        assert '"""triple"""' not in content
+        # Output must be valid Python
+        ast.parse(content)
+
+    def test_database_model_docstring_escapes_triple_quotes(
+        self,
+        triple_quote_model: dict[str, Any],
+        project_env: Any,
+    ) -> None:
+        project_root, config, env = project_env
+        result = generate_database_model(triple_quote_model, config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+
+        assert '"""triple"""' not in content
+        ast.parse(content)
