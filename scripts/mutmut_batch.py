@@ -36,6 +36,7 @@ import json
 import pathlib
 import subprocess
 import sys
+import tempfile
 from typing import Any
 
 ROOT = pathlib.Path(__file__).parent.parent
@@ -103,7 +104,8 @@ def read_meta(src: str) -> dict[str, Any]:
     p = meta_file(src)
     if not p.exists():
         return {}
-    return json.loads(p.read_text())
+    result: dict[str, Any] = json.loads(p.read_text(encoding="utf-8"))
+    return result
 
 
 def pending_names_from_meta(src: str) -> list[str]:
@@ -118,13 +120,15 @@ def all_names_from_meta(src: str) -> list[str]:
 
 def load_names() -> dict[str, list[str]]:
     if NAMES_FILE.exists():
-        return json.loads(NAMES_FILE.read_text())
+        data: dict[str, list[str]] = json.loads(NAMES_FILE.read_text(encoding="utf-8"))
+        return data
     return {}
 
 
 def load_progress() -> dict[str, Any]:
     if PROGRESS_FILE.exists():
-        return json.loads(PROGRESS_FILE.read_text())
+        data: dict[str, Any] = json.loads(PROGRESS_FILE.read_text(encoding="utf-8"))
+        return data
     return {"batches": {}}
 
 
@@ -152,13 +156,16 @@ def ensure_workspace(verbose: bool = True) -> None:
     # Run mutmut with a hard timeout. Generation takes ~20s; we kill after 35s
     # which is deep into the "Running stats" phase but all .meta files exist.
     try:
-        subprocess.run(
+        result = subprocess.run(
             ["uv", "run", "mutmut", "run"],
             timeout=35,
             cwd=ROOT,
         )
+        if result.returncode != 0:
+            print(f"mutmut setup failed (exit {result.returncode}).")
+            sys.exit(result.returncode)
     except subprocess.TimeoutExpired:
-        pass  # expected — workspace created, killed mid-stats
+        pass  # expected — generation done, killed mid-stats
 
     n_meta = sum(1 for _ in MUTANTS_DIR.rglob("*.meta"))
     if verbose:
@@ -184,7 +191,7 @@ def cmd_setup(args: argparse.Namespace) -> None:
         names[batch] = batch_names
         print(f"  {batch}: {len(batch_names)} mutants")
 
-    NAMES_FILE.write_text(json.dumps(names, indent=2) + "\n")
+    NAMES_FILE.write_text(json.dumps(names, indent=2) + "\n", encoding="utf-8")
     print(f"\nSaved {total} mutant names → {NAMES_FILE.relative_to(ROOT)}")
     print("Commit this file so future sessions can regenerate the workspace "
           "and know which names to run without needing the prior mutants/.")
@@ -195,7 +202,10 @@ def cmd_list(args: argparse.Namespace) -> None:
     progress = load_progress()
     saved_names = load_names()
 
-    print(f"\n{'Batch':<28} {'Total':>6} {'Killed':>7} {'Survived':>9} {'Pending':>8}  Status")
+    print(
+        f"\n{'Batch':<28} {'Total':>6} {'Killed':>7}"
+        f" {'Survived':>9} {'Pending':>8}  Status"
+    )
     print("-" * 72)
     gt = gk = gs = gp = 0
     for batch in BATCHES:
@@ -206,7 +216,10 @@ def cmd_list(args: argparse.Namespace) -> None:
             n = len(saved_names.get(batch, []))
             s = {"total": n, "killed": 0, "survived": 0, "pending": n}
 
-        gt += s["total"]; gk += s["killed"]; gs += s["survived"]; gp += s["pending"]
+        gt += s["total"]
+        gk += s["killed"]
+        gs += s["survived"]
+        gp += s["pending"]
         status = progress.get("batches", {}).get(batch, {}).get("status", "—")
         marker = "✓" if status == "complete" else " "
         print(
@@ -247,20 +260,21 @@ def cmd_run(args: argparse.Namespace) -> None:
         return
 
     print(f"\n{len(names)} mutants to test ({source}) — starting mutmut run...")
-    cmd = ["uv", "run", "mutmut", "run", f"--max-children={args.max_children}"] + names
+    cmd = ["uv", "run", "mutmut", "run", f"--max-children={args.max_children}", *names]
 
     if args.cmd_only:
         print("\nCommand (for manual backgrounding):")
         print(" ".join(cmd[:6]) + f" <{len(names)} names...>")
-        print("\nFull command saved to /tmp/mutmut-cmd.sh")
-        with open("/tmp/mutmut-cmd.sh", "w") as f:
-            f.write("#!/bin/bash\n")
-            f.write(" ".join(cmd) + "\n")
+        cmd_path = pathlib.Path(tempfile.gettempdir()) / "mutmut-cmd.sh"
+        cmd_path.write_text("#!/bin/bash\n" + " ".join(cmd) + "\n", encoding="utf-8")
+        print(f"\nFull command saved to {cmd_path}")
         return
 
     result = subprocess.run(cmd, cwd=ROOT)
     print(f"\nmutmut exited with code {result.returncode}")
     _update_progress()
+    if result.returncode != 0:
+        sys.exit(result.returncode)
 
 
 def cmd_update(_args: Any = None) -> None:
@@ -271,7 +285,7 @@ def cmd_update(_args: Any = None) -> None:
 
 def _update_progress() -> None:
     progress = load_progress()
-    for batch, files in BATCHES.items():
+    for batch in BATCHES:
         s = batch_stats_from_meta(batch)
         if s["total"] == 0:
             continue
@@ -282,7 +296,7 @@ def _update_progress() -> None:
         else:
             status = "pending"
         progress["batches"][batch] = {"status": status, **s}
-    PROGRESS_FILE.write_text(json.dumps(progress, indent=2) + "\n")
+    PROGRESS_FILE.write_text(json.dumps(progress, indent=2) + "\n", encoding="utf-8")
     print(f"Updated {PROGRESS_FILE.relative_to(ROOT)}")
 
 
