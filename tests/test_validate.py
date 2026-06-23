@@ -825,9 +825,7 @@ class TestValidateSemantics:
         model = {
             "domain": "test",
             "entities": {
-                "bad-entity!": {
-                    "fields": {"id": {"type": "uuid", "primary_key": True}}
-                }
+                "bad-entity!": {"fields": {"id": {"type": "uuid", "primary_key": True}}}
             },
         }
         errors = validate_semantics(model)
@@ -856,9 +854,7 @@ class TestValidateSemantics:
         model = {
             "domain": "test",
             "entities": {
-                "MyEntity": {
-                    "fields": {"id": {"type": "uuid", "primary_key": True}}
-                }
+                "MyEntity": {"fields": {"id": {"type": "uuid", "primary_key": True}}}
             },
         }
         errors = validate_semantics(model)
@@ -868,9 +864,7 @@ class TestValidateSemantics:
         model = {
             "domain": "My-Domain!",
             "entities": {
-                "MyEntity": {
-                    "fields": {"id": {"type": "uuid", "primary_key": True}}
-                }
+                "MyEntity": {"fields": {"id": {"type": "uuid", "primary_key": True}}}
             },
         }
         errors = validate_semantics(model)

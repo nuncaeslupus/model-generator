@@ -157,8 +157,10 @@ def get_template_env(
     def _path_to_import_filter(file_path: str, module_name: str = "") -> str:
         return path_to_import(file_path, module_name, python_root)
 
-    def _safe_docstring(text: str) -> str:
+    def _safe_docstring(text: str | None) -> str:
         """Escape triple-double-quotes so descriptions can't break docstrings."""
+        if not text:
+            return ""
         return text.replace('"""', "'''")
 
     # Add custom filters

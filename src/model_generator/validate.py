@@ -109,7 +109,7 @@ def validate_semantics(model: dict[str, Any]) -> list[str]:
         fields = entity.get("fields", {})
 
         # Validate field names
-        for field_name in fields:
+        for field_name in fields or {}:
             if not _IDENTIFIER_RE.match(field_name):
                 errors.append(
                     f"{prefix} Field name '{field_name}' is not a valid "
