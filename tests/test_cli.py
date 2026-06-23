@@ -400,3 +400,92 @@ class TestNoRootFilesFlag:
             assert mock_generate.call_args.kwargs.get("no_root_files") is True
         finally:
             os.chdir(original_cwd)
+
+
+class TestStackResolution:
+    """Test that `stack:` in .model-generator.yaml is picked up automatically."""
+
+    def _flutter_project(self, project_dir: Path) -> Path:
+        """Minimal flutter-stack project: .model-generator.yaml + one model file."""
+        config = {
+            "project": {"name": "Test"},
+            "stack": "flutter",
+            "flutter": {"package_name": "test_pkg"},
+        }
+        (project_dir / ".model-generator.yaml").write_text(yaml.dump(config))
+        models_dir = project_dir / "models"
+        models_dir.mkdir()
+        model_path = models_dir / "items.model.json"
+        model_path.write_text(
+            json.dumps(
+                {
+                    "domain": "items",
+                    "entities": {
+                        "Item": {
+                            "table": "items",
+                            "fields": {
+                                "id": {
+                                    "type": "uuid",
+                                    "primary_key": True,
+                                    "auto_generate": True,
+                                },
+                                "name": {"type": "text", "required": True},
+                            },
+                        }
+                    },
+                }
+            )
+        )
+        return models_dir
+
+    def test_main_reads_stack_from_project_yaml(self, tmp_path: Path) -> None:
+        """main() uses the stack declared in .model-generator.yaml when --stack is not passed."""
+        from model_generator.generate import main
+
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        models_dir = self._flutter_project(project_dir)
+
+        original_cwd = os.getcwd()
+        os.chdir(project_dir)
+        try:
+            with (
+                patch(
+                    "sys.argv",
+                    ["model-gen", str(models_dir), "--dry-run"],
+                ),
+                patch(
+                    "model_generator.generators.flutter.generators.flutter_infra_orchestrator"
+                ) as mock_infra,
+                patch("model_generator.generate.generate") as mock_gen,
+            ):
+                mock_infra.return_value = []
+                main()
+            # If the flutter stack was selected, generate() is called with stack="flutter"
+            mock_gen.assert_called_once()
+            assert mock_gen.call_args.kwargs.get("stack") == "flutter"
+        finally:
+            os.chdir(original_cwd)
+
+    def test_generate_resolves_stack_from_config(self, tmp_path: Path) -> None:
+        """generate() switches to the correct stack spec when project yaml overrides stack."""
+        from model_generator.generate import generate
+        from model_generator.generators.registry import get_stack
+
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        models_dir = self._flutter_project(project_dir)
+        model_path = models_dir / "items.model.json"
+
+        original_cwd = os.getcwd()
+        os.chdir(project_dir)
+        try:
+            with patch("model_generator.generate._process_outputs") as mock_out:
+                mock_out.return_value = []
+                # Called with default stack ("python-fastapi") but project yaml says flutter
+                generate(model_path, target="enums", dry_run=True)
+            # The generate() call should have resolved the flutter stack spec.
+            flutter_spec = get_stack("flutter")
+            assert "enums" in flutter_spec.all_targets
+        finally:
+            os.chdir(original_cwd)

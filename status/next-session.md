@@ -1,14 +1,50 @@
 # Next Session Plan
 
-## Current State (2026-06-21) — all P0s complete, P1 next
+## Current State (2026-06-23) — Flutter Phase 3 shipped
+
+### Flutter Phase 3 shipped — flutter-app example + CI (PR pending)
+
+Branch `claude/epic-clarke-bshl6k`. Closes Phase 3 of the Flutter stack plan
+(`flutter-stack-plan.md`). Phases 0/1/2 shipped in PRs #57–#59.
+
+- **`examples/flutter-app/`** — the "one spec, two stacks" proof: the same
+  catalog-api spec (`catalog.model.json` + `_shared/enums.json`) fed to
+  `stack: flutter` (package_name: catalog_api, api-key auth). Exercises:
+  `@freezed` models, `ProductStatus` enum with `@JsonValue`, `@RestApi`
+  clients for Category (public) and Product (auth-gated), `DecimalConverter`
+  (price field), `AuthInterceptor` (X-Catalog-Key), repositories, Dio setup,
+  pagination.
+- **`scripts/smoke_generated_flutter.sh`** + **`make smoke-flutter`** —
+  regenerates the example into a temp tree, runs `dart pub get` →
+  `dart run build_runner build --delete-conflicting-outputs` → `dart analyze`
+  (zero errors). Mirrors the existing `smoke_generated_example.sh` pattern.
+- **`generated-flutter` CI job** — uses `subosito/flutter-action@v2` (stable
+  channel); guards the Flutter templates and any shared-engine changes
+  (Phase-0 registry).
+- **`generate.py` stack-resolution fix** — `--stack` default changed to `None`;
+  `main()` now reads `stack:` from `.model-generator.yaml` when not explicitly
+  passed; `generate()` likewise resolves the actual stack from the merged config.
+  This was the critical bug that caused the flutter example to generate
+  python-fastapi output instead of Dart.
+- **Docs** — `docs/user/flutter.md` (usage guide); `template-extension-guide.md`
+  updated with Flutter stack in architecture overview + "Adding a new stack"
+  section; `docs/README.md` Flutter rows added.
+
+**Verified:** 698 unit tests; `make lint` clean. Dart smoke verified by CI
+(`generated-flutter` job); no Dart SDK in the Python test environment.
+
+---
 
 A full multi-lens code review landed in **[`status/code-review-2026-06-21.md`](./code-review-2026-06-21.md)**:
 ~70 prioritized, stable-ID, queue-ready issues (P0→P3) plus direct answers to the
 owner's 10 review questions and a fix-sequencing plan. **Read that file — it is the
 backlog and the source of truth for this arc.**
 
-**Active arc: work the review backlog, P0 → P1 → P2, one PR per cluster** (the
-clusters are listed under "Part D — Working this backlog" in the review doc).
+**Active arc: remaining P2/P3 Python items + optional Flutter Phase 4.** Flutter
+Phase 3 is shipped. Next: work the remaining lower-priority P2/P3 items from the
+review backlog (`status/code-review-2026-06-21.md`, Part B/D), or optionally advance
+Flutter Phase 4 (offline cache via Drift/SQLite behind the repository `_custom.dart`
+seam from Phase 2).
 
 ### All 7 P0 items shipped (PRs #34, #35, #36, #37)
 

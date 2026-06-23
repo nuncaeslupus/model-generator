@@ -1,0 +1,14 @@
+project:
+  name: flutter-catalog-app
+  description: "Flutter client for the catalog API — generated from the same spec as examples/catalog-api/"
+  version: "0.1.0"
+
+stack: flutter
+
+flutter:
+  package_name: catalog_api
+
+auth:
+  strategy: api-key
+  key_env: CATALOG_API_KEY
+  header_name: X-Catalog-Key

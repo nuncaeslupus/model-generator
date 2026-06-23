@@ -1,0 +1,24 @@
+{
+    "enums": {
+        "ProductStatus": {
+            "description": "Catalog product lifecycle status",
+            "values": [
+                {
+                    "name": "DRAFT",
+                    "value": "DRAFT",
+                    "description": "Product is not yet visible in the catalog"
+                },
+                {
+                    "name": "ACTIVE",
+                    "value": "ACTIVE",
+                    "description": "Product is visible and available for purchase"
+                },
+                {
+                    "name": "DISCONTINUED",
+                    "value": "DISCONTINUED",
+                    "description": "Product is no longer available"
+                }
+            ]
+        }
+    }
+}
