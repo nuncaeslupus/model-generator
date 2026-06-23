@@ -1,6 +1,40 @@
 # Next Session Plan
 
-## Current State (2026-06-23) — P3 template batch shipped
+## Current State (2026-06-23) — P3 template batch shipped (PR #62)
+
+### P3 batch shipped — TPL-17/20/23, TOOL-6, GEN-10, TST-11 (PR #62)
+
+Branch `claude/youthful-hopper-oiitjl`. Six P3 backlog items from the
+2026-06-21 code review, verified clean with 712 unit tests + smoke-example
+128/128. A Gemini review on PR #62 caught a real sort-key `TypeError`
+(mixed `str`/`int` path elements); fixed before merge.
+
+- **TPL-17** — Added blank line before `{{ section_header('Field Validators') }}`
+  in `request.py.j2` Create model so the header renders on its own line
+  instead of being glued inline with the `model_config` closing brace
+  (root cause: `{#-` comment stripping).
+- **TPL-20** — Hoisted the three `{%- set %}` statements out of the factory
+  docstring in `factory.py.j2`; they were stripping the newline after `Usage:`,
+  gluing the label and import path onto a single line.
+- **TPL-23** — Reordered `login()` parameters in `auth_router.py.j2` so
+  `request` precedes `payload`, matching `register`/`forgot_password`.
+- **TOOL-6** — Switched `_validate_model_schema` from `jsonschema.validate()`
+  to `Draft7Validator.iter_errors()`, consistent with `validate.py`; reports
+  all schema errors instead of stopping at the first. Sort key also fixed to
+  `tuple(str(p) for p in e.path)` to avoid `TypeError` on mixed-type paths.
+- **GEN-10** — Added guard in `load_config()` that exits cleanly (code 1)
+  when a top-level config section (`paths`/`auth`/`generation`/`style`) is
+  a non-dict value, preventing `AttributeError` deep in generators.
+- **TST-11** — Added comment in `ci.yml` explaining the 3.11/3.12 matrix
+  split and why lint targets `py311` from a 3.12 runner.
+
+**Verified:** 712 unit tests (+6), `make lint` clean (ruff + mypy strict),
+`make smoke-example` → 128/128.
+
+**Remaining open P3 items** (from `status/code-review-2026-06-21.md`):
+TPL-7/15/21, GEN-5/7/9/11, SEC-8, TST-8/10, TOOL-2/4/5/7/8/9/11.
+
+---
 
 ### P3 template/tooling batch shipped — TPL-8/11/13/18/19/22 + TOOL-10 (PR #61)
 
