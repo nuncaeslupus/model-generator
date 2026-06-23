@@ -293,7 +293,9 @@ async def list_{{ entity_plural }}(
         # Validate sort_by is an actual field
         valid_fields = {
 {%- for field_name, field in entity.fields.items() %}
+{%- if not field.api_exclude_response | default(false) %}
             "{{ field_name }}",
+{%- endif %}
 {%- endfor %}
 {% if entity.timestamps.created | default(false) %}
             "created_at",
@@ -305,6 +307,11 @@ async def list_{{ entity_plural }}(
         if sort_by in valid_fields:
             sort_column = getattr({{ entity_name }}, sort_by)
             stmt = stmt.order_by(sort_column.desc() if order == "desc" else sort_column.asc())
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid sort_by value: '{sort_by}'. Valid fields: {', '.join(sorted(valid_fields))}",
+            )
 {% if entity.timestamps.created | default(false) %}
     else:
         # Default sort by created_at descending

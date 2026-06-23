@@ -334,7 +334,7 @@ def generate_pyproject(
         **(project_config.get("style") or {}),
     }
     style = {
-        "python_version": raw_style.get("python_version") or "3.11",
+        "python_version": raw_style.get("python_version") or "3.12",
         "line_length": raw_style.get("line_length"),
         "quote_style": raw_style.get("quote_style"),
         "indent_style": raw_style.get("indent_style"),

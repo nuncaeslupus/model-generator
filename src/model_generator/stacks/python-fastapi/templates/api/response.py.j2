@@ -122,7 +122,6 @@ class {{ entity_name }}Response(BaseModel):
 
 {{ section_header('OpenAPI Configuration') }}
     model_config = ConfigDict(
-        from_attributes=True,
         json_schema_extra={
             "example": {
 {% for field_name, field in entity.fields.items() %}

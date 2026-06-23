@@ -1,6 +1,38 @@
 # Next Session Plan
 
-## Current State (2026-06-23) — Flutter Phase 3 shipped
+## Current State (2026-06-23) — P3 template batch shipped
+
+### P3 template/tooling batch shipped — TPL-8/11/13/18/19/22 + TOOL-10 (PR #61)
+
+Branch `claude/fervent-babbage-ye4iri`. Seven P3 backlog items from the
+2026-06-21 code review, verified clean with 706 unit tests + smoke-example
+128/128.
+
+- **TPL-8** — Deleted dead `_shared/_examples.j2` and `_shared/_fields.j2`
+  template macros (imported by nothing).
+- **TPL-11** — Dropped `from_attributes=True` from response-model `ConfigDict`;
+  response models are always dict-constructed via `EntityResponse(**data)`.
+- **TPL-13** — Removed `asyncio_mode = "auto"` from generated `pyproject.toml`;
+  `pytest-asyncio` is not in the generated dev deps and all contract tests are
+  synchronous.
+- **TPL-18** — Excluded `api_exclude_response` fields (e.g. `password_hash`,
+  `key_hash`) from the `sort_by` valid-fields whitelist; sorting by a secret
+  column leaks information even if the value is never returned.
+- **TPL-19** — Raises `HTTPException(422)` when `sort_by` is not in
+  `valid_fields` instead of silently applying no ordering.
+- **TPL-22** — Default `python_version` changed from `"3.11"` → `"3.12"`;
+  the stack already uses PEP 695 generics requiring 3.12.
+- **TOOL-10** — Removed duplicate `[dependency-groups]` PEP-735 section from
+  this repo's `pyproject.toml`.
+
+**Verified:** 706 unit tests (+6), `make lint` clean (ruff + mypy strict),
+`make smoke-example` → 128/128.
+
+**Audit result (pre-session):** GEN-1/2/3/4/8, EX-5/9, TST-9, TOOL-1/3 were
+already closed in earlier PRs. Remaining open items: lower-priority P3
+(TPL-7/15/17/20/21/23, GEN-5/7/9/10/11, SEC-8, TST-8/10/11, TOOL-2/4/5/6/7/8/9/11).
+
+---
 
 ### Flutter Phase 3 shipped — flutter-app example + CI (PR pending)
 
