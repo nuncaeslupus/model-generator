@@ -439,7 +439,7 @@ class TestStackResolution:
         return models_dir
 
     def test_main_reads_stack_from_project_yaml(self, tmp_path: Path) -> None:
-        """main() uses the stack declared in .model-generator.yaml when --stack is not passed."""
+        """main() uses stack from .model-generator.yaml when --stack is not passed."""
         from model_generator.generate import main
 
         project_dir = tmp_path / "proj"
@@ -461,14 +461,14 @@ class TestStackResolution:
             ):
                 mock_infra.return_value = []
                 main()
-            # If the flutter stack was selected, generate() is called with stack="flutter"
+            # When flutter stack is selected, generate() is called with stack="flutter"
             mock_gen.assert_called_once()
             assert mock_gen.call_args.kwargs.get("stack") == "flutter"
         finally:
             os.chdir(original_cwd)
 
     def test_generate_resolves_stack_from_config(self, tmp_path: Path) -> None:
-        """generate() switches to the correct stack spec when project yaml overrides stack."""
+        """generate() uses the correct stack spec when project yaml overrides stack."""
         from model_generator.generate import generate
         from model_generator.generators.registry import get_stack
 
@@ -482,7 +482,7 @@ class TestStackResolution:
         try:
             with patch("model_generator.generate._process_outputs") as mock_out:
                 mock_out.return_value = []
-                # Called with default stack ("python-fastapi") but project yaml says flutter
+                # Default stack arg; project yaml overrides to flutter
                 generate(model_path, target="enums", dry_run=True)
             # The generate() call should have resolved the flutter stack spec.
             flutter_spec = get_stack("flutter")

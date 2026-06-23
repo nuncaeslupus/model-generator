@@ -406,6 +406,8 @@ def generate(
     # from the project yaml represents an actual override.
     _stack_field = config.get("stack")
     actual_stack = _stack_field if isinstance(_stack_field, str) else stack
+    if actual_stack != stack:
+        config = load_config(actual_stack)
     spec = get_stack(actual_stack)
     for validator in spec.validators:
         validator(model, config)

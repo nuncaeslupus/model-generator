@@ -51,7 +51,9 @@ paths:
 # can resolve imports against pubspec.yaml / analysis_options.yaml. Both no-op
 # gracefully when the Dart SDK is absent (generation never requires it).
 quality:
-  formatter: "dart format ."
+  formatter:
+    command: "dart format ."
+    target: package-root
   analyzer:
     command: "dart analyze"
     target: package-root

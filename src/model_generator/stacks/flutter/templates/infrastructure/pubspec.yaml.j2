@@ -6,20 +6,29 @@
   unpinned (``any``) so the user resolves them with ``dart pub get`` against the
   current SDK — the generator never shells out to pub.
 -#}
+{#-
+  Version pins for packages that have unstable pre-releases on pub.dev.
+  Without explicit constraints, `dart pub get` may resolve a dev pre-release
+  (e.g. freezed 4.0.0-dev.3) that breaks build_runner code generation.
+-#}
+{% set _pins = {
+  'freezed': '^2.5.7',
+  'freezed_annotation': '^2.4.4',
+} %}
 name: {{ package_name }}
 description: {{ project_description | default(project_name | default("Generated Dart client.")) }}
 publish_to: "none"
 version: 0.1.0
 
 environment:
-  sdk: ">=3.4.0 <4.0.0"
+  sdk: "^3.8.0"
 
 dependencies:
 {% for dep in runtime_deps %}
-  {{ dep }}: any
+  {{ dep }}: {{ _pins.get(dep, 'any') }}
 {% endfor %}
 
 dev_dependencies:
 {% for dep in dev_deps %}
-  {{ dep }}: any
+  {{ dep }}: {{ _pins.get(dep, 'any') }}
 {% endfor %}

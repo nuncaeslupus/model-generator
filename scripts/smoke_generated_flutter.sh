@@ -25,7 +25,7 @@ echo "==> Installing Dart dependencies"
 dart pub get
 
 echo "==> Running build_runner (generates .g.dart / .freezed.dart)"
-dart run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 
 echo "==> Analyzing generated Dart"
 dart analyze
