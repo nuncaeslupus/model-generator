@@ -122,7 +122,6 @@ def run_generate() -> None:
             domains=domains,
             route_modules=route_modules,
             factory_modules=factory_modules,
-            project_config=config,
             has_encrypted_binary=_has_encrypted_binary_field(loaded_models),
             extra_deps=extra_deps,
             no_root_files=no_root_files,

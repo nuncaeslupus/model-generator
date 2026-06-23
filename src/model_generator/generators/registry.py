@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from jinja2 import Environment
+
 from ..utils.quality import QualityRunner
 
 # A per-model validator: ``(model, config) -> None``. Raises ``SystemExit`` on a
@@ -47,7 +49,7 @@ class GenContext:
 
     model: dict[str, Any]
     config: dict[str, Any]
-    env: Any
+    env: Environment
     project_root: Path
     model_path: Path
     enums: dict[str, Any]

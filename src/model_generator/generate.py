@@ -62,6 +62,7 @@ from .utils import (
 )
 from .utils import load_model as load_model  # explicit re-export for mypy strict
 from .utils.conftest_generator import generate_conftest_content
+from .utils.output import write_outputs
 from .utils.quality import run_ruff_quality
 from .utils.templates import path_to_import, snake_case
 
@@ -461,16 +462,25 @@ def generate(
 
 
 def _find_project_root(model_path: Path) -> Path:
-    """Find project root by looking for .model-generator.yaml."""
+    """Find project root by looking for .model-generator.yaml.
+
+    Resolution order:
+    1. CWD has .model-generator.yaml → use CWD (standard invocation).
+    2. CWD's parent has .model-generator.yaml → use parent (monorepo: run
+       from a sub-directory).
+    3. Fall back to the model file's location: if the model lives in a
+       ``models/`` directory, the project root is its parent; otherwise the
+       model file's own directory is the root.
+    """
     project_root = Path.cwd()
     if not (project_root / ".model-generator.yaml").exists():
         parent = project_root.parent
         if (parent / ".model-generator.yaml").exists():
             project_root = parent
-        else:
+        elif model_path.parent.name == "models":
             project_root = model_path.parent.parent
-            if model_path.parent.name == "models":
-                project_root = model_path.parent.parent
+        else:
+            project_root = model_path.parent
     return project_root
 
 
@@ -846,57 +856,7 @@ def _generate_target(
 def _process_outputs(
     outputs: list[dict[str, Any]], diff: bool, dry_run: bool
 ) -> list[Path]:
-    """Write outputs to files, returning list of generated paths."""
-    generated_files = []
-
-    for output in outputs:
-        path = output["path"]
-        content = output["content"]
-        mode = output.get("mode", "write")
-
-        # Customization-seam files (e.g. the Flutter ``*_repository_custom.dart``)
-        # are emitted once and never clobbered, so adopters' edits survive
-        # regeneration. python-fastapi never sets this mode, so behavior there is
-        # unchanged.
-        if mode == "skip-if-exists" and path.exists():
-            if not (diff or dry_run):
-                print(f"  ℹ️  Exists, skipped: {path}")
-            continue
-
-        if diff:
-            print(f"\n--- {path} ---")
-            if mode == "append":
-                print(f"[Would append - {output.get('new_count', 0)} new items]")
-            elif path.exists():
-                print("[Would update existing file]")
-            else:
-                print("[Would create new file]")
-            print(content[:500] + "..." if len(content) > 500 else content)
-            continue
-
-        if dry_run:
-            action = "append to" if mode == "append" else "write"
-            print(f"  Would {action}: {path}")
-            continue
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        if mode == "append":
-            with path.open("a", encoding="utf-8") as f:
-                f.write(content)
-            new_count = output.get("new_count", 0)
-            skipped = output.get("skipped", 0)
-            print(f"  ✅ Appended {new_count} item(s) to: {path}")
-            if skipped > 0:
-                print(f"     (skipped {skipped} already existing)")
-        else:
-            with path.open("w", encoding="utf-8") as f:
-                f.write(content)
-            print(f"  ✅ Generated: {path}")
-
-        generated_files.append(path)
-
-    return generated_files
+    return write_outputs(outputs, diff, dry_run)
 
 
 def _prepare_infra_modules(
@@ -1361,7 +1321,6 @@ def main() -> None:
             domains=domains,
             route_modules=route_modules,
             factory_modules=factory_modules,
-            project_config=config,
             extra_deps=extra_deps,
             diff=args.diff,
             dry_run=args.dry_run,

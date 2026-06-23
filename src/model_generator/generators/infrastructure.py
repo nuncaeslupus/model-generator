@@ -8,6 +8,7 @@ from typing import Any
 from jinja2 import Environment
 
 from ..utils.constants import GENERATED_MARKER
+from ..utils.output import write_outputs
 from ..utils.templates import path_to_import
 
 # Generous default request-body cap (10 MiB) — large enough that normal JSON /
@@ -227,7 +228,6 @@ def generate_env_example(
     config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    project_config: dict[str, Any],
     has_encrypted_binary: bool = False,
     no_root_files: bool = False,
 ) -> dict[str, Any] | None:
@@ -263,7 +263,7 @@ def generate_env_example(
 
     template = env.get_template("infrastructure/env.example.j2")
     content = template.render(
-        project=project_config.get("project", {}),
+        project=config.get("project", {}),
         auth_enabled=auth_enabled,
         session_auth=session_auth,
         api_key_auth=api_key_auth,
@@ -280,7 +280,6 @@ def generate_pyproject(
     config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    project_config: dict[str, Any],
     extra_deps: list[str] | None = None,
     no_root_files: bool = False,
 ) -> dict[str, Any] | None:
@@ -298,7 +297,7 @@ def generate_pyproject(
     if output_path.exists():
         return None
 
-    project = project_config.get("project", {})
+    project = config.get("project", {})
     raw_name = project.get("name", "my-project")
     project_slug = raw_name.lower().replace(" ", "-")
 
@@ -329,10 +328,7 @@ def generate_pyproject(
     main_path = paths.get("main", "backend/src/main.py")
     package_root = str(Path(main_path).parent)
 
-    raw_style = {
-        **(config.get("style") or {}),
-        **(project_config.get("style") or {}),
-    }
+    raw_style = config.get("style") or {}
     style = {
         "python_version": raw_style.get("python_version") or "3.12",
         "line_length": raw_style.get("line_length"),
@@ -363,7 +359,6 @@ def generate_main(
     env: Environment,
     project_root: Path,
     domains: list[str],
-    project_config: dict[str, Any],
     route_modules: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """Generate FastAPI main application.
@@ -443,7 +438,7 @@ def generate_main(
         api_routes_import=api_routes_import,
         db_import=db_import,
         main_module=main_module,
-        project=project_config.get("project", {}),
+        project=config.get("project", {}),
         auth_router_import=auth_router_import,
         csrf_module_import=csrf_module_import,
         rate_limit_module_import=rate_limit_module_import,
@@ -459,7 +454,6 @@ def generate_auth_router(
     config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    project_config: dict[str, Any],
 ) -> dict[str, Any] | None:
     """Generate the auth router (register / login / logout / etc.).
 
@@ -492,7 +486,7 @@ def generate_auth_router(
         config=config,
         db_models_import=db_models_import,
         db_import=db_import,
-        project=project_config.get("project", {}),
+        project=config.get("project", {}),
         rate_limit_enabled=(config.get("auth", {}).get("rate_limit") or {}).get(
             "enabled"
         )
@@ -621,7 +615,6 @@ def generate_api_key_auth(
     config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    project_config: dict[str, Any],
 ) -> dict[str, Any] | None:
     """Generate the static API-key auth dependency (``require_api_key``).
 
@@ -654,7 +647,7 @@ def generate_api_key_auth(
         key_env=key_env,
         header_name=header_name,
         header_param=header_param,
-        project=project_config.get("project", {}),
+        project=config.get("project", {}),
     )
 
     return {"path": output_path, "content": content}
@@ -792,7 +785,6 @@ def generate_infrastructure(
     env: Environment,
     project_root: Path,
     domains: list[str],
-    project_config: dict[str, Any],
     extra_deps: list[str] | None = None,
     diff: bool = False,
     dry_run: bool = False,
@@ -817,7 +809,6 @@ def generate_infrastructure(
             config,
             env,
             project_root,
-            project_config,
             extra_deps,
             no_root_files=no_root_files,
         ),
@@ -825,7 +816,6 @@ def generate_infrastructure(
             config,
             env,
             project_root,
-            project_config,
             has_encrypted_binary=has_encrypted_binary,
             no_root_files=no_root_files,
         ),
@@ -842,11 +832,10 @@ def generate_infrastructure(
             env,
             project_root,
             domains,
-            project_config,
             route_modules=route_modules,
         ),
-        generate_auth_router(config, env, project_root, project_config),
-        generate_api_key_auth(config, env, project_root, project_config),
+        generate_auth_router(config, env, project_root),
+        generate_api_key_auth(config, env, project_root),
         generate_csrf(config, env, project_root),
         generate_encrypted_bytes(
             config, env, project_root, has_encrypted_binary=has_encrypted_binary
@@ -864,25 +853,4 @@ def generate_infrastructure(
     # Add package init files
     outputs.extend(generate_package_init_files(config, project_root))
 
-    # Process outputs
-    generated_files = []
-    for output in outputs:
-        path = output["path"]
-        content = output["content"]
-
-        if diff:
-            print(f"\n--- {path} ---")
-            print(content[:500] + "..." if len(content) > 500 else content)
-            continue
-
-        if dry_run:
-            print(f"  Would write: {path}")
-            continue
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as f:
-            f.write(content)
-        print(f"  ✅ Generated: {path}")
-        generated_files.append(path)
-
-    return generated_files
+    return write_outputs(outputs, diff, dry_run)
