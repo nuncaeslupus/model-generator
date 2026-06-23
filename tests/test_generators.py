@@ -3975,6 +3975,29 @@ class TestMigrationGenerator:
         assert not (project_root / "alembic").exists()
         assert not (project_root / "alembic" / "versions").exists()
 
+    def test_migration_env_custom_type_names_constant(self) -> None:
+        """_CUSTOM_TYPE_NAMES in migrations.py is the single source of truth
+        for which custom types env.py must import — not a template literal."""
+        from model_generator.generators.migrations import _CUSTOM_TYPE_NAMES
+
+        assert "PortableNumeric" in _CUSTOM_TYPE_NAMES
+        assert "PortableUuid" in _CUSTOM_TYPE_NAMES
+
+    def test_migration_env_renders_custom_type_names(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """Rendered env.py _CUSTOM_TYPE_NAMES must reflect the generator constant,
+        not a hardcoded literal — so renaming a type in migrations.py propagates."""
+        from model_generator.generators.migrations import _CUSTOM_TYPE_NAMES
+
+        content = self._env_py(minimal_model, project_env)
+        for name in _CUSTOM_TYPE_NAMES:
+            assert f'"{name}"' in content, (
+                f"Expected '{name}' to appear in rendered env.py _CUSTOM_TYPE_NAMES"
+            )
+        # The assignment must be present and be a tuple, not a hardcoded one-liner.
+        assert "_CUSTOM_TYPE_NAMES = (" in content
+
 
 class TestMigrationAutogen:
     """Test generate_migration_autogen."""
