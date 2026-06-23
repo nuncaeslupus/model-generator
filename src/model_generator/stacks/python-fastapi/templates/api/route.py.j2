@@ -310,7 +310,7 @@ async def list_{{ entity_plural }}(
         else:
             raise HTTPException(
                 status_code=422,
-                detail=f"Invalid sort_by value: '{sort_by}'. Valid fields: {sorted(valid_fields)}",
+                detail=f"Invalid sort_by value: '{sort_by}'. Valid fields: {', '.join(sorted(valid_fields))}",
             )
 {% if entity.timestamps.created | default(false) %}
     else:
