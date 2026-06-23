@@ -301,8 +301,8 @@ async def register(
 @limiter.limit(LOGIN_LIMIT)
 {% endif %}
 async def login(
-    payload: LoginRequest,
     request: Request,
+    payload: LoginRequest,
     response: Response,
     session: AsyncSession = Depends(get_session),
 ) -> LoginResponse:

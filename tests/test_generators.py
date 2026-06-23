@@ -1573,6 +1573,67 @@ class TestFinancialValidatorSelection:
             assert '_validate_pnl = field_validator("pnl")(validate_decimal)' in content
 
 
+class TestRequestFieldValidatorSectionHeader:
+    """TPL-17: Field Validators section header must appear on its own line.
+
+    Regression: the {#- comment in request.py.j2 stripped the newline after
+    `}` (model_config closing brace), gluing the section header inline.
+    """
+
+    def test_field_validator_header_not_inline_with_brace(
+        self, project_env_per_entity: Any
+    ) -> None:
+        project_root, config, env = project_env_per_entity
+        model = {
+            "domain": "ledger",
+            "entities": {
+                "Account": {
+                    "table": "accounts",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "balance": {
+                            "type": "financial",
+                            "required": True,
+                        },
+                    },
+                }
+            },
+        }
+        result = generate_api_models(model, config, env, project_root)
+        assert isinstance(result, list)
+        content = next(
+            r["content"] for r in result if r["path"].name == "account_requests.py"
+        )
+        assert "}  # " not in content, (
+            "Section header must not appear inline with closing brace"
+        )
+        assert "}  #" not in content
+
+
+class TestFactoryDocstringUsage:
+    """TPL-20: factory docstring Usage line must not be glued to 'Usage:'.
+
+    Regression: {%- set %} statements inside the docstring stripped the
+    newline after 'Usage:', producing 'Usage:    from ...' on one line.
+    """
+
+    def test_usage_line_is_on_separate_line_from_usage_label(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        project_root, config, env = project_env
+        result = generate_factories(minimal_model, config, env, project_root)
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "Usage:\n    from " in content, (
+            "Usage: label and the import must be on separate lines"
+        )
+        assert "Usage:    from " not in content
+
+
 class TestGenerateApiInitPerEntity:
     """Per-entity api __init__.py emission."""
 
