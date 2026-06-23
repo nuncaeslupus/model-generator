@@ -278,9 +278,9 @@ class TestFactoryGenerator:
         result = generate_factories(minimal_model, config, env, project_root)
         assert isinstance(result, dict)
 
-        db_models_dir = project_root / config["paths"]["database_models"]
+        factories_dir = project_root / config["paths"]["factories"]
         assert result is not None
-        assert result["path"] == db_models_dir / "factories" / "items.py"
+        assert result["path"] == factories_dir / "items.py"
 
     def test_factory_content(
         self, minimal_model: dict[str, Any], project_env: Any
@@ -300,8 +300,8 @@ class TestFactoryGenerator:
             result = generate_factories(model_no_domain, config, env, project_root)
             assert isinstance(result, dict)
 
-        db_models_dir = project_root / config["paths"]["database_models"]
-        assert result["path"] == db_models_dir / "factories" / "models.py"
+        factories_dir = project_root / config["paths"]["factories"]
+        assert result["path"] == factories_dir / "models.py"
 
     def test_ref_constraints_resolve_to_literals(self, project_env: Any) -> None:
         """financial/counter min_ref/max_ref resolve to literal constant values.
@@ -417,6 +417,32 @@ class TestFactoryGenerator:
         content = result["content"]
         assert "factory.SubFactory(AuthorFactory)" in content
         assert "from .author import AuthorFactory" not in content  # per-domain layout
+
+
+def test_factories_not_in_production_package(tmp_path: Path) -> None:
+    """Factories must live outside python_root to avoid dev-dep pull in prod.
+
+    factory_boy and faker are dev-only dependencies. If the factories path is
+    inside python_root, any import of the production package at runtime would
+    transitively import those packages, making them a required production dep.
+
+    TPL-15: default factories path was backend/src/database/models/factories,
+    which is inside python_root (backend/src). The correct default is
+    backend/tests/factories.
+    """
+    original_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        config = load_config("python-fastapi")
+    finally:
+        os.chdir(original_cwd)
+
+    python_root = config.get("python_root", "backend/src")
+    factories_path = config["paths"]["factories"]
+    assert not factories_path.startswith(python_root.rstrip("/") + "/"), (
+        f"Factories path '{factories_path}' is inside python_root '{python_root}' — "
+        "factory_boy/faker would be a production dep"
+    )
 
 
 @pytest.fixture
