@@ -1,41 +1,33 @@
 # Next Session Plan
 
-## Current State (2026-06-23) — P3 batch TPL-15/21, SEC-8, TST-8 (PR #64, merged)
+## Current State (2026-06-23) — P3 tooling batch TST-10/TOOL-2/4/5/7/8 (PR #65, pending)
 
-Branch `claude/beautiful-shannon-foxzyy`. Four P3 backlog items from the 2026-06-21
-code review. 735 unit tests + `make lint` clean. PR #64 merged.
+Branch `claude/beautiful-shannon-foxzyy`. Six P3 backlog items from the 2026-06-21
+code review, all closed. 738 unit tests + `make lint` clean. PR #64 merged; PR #65
+being opened for this batch.
 
-- **TPL-21** — Added `_CUSTOM_TYPE_NAMES: tuple[str, ...] = ("PortableNumeric",
-  "PortableUuid")` as a module-level constant in `generators/migrations.py` (single
-  source of truth). Passed as template variable `custom_type_names` so `env.py.j2`
-  loops over it instead of hardcoding the tuple — a rename in the constant propagates
-  automatically to the generated file. +2 tests.
-- **TPL-15** — Changed default `factories` path from `backend/src/database/models/factories`
-  (inside `python_root`) to `backend/tests/factories` in `config.yaml`, both `.get()`
-  fallbacks in `infrastructure.py`, and the wizard preset layouts. Also fixed a latent
-  bug: `generate_factories` was deriving the path from `database_models / "factories"`
-  instead of reading `config["paths"]["factories"]` — the config key was effectively
-  ignored. Example `.model-generator.yaml` updated. +1 regression test.
-- **SEC-8** — (a) Added `_ENTITY_NAME_RE` / `_IDENTIFIER_RE` checks in
-  `validate_semantics()` for domain, entity, and field names. (b) Added `safe_docstring`
-  Jinja filter (`"""` → `'''`) in `utils/templates.py`; applied at all description
-  render sites in `factory.py.j2`, `model.py.j2`, `request.py.j2`, `response.py.j2`.
-  +5 validation tests + 2 generator tests.
-- **TST-8** — Three new test classes (pure additions): `TestUnicodeDescriptions` (7
-  tests — accented chars, emoji, em-dash), `TestSpecialCharDescriptions` (4 tests —
-  backslash + newline xfail, double-quote + triple-quote pass), `TestLargeSpecGeneration`
-  (4 `@pytest.mark.slow` — 15 entities × 8 fields, both layouts, <5 s).
+- **TST-10** — Added `minimal_user_model` fixture to `TestValidateModel`; refactored
+  three tests to use `copy.deepcopy(minimal_user_model)` instead of repeating the
+  full dict literal.
+- **TOOL-2** — Fixed `_find_project_root` in `generate.py`: removed the no-op `if`
+  branch; resolution now walks CWD → CWD's parent → model's parent (monorepo-aware).
+- **TOOL-4** — Changed `env: Any` → `env: Environment` in `GenContext` dataclass
+  (`generators/registry.py`); added `from jinja2 import Environment`.
+- **TOOL-5** — Removed vestigial `project_config: dict[str, Any]` parameter from
+  `generate_env_example`, `generate_pyproject`, `generate_main`, `generate_auth_router`,
+  `generate_api_key_auth`, `generate_infrastructure`. Updated all call sites and tests.
+- **TOOL-7** — Extracted inline output-writing loop to `utils/output.py:write_outputs()`.
+  Both `generate.py` and `infrastructure.py` (and the Flutter orchestrator) now delegate.
+- **TOOL-8** — Renamed `*_requests.py` → `*_request.py` throughout: `generators/api.py`,
+  `utils/parser.py`, `api/init.py.j2`, `api/route.py.j2`, `test_generators.py`,
+  `test_integration.py`, `test_edge_cases.py`.
 
-**Tests:** 518 → 735 (rebased onto main which itself brought in PRs #57–#63). 4 deselected
-(slow), 2 xfailed (backslash/newline in Field descriptions — remaining SEC-8 scope).
+**Tests:** 735 → 738, ruff + mypy strict clean.
 
-**Remaining open items** (from `status/code-review-2026-06-21.md`):
-TST-10, TOOL-2, TOOL-4 (env: Any), TOOL-5, TOOL-7, TOOL-8.
-
-**Already confirmed closed / by-design:**
+**All code-review-2026-06-21 items now closed** (confirmed or by-design):
 - GEN-9 (has passing test `test_strip_json_comments_preserves_slashes_in_strings`)
 - TOOL-11 (CI comment explains why lint runs on 3.12 with py311 target — intentional)
-- TOOL-4 (stack registry refactor in Flutter Phase 0 cleaned up the dispatch table)
+- TOOL-4 also fixed in GenContext for completeness
 
 ---
 
