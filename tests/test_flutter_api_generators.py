@@ -279,8 +279,8 @@ class TestRequestDtos:
         outputs = generate_flutter_request_dtos(model, flutter_config, env, tmp_path)
         by_name = {Path(o["path"]).name: str(o["content"]) for o in outputs}
         content = by_name["widget_requests.dart"]
-        assert "class CreateWidgetRequest with _$CreateWidgetRequest {" in content
-        assert "class UpdateWidgetRequest with _$UpdateWidgetRequest {" in content
+        assert "abstract class CreateWidgetRequest with _$CreateWidgetRequest {" in content
+        assert "abstract class UpdateWidgetRequest with _$UpdateWidgetRequest {" in content
 
     def test_immutable_skips_update_dto(
         self,

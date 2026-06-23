@@ -27,7 +27,7 @@ part '{{ file_stem }}.g.dart';
 
 {% macro dto_class(name, fields) -%}
 @freezed
-class {{ name }} with _${{ name }} {
+abstract class {{ name }} with _${{ name }} {
   const factory {{ name }}({
 {% for field in fields %}
 {% for line in field.doc %}
