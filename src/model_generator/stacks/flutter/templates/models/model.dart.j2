@@ -28,7 +28,7 @@ part '{{ file_stem }}.g.dart';
 /// {{ description }}
 {% endif %}
 @freezed
-class {{ entity_name }} with _${{ entity_name }} {
+abstract class {{ entity_name }} with _${{ entity_name }} {
   const factory {{ entity_name }}({
 {% for field in fields %}
 {% for line in field.doc %}

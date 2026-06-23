@@ -55,7 +55,7 @@ class DecimalConverter implements JsonConverter<Decimal, String> {
   Decimal fromJson(String json) => decimalFromJson(json);
 
   @override
-  String toJson(Decimal object) => decimalToJson(object);
+  String toJson(Decimal object) => object.toString();
 }
 
 /// Binary blobs: base64-encoded strings on the wire, [Uint8List] in Dart.
@@ -66,7 +66,7 @@ class BytesConverter implements JsonConverter<Uint8List, String> {
   Uint8List fromJson(String json) => bytesFromJson(json);
 
   @override
-  String toJson(Uint8List object) => bytesToJson(object);
+  String toJson(Uint8List object) => base64Encode(object);
 }
 
 /// Timestamps: ISO8601 strings with a trailing `Z` (UTC). Round-trips to a
@@ -78,5 +78,8 @@ class UtcDateTimeConverter implements JsonConverter<DateTime, String> {
   DateTime fromJson(String json) => utcDateTimeFromJson(json);
 
   @override
-  String toJson(DateTime object) => utcDateTimeToJson(object);
+  String toJson(DateTime object) {
+    final utc = object.toUtc();
+    return '${utc.toIso8601String().replaceFirst(RegExp(r'Z?$'), '')}Z';
+  }
 }

@@ -268,7 +268,7 @@ class TestModelTemplate:
     ) -> None:
         content = _render_models(model, flutter_config, env, tmp_path)
         assert "@freezed" in content
-        assert "class Widget with _$Widget {" in content
+        assert "abstract class Widget with _$Widget {" in content
         assert "const factory Widget({" in content
         assert "factory Widget.fromJson(Map<String, dynamic> json) =>" in content
 

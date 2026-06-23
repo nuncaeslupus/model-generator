@@ -457,7 +457,7 @@ class TestPagination:
         result = generate_flutter_pagination(flutter_config, env, tmp_path)
         content = str(result["content"])
         # Generic envelope + the snake_case wire keys the FastAPI stack emits.
-        assert "class Paginated<T> with _$Paginated<T> {" in content
+        assert "abstract class Paginated<T> with _$Paginated<T> {" in content
         assert "required List<T> items," in content
         assert "@JsonKey(name: 'page_info') required PageInfo pageInfo," in content
         assert "@JsonKey(name: 'page_size') required int pageSize," in content

@@ -22,7 +22,7 @@ part 'pagination.g.dart';
 
 /// Pagination metadata accompanying every paginated list response.
 @freezed
-class PageInfo with _$PageInfo {
+abstract class PageInfo with _$PageInfo {
   const factory PageInfo({
     /// Current page number (1-indexed).
     required int page,
@@ -42,7 +42,7 @@ class PageInfo with _$PageInfo {
 /// Use the typed `fromJson` constructor with an item decoder, e.g.:
 /// `Paginated<Foo>.fromJson(json, (j) => Foo.fromJson(j as Map<String, dynamic>))`.
 @Freezed(genericArgumentFactories: true)
-class Paginated<T> with _$Paginated<T> {
+abstract class Paginated<T> with _$Paginated<T> {
   const factory Paginated({
     required List<T> items,
     @JsonKey(name: 'page_info') required PageInfo pageInfo,
