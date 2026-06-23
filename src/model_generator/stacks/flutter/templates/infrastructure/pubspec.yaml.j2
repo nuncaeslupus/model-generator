@@ -29,10 +29,10 @@ environment:
 
 dependencies:
 {% for dep in runtime_deps %}
-  {{ dep }}: {{ _pins.get(dep, 'any') }}
+  {{ dep }}: "{{ _pins.get(dep, 'any') }}"
 {% endfor %}
 
 dev_dependencies:
 {% for dep in dev_deps %}
-  {{ dep }}: {{ _pins.get(dep, 'any') }}
+  {{ dep }}: "{{ _pins.get(dep, 'any') }}"
 {% endfor %}
