@@ -4,16 +4,16 @@
   Emits one Dart ``enum`` per shared enum. Members are UPPER_CASE and each
   carries a ``@JsonValue('UPPER_CASE')`` so the wire value is documented.
 
-  Each enum also gets a pair of top-level fromJson/toJson helpers (e.g.
-  ``productStatusFromJson`` / ``productStatusToJson``) that the generated
-  freezed models reference via ``@JsonKey(fromJson:..., toJson:...)``.
-  This pattern is necessary because json_serializable 6.7+ cannot resolve
-  enum types imported from external libraries without explicit helpers, and
-  it avoids the build-order issues that arise with @JsonEnum + part files.
+  Each enum is annotated with ``@JsonEnum(alwaysCreate: true)``, which
+  instructs json_serializable to generate an ``_$EnumNameEnumMap`` constant
+  into ``enums.g.dart`` (via the ``part 'enums.g.dart'`` directive below).
+  This makes the enum type recognisable to json_serializable when it
+  processes model files that import this library — without it, enums
+  imported from an external library are treated as ``InvalidType`` by
+  json_serializable 6.7+ and cannot be serialised.
 
-  The helpers use ``Enum.values.byName`` (Dart 2.15+) which matches the
-  UPPER_CASE ``.name`` property of each enum value to the wire string —
-  safe because the spec enforces UPPER_CASE names throughout.
+  The ``part 'enums.g.dart'`` directive is required so json_serializable
+  has a file to write the generated map into.
 
   Driven entirely by the shared enums.json — no project-specific names
   appear in this template.
@@ -23,17 +23,16 @@
 //
 // All members are UPPER_CASE and pinned to their wire value via @JsonValue,
 // matching the UPPER_CASE convention used everywhere in the source spec.
-//
-// Each enum is accompanied by top-level fromJson/toJson helpers used by the
-// generated freezed models via @JsonKey(fromJson:..., toJson:...).
 
 import 'package:json_annotation/json_annotation.dart';
 
+part 'enums.g.dart';
+
 {% for enum_name, enum_def in enums.items() %}
-{%- set camel = enum_name[0] | lower + enum_name[1:] %}
 {% if enum_def.description %}
 /// {{ enum_def.description }}
 {% endif %}
+@JsonEnum(alwaysCreate: true)
 enum {{ enum_name }} {
 {% for value in enum_def["values"] %}
 {% if value is mapping %}
@@ -48,9 +47,5 @@ enum {{ enum_name }} {
 {% endif %}
 {% endfor %}
 }
-
-{{ enum_name }} {{ camel }}FromJson(String json) =>
-    {{ enum_name }}.values.byName(json);
-String {{ camel }}ToJson({{ enum_name }} value) => value.name;
 
 {% endfor %}

@@ -171,18 +171,14 @@ def resolve_fields(
         abstract = field.get("type", "")
         spec = type_map.get(abstract, {}) or {}
 
-        from_json, to_json = _enum_helpers(abstract, field) or (
-            spec.get("from_json"),
-            spec.get("to_json"),
-        )
         descriptors.append(
             {
                 "name": dart_member,
                 "json_key": json_key,
                 "dart_type": _dart_type(field, type_map),
                 "nullable": _is_nullable(field),
-                "from_json": from_json,
-                "to_json": to_json,
+                "from_json": spec.get("from_json"),
+                "to_json": spec.get("to_json"),
                 # The JsonKey annotation is only needed when the wire key and the
                 # Dart member name diverge — which is whenever the source field
                 # name is snake_case (multi-segment) or renamed via api_field_name.
@@ -192,25 +188,6 @@ def resolve_fields(
         )
 
     return descriptors
-
-
-def _enum_helpers(abstract: str, field: dict[str, Any]) -> tuple[str, str] | None:
-    """Return ``(fromJson, toJson)`` helper names for an enum field, or None.
-
-    Enum fields reference per-enum top-level helpers defined in ``enums.dart``
-    (e.g. ``productStatusFromJson`` / ``productStatusToJson``). These are used
-    via ``@JsonKey(fromJson:..., toJson:...)`` so json_serializable never has
-    to introspect the enum type directly — avoiding the ``InvalidType`` error
-    that json_serializable 6.7+ emits for enum types imported from external
-    libraries without dedicated part-file code generation.
-    """
-    if abstract != "enum":
-        return None
-    enum_name = str(field.get("enum_name", ""))
-    if not enum_name:
-        return None
-    camel = enum_name[0].lower() + enum_name[1:]
-    return f"{camel}FromJson", f"{camel}ToJson"
 
 
 def _is_auto_pk(field: dict[str, Any]) -> bool:
@@ -299,19 +276,14 @@ def resolve_dto_fields(
         # fields are always nullable (PATCH-style partial update).
         nullable = not bool(field.get("required", False)) if kind == "create" else True
 
-        abstract = field.get("type", "")
-        from_json, to_json = _enum_helpers(abstract, field) or (
-            spec.get("from_json"),
-            spec.get("to_json"),
-        )
         descriptors.append(
             {
                 "name": dart_member,
                 "json_key": json_key,
                 "dart_type": _dart_type(field, type_map),
                 "nullable": nullable,
-                "from_json": from_json,
-                "to_json": to_json,
+                "from_json": spec.get("from_json"),
+                "to_json": spec.get("to_json"),
                 "needs_json_key": json_key != dart_member,
                 "doc": _doc_comment(field),
             }

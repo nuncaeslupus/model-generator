@@ -196,9 +196,9 @@ class TestTypeMapping:
         assert by_name["releasedAt"]["to_json"] == "utcDateTimeToJson"
         assert by_name["thumbnail"]["from_json"] == "bytesFromJson"
         assert by_name["thumbnail"]["to_json"] == "bytesToJson"
-        # Enum fields get per-enum helpers based on the enum_name.
-        assert by_name["status"]["from_json"] == "widgetStatusFromJson"
-        assert by_name["status"]["to_json"] == "widgetStatusToJson"
+        # Enum fields are handled by json_serializable via @JsonEnum(alwaysCreate:
+        # true) — no fromJson/toJson helpers needed in the descriptor.
+        assert by_name["status"]["from_json"] is None
         # Plain types carry no fromJson/toJson helpers.
         assert by_name["displayName"]["from_json"] is None
         assert by_name["viewCount"]["from_json"] is None
@@ -288,8 +288,8 @@ class TestModelTemplate:
         assert "fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson" in content
         # Binary field has no name mismatch; only fromJson/toJson is needed.
         assert "@JsonKey(fromJson: bytesFromJson, toJson: bytesToJson)" in content
-        # Enum fields: per-enum helpers; status has no name mismatch.
-        assert "fromJson: widgetStatusFromJson, toJson: widgetStatusToJson" in content
+        # Enum fields: handled by json_serializable via @JsonEnum — no @JsonKey needed.
+        assert "fromJson: widgetStatusFromJson" not in content
 
     def test_required_and_nullable_rendered(
         self,
@@ -352,12 +352,11 @@ class TestEnumTemplate:
         assert result is not None
         content = str(result["content"])
         assert "enum WidgetStatus {" in content
+        assert "@JsonEnum(alwaysCreate: true)" in content
+        assert "part 'enums.g.dart'" in content
         assert "@JsonValue('ACTIVE')" in content
         assert "ACTIVE," in content
         assert "@JsonValue('ARCHIVED')" in content
-        # Each enum gets top-level fromJson/toJson helpers.
-        assert "WidgetStatus widgetStatusFromJson(String json)" in content
-        assert "String widgetStatusToJson(WidgetStatus value)" in content
 
     def test_no_enums_returns_none(
         self,
