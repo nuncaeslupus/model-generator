@@ -184,6 +184,7 @@ def generate_pubspec(
     config: dict[str, Any],
     env: Environment,
     project_root: Path,
+    project_config: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Generate ``pubspec.yaml`` (skip-if-exists — the pyproject analogue).
 
@@ -199,17 +200,21 @@ def generate_pubspec(
     if pubspec_path.exists():
         return None
 
+    # Merge project_config on top of config when provided (orchestrator always
+    # passes config == project_config, but tests may pass a separate overlay).
+    effective = {**config, **(project_config or {})}
+
     template = env.get_template("infrastructure/pubspec.yaml.j2")
     deps = config.get("dependencies", {}) or {}
     runtime = list(deps.get("runtime", []) or [])
     dev = list(deps.get("dev", []) or [])
 
-    auth = config.get("auth") or {}
+    auth = effective.get("auth") or {}
     if auth.get("strategy"):
         conditional = (deps.get("conditional") or {}).get("auth", []) or []
         runtime.extend(c for c in conditional if c not in runtime)
 
-    project = config.get("project", {})
+    project = effective.get("project", {})
     content = template.render(
         package_name=package_name(config),
         project_name=project.get("name"),
@@ -246,6 +251,7 @@ def generate_flutter_readme(
     config: dict[str, Any],
     env: Environment,
     project_root: Path,
+    project_config: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Generate ``README.md`` (skip-if-exists).
 
@@ -257,8 +263,9 @@ def generate_flutter_readme(
     if readme_path.exists():
         return None
 
+    effective = {**config, **(project_config or {})}
     template = env.get_template("infrastructure/README.md.j2")
-    project = config.get("project", {})
+    project = effective.get("project", {})
     content = template.render(
         package_name=package_name(config),
         project_name=project.get("name"),
