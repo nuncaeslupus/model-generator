@@ -2,6 +2,7 @@
 Jinja2 template utilities.
 """
 
+import re
 import textwrap
 from decimal import Decimal
 from pathlib import Path
@@ -73,25 +74,33 @@ def _normalize_decimal(value: float | int | str) -> str:
     return str(d)
 
 
+# Two-pass CamelCase → snake_case conversion.
+# Pass 1: insert underscore before an uppercase letter that immediately follows
+#          a run of uppercase letters and is itself followed by a lowercase
+#          letter — this handles acronym prefixes like "APIKey" → "API_Key".
+# Pass 2: insert underscore between a lowercase/digit and an uppercase letter
+#          — this handles the standard CamelCase boundary.
+_SNAKE_RE1 = re.compile(r"([A-Z]+)([A-Z][a-z])")
+_SNAKE_RE2 = re.compile(r"([a-z\d])([A-Z])")
+
+
 def snake_case(name: str) -> str:
     """Convert CamelCase to snake_case.
 
-    Mirrors the ``to_snake_case`` Jinja macro in
-    ``stacks/python-fastapi/templates/_shared/_entity.j2`` so generators
-    deriving filenames in Python and templates emitting the same names
-    in Jinja agree byte-for-byte.
+    Handles consecutive-capitals acronyms: ``APIKey`` → ``api_key``.
+    The Jinja ``to_snake_case`` macro in ``_shared/_entity.j2`` delegates
+    to this Python filter so both paths agree byte-for-byte.
 
     Examples:
         User           → user
         UserSession    → user_session
         ApiKey         → api_key
+        APIKey         → api_key
+        HTTPSConfig    → https_config
     """
-    parts: list[str] = []
-    for i, ch in enumerate(name):
-        if ch.isupper() and i > 0:
-            parts.append("_")
-        parts.append(ch.lower())
-    return "".join(parts)
+    s = _SNAKE_RE1.sub(r"\1_\2", name)
+    s = _SNAKE_RE2.sub(r"\1_\2", s)
+    return s.lower()
 
 
 def camel_case(name: str) -> str:

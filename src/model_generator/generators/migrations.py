@@ -14,6 +14,7 @@ def generate_migration_init(
     env: Environment,
     project_root: Path,
     no_root_files: bool = False,
+    dry_run: bool = False,
 ) -> list[dict[str, Any]]:
     """Initialize Alembic migration structure.
 
@@ -27,8 +28,9 @@ def generate_migration_init(
     migrations_dir = project_root / config["paths"].get("migrations", "alembic")
     versions_dir = migrations_dir / "versions"
 
-    migrations_dir.mkdir(parents=True, exist_ok=True)
-    versions_dir.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        migrations_dir.mkdir(parents=True, exist_ok=True)
+        versions_dir.mkdir(parents=True, exist_ok=True)
 
     # alembic.ini (bootstrap-only; don't overwrite adopter customizations)
     if not no_root_files:

@@ -3591,7 +3591,9 @@ class TestConstraintsGenerator:
         assert result["skipped"] == 0
         assert "# CONSTRAINTS" in result["content"]
         assert "from decimal import Decimal" in result["content"]
-        assert "def validate_percentage" in result["content"]
+        # Helper functions are not emitted (they were never imported by any
+        # generated file; SQL CHECKs are inlined in model.py.j2).
+        assert "def validate_percentage" not in result["content"]
 
     def test_append_mode_for_existing_file(self, project_env: Any) -> None:
         """When constraints.py already exists, new refs are appended, not full file."""
@@ -3956,6 +3958,22 @@ class TestMigrationGenerator:
         assert migrations_dir / "script.py.mako" in paths
         assert migrations_dir / "README.md" in paths
         assert migrations_dir / "versions" / ".gitkeep" in paths
+
+    def test_generate_migration_init_dry_run_skips_mkdir(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """dry_run=True returns file specs but does not create directories."""
+        project_root, config, env = project_env
+
+        result = generate_migration_init(
+            minimal_model, config, env, project_root, dry_run=True
+        )
+        assert isinstance(result, list)
+        assert len(result) > 0
+
+        # No directories were actually created on disk.
+        assert not (project_root / "alembic").exists()
+        assert not (project_root / "alembic" / "versions").exists()
 
 
 class TestMigrationAutogen:
