@@ -26,12 +26,11 @@ class TestValidateModel:
     def schema(self) -> dict[str, Any]:
         return load_schema()
 
-    def test_valid_model_returns_no_errors(
-        self, tmp_path: Path, schema: dict[str, Any]
-    ) -> None:
-        model = {
+    @pytest.fixture
+    def minimal_user_model(self) -> dict[str, Any]:
+        """Minimal valid User model spec used as a base across multiple tests."""
+        return {
             "domain": "users",
-            "description": "User management",
             "entities": {
                 "User": {
                     "table": "users",
@@ -42,9 +41,12 @@ class TestValidateModel:
                 }
             },
         }
-        path = tmp_path / "users.model.json"
-        path.write_text(json.dumps(model))
 
+    def test_valid_model_returns_no_errors(
+        self, tmp_path: Path, schema: dict[str, Any], minimal_user_model: dict[str, Any]
+    ) -> None:
+        path = tmp_path / "users.model.json"
+        path.write_text(json.dumps(minimal_user_model))
         errors = validate_model(path, schema)
         assert errors == []
 
@@ -74,42 +76,24 @@ class TestValidateModel:
         assert validate_model(path, schema) == []
 
     def test_accepts_legacy_index_shape(
-        self, tmp_path: Path, schema: dict[str, Any]
+        self, tmp_path: Path, schema: dict[str, Any], minimal_user_model: dict[str, Any]
     ) -> None:
         """GEN-3: legacy index shapes model-gen normalizes must pass model-val."""
-        model = {
-            "domain": "users",
-            "entities": {
-                "User": {
-                    "table": "users",
-                    "fields": {
-                        "id": {"type": "uuid", "primary_key": True},
-                        "email": {"type": "text", "max_length": 100},
-                    },
-                    "indexes": [{"type": "unique", "field": "email"}],
-                }
-            },
-        }
+        import copy
+        model = copy.deepcopy(minimal_user_model)
+        model["entities"]["User"]["fields"]["email"] = {"type": "text", "max_length": 100}
+        model["entities"]["User"]["indexes"] = [{"type": "unique", "field": "email"}]
         path = tmp_path / "users.model.json"
         path.write_text(json.dumps(model))
         assert validate_model(path, schema) == []
 
     def test_accepts_integer_alias(
-        self, tmp_path: Path, schema: dict[str, Any]
+        self, tmp_path: Path, schema: dict[str, Any], minimal_user_model: dict[str, Any]
     ) -> None:
         """GEN-3: the `integer` alias model-gen normalizes must pass model-val."""
-        model = {
-            "domain": "users",
-            "entities": {
-                "User": {
-                    "table": "users",
-                    "fields": {
-                        "id": {"type": "uuid", "primary_key": True},
-                        "login_count": {"type": "integer", "default": 0},
-                    },
-                }
-            },
-        }
+        import copy
+        model = copy.deepcopy(minimal_user_model)
+        model["entities"]["User"]["fields"]["login_count"] = {"type": "integer", "default": 0}
         path = tmp_path / "users.model.json"
         path.write_text(json.dumps(model))
         assert validate_model(path, schema) == []

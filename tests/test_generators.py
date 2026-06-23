@@ -1350,9 +1350,9 @@ class TestApiModelsGeneratorPerEntity:
         names = {r["path"].name for r in result}
         assert names == {
             "author_response.py",
-            "author_requests.py",
+            "author_request.py",
             "post_response.py",
-            "post_requests.py",
+            "post_request.py",
         }
 
     def test_response_file_contains_only_one_entity(
@@ -1371,12 +1371,12 @@ class TestApiModelsGeneratorPerEntity:
     def test_request_file_contains_only_one_entity(
         self, multi_entity_model: dict[str, Any], project_env_per_entity: Any
     ) -> None:
-        """author_requests.py contains Create/UpdateAuthorRequest and not Post."""
+        """author_request.py contains Create/UpdateAuthorRequest and not Post."""
         project_root, config, env = project_env_per_entity
         result = generate_api_models(multi_entity_model, config, env, project_root)
         assert isinstance(result, list)
         author_req = next(
-            r["content"] for r in result if r["path"].name == "author_requests.py"
+            r["content"] for r in result if r["path"].name == "author_request.py"
         )
         assert "class CreateAuthorRequest(BaseModel):" in author_req
         assert "class UpdateAuthorRequest(BaseModel):" in author_req
@@ -1407,7 +1407,7 @@ class TestApiModelsGeneratorPerEntity:
         result = generate_api_models(model, config, env, project_root)
         assert isinstance(result, list)
         content = next(
-            r["content"] for r in result if r["path"].name == "user_requests.py"
+            r["content"] for r in result if r["path"].name == "user_request.py"
         )
         assert "SecureP@ssw0rd!" not in content
         assert '"password": "your-password-here"' in content
@@ -1511,7 +1511,7 @@ class TestFinancialValidatorSelection:
         self, financial_model: dict[str, Any], project_env_per_entity: Any
     ) -> None:
         content = self._content(
-            financial_model, project_env_per_entity, "account_requests.py"
+            financial_model, project_env_per_entity, "account_request.py"
         )
         assert (
             '_validate_unrealized_pnl = field_validator("unrealized_pnl")'
@@ -1530,7 +1530,7 @@ class TestFinancialValidatorSelection:
         self, financial_model: dict[str, Any], project_env_per_entity: Any
     ) -> None:
         content = self._content(
-            financial_model, project_env_per_entity, "account_requests.py"
+            financial_model, project_env_per_entity, "account_request.py"
         )
         import_line = next(
             line
@@ -1595,7 +1595,7 @@ class TestFinancialValidatorSelection:
                 }
             },
         }
-        for suffix in ("account_response.py", "account_requests.py"):
+        for suffix in ("account_response.py", "account_request.py"):
             content = self._content(model, project_env_per_entity, suffix)
             assert '_validate_pnl = field_validator("pnl")(validate_decimal)' in content
 
@@ -1633,7 +1633,7 @@ class TestRequestFieldValidatorSectionHeader:
         result = generate_api_models(model, config, env, project_root)
         assert isinstance(result, list)
         content = next(
-            r["content"] for r in result if r["path"].name == "account_requests.py"
+            r["content"] for r in result if r["path"].name == "account_request.py"
         )
         assert "}  # " not in content, (
             "Section header must not appear inline with closing brace"
@@ -1675,9 +1675,9 @@ class TestGenerateApiInitPerEntity:
             assert isinstance(result, dict)
         assert result is not None
         assert "from .author_response import" in result["content"]
-        assert "from .author_requests import" in result["content"]
+        assert "from .author_request import" in result["content"]
         assert "from .post_response import" in result["content"]
-        assert "from .post_requests import" in result["content"]
+        assert "from .post_request import" in result["content"]
         assert result["domain_count"] == 2
 
     def test_no_none_banner_emitted(
@@ -1760,7 +1760,7 @@ class TestApiRoutesGeneratorPerEntity:
         assert isinstance(result, list)
         by_name = {r["path"].name: r["content"] for r in result}
         assert (
-            "from src.api.models.author_requests import CreateAuthorRequest"
+            "from src.api.models.author_request import CreateAuthorRequest"
             in by_name["author.py"]
         )
         assert (
@@ -1768,7 +1768,7 @@ class TestApiRoutesGeneratorPerEntity:
             in by_name["author.py"]
         )
         # Per-domain combined imports must NOT appear.
-        assert "from src.api.models.blog_requests" not in by_name["author.py"]
+        assert "from src.api.models.blog_request" not in by_name["author.py"]
         assert "from src.api.models.blog_response" not in by_name["author.py"]
 
     def test_content_isolated_per_entity(
@@ -1875,7 +1875,7 @@ class TestApiTestsGeneratorPerEntity:
         assert len(results) == 2
         filenames = [str(r["path"].name) for r in results]
         assert "items_response.py" in filenames
-        assert "items_requests.py" in filenames
+        assert "items_request.py" in filenames
 
     def test_response_model_content(
         self, minimal_model: dict[str, Any], project_env: Any
@@ -4078,7 +4078,7 @@ class TestInfrastructureGenerators:
 
     def test_generate_pyproject(self, project_env: Any) -> None:
         project_root, config, env = project_env
-        result = generate_pyproject(config, env, project_root, config)
+        result = generate_pyproject(config, env, project_root)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4094,7 +4094,7 @@ class TestInfrastructureGenerators:
         project_root, config, env = project_env
         (project_root / "pyproject.toml").write_text("[project]\nname = 'existing'\n")
 
-        result = generate_pyproject(config, env, project_root, config)
+        result = generate_pyproject(config, env, project_root)
         assert result is None
 
     def test_generate_pyproject_with_no_root_files_returns_none(
@@ -4103,7 +4103,7 @@ class TestInfrastructureGenerators:
         """--no-root-files suppresses pyproject.toml even in a fresh project."""
         project_root, config, env = project_env
         result = generate_pyproject(
-            config, env, project_root, config, no_root_files=True
+            config, env, project_root, no_root_files=True
         )
         assert result is None
         assert not (project_root / "pyproject.toml").exists()
@@ -4127,7 +4127,7 @@ class TestInfrastructureGenerators:
 
     def test_generate_pyproject_contains_runtime_deps(self, project_env: Any) -> None:
         project_root, config, env = project_env
-        result = generate_pyproject(config, env, project_root, config)
+        result = generate_pyproject(config, env, project_root)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4138,7 +4138,7 @@ class TestInfrastructureGenerators:
         self, project_env: Any
     ) -> None:
         project_root, config, env = project_env
-        result = generate_pyproject(config, env, project_root, config)
+        result = generate_pyproject(config, env, project_root)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4148,7 +4148,7 @@ class TestInfrastructureGenerators:
 
     def test_generate_pyproject_has_package_discovery(self, project_env: Any) -> None:
         project_root, config, env = project_env
-        result = generate_pyproject(config, env, project_root, config)
+        result = generate_pyproject(config, env, project_root)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4162,7 +4162,7 @@ class TestInfrastructureGenerators:
         self, project_env: Any
     ) -> None:
         project_root, config, env = project_env
-        result = generate_pyproject(config, env, project_root, config)
+        result = generate_pyproject(config, env, project_root)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4172,7 +4172,7 @@ class TestInfrastructureGenerators:
     def test_generate_pyproject_merges_extra_deps(self, project_env: Any) -> None:
         project_root, config, env = project_env
         extra = ["bcrypt>=4.0.0", "passlib>=1.7.0"]
-        result = generate_pyproject(config, env, project_root, config, extra_deps=extra)
+        result = generate_pyproject(config, env, project_root, extra_deps=extra)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4185,7 +4185,7 @@ class TestInfrastructureGenerators:
         project_root, config, env = project_env
         base_dep = config["dependencies"]["runtime"][0]
         extra = [base_dep, "bcrypt>=4.0.0"]
-        result = generate_pyproject(config, env, project_root, config, extra_deps=extra)
+        result = generate_pyproject(config, env, project_root, extra_deps=extra)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4197,7 +4197,7 @@ class TestInfrastructureGenerators:
         """With no overrides, ruff-default keys are absent; ruff uses its own."""
         project_root, config, env = project_env
         config.pop("style", None)
-        result = generate_pyproject(config, env, project_root, config)
+        result = generate_pyproject(config, env, project_root)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4224,7 +4224,7 @@ class TestInfrastructureGenerators:
             "quote_style": "single",
             "indent_style": "tab",
         }
-        result = generate_pyproject(config, env, project_root, config)
+        result = generate_pyproject(config, env, project_root)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4245,7 +4245,7 @@ class TestInfrastructureGenerators:
         without emitting any ruff-level keys."""
         project_root, config, env = project_env
         config["style"] = {"python_version": "3.12"}
-        result = generate_pyproject(config, env, project_root, config)
+        result = generate_pyproject(config, env, project_root)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4261,7 +4261,7 @@ class TestInfrastructureGenerators:
         """`style: null` in YAML parses as None — must not crash the generator."""
         project_root, config, env = project_env
         config["style"] = None
-        result = generate_pyproject(config, env, project_root, config)
+        result = generate_pyproject(config, env, project_root)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4269,20 +4269,6 @@ class TestInfrastructureGenerators:
         assert 'requires-python = ">=3.12"' in result["content"]
         assert 'python_version = "3.12"' in result["content"]
         assert "line-length = " not in result["content"]
-
-    def test_generate_pyproject_project_config_style_wins(
-        self, project_env: Any
-    ) -> None:
-        """project_config.style takes precedence over config.style when both are set."""
-        project_root, config, env = project_env
-        config["style"] = {"line_length": 88}
-        project_config = {**config, "style": {"line_length": 100}}
-        result = generate_pyproject(config, env, project_root, project_config)
-        assert isinstance(result, dict)
-
-        assert result is not None
-        assert "line-length = 100" in result["content"]
-        assert "line-length = 88" not in result["content"]
 
     def test_generate_base(self, project_env: Any) -> None:
         project_root, config, env = project_env
@@ -4331,7 +4317,7 @@ class TestInfrastructureGenerators:
     ) -> None:
         """TPL-3: emitted pyproject ignores E402 for the alembic env module."""
         project_root, config, env = project_env
-        result = generate_pyproject(config, env, project_root, config)
+        result = generate_pyproject(config, env, project_root)
         assert isinstance(result, dict)
 
         content = result["content"]
@@ -4343,7 +4329,7 @@ class TestInfrastructureGenerators:
     def test_generate_env_example(self, project_env: Any) -> None:
         """TPL-9: .env.example manifests the always-present env vars."""
         project_root, config, env = project_env
-        result = generate_env_example(config, env, project_root, config)
+        result = generate_env_example(config, env, project_root)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4364,7 +4350,7 @@ class TestInfrastructureGenerators:
         project_root, config, env = project_env
         (project_root / ".env.example").write_text("APP_ENV=keep\n")
 
-        result = generate_env_example(config, env, project_root, config)
+        result = generate_env_example(config, env, project_root)
         assert result is None
 
     def test_generate_env_example_with_no_root_files_returns_none(
@@ -4372,7 +4358,7 @@ class TestInfrastructureGenerators:
     ) -> None:
         project_root, config, env = project_env
         result = generate_env_example(
-            config, env, project_root, config, no_root_files=True
+            config, env, project_root, no_root_files=True
         )
         assert result is None
         assert not (project_root / ".env.example").exists()
@@ -4390,7 +4376,7 @@ class TestInfrastructureGenerators:
         }
 
         result = generate_env_example(
-            config, env, project_root, config, has_encrypted_binary=True
+            config, env, project_root, has_encrypted_binary=True
         )
         assert isinstance(result, dict)
 
@@ -4405,7 +4391,7 @@ class TestInfrastructureGenerators:
         project_root, config, env = project_env
         config = {**config, "auth": {"strategy": "api-key", "key_env": "SVC_TOKEN"}}
 
-        result = generate_env_example(config, env, project_root, config)
+        result = generate_env_example(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         assert "SVC_TOKEN=" in content
@@ -7313,7 +7299,7 @@ class TestPyprojectAsyncioMode:
         """asyncio_mode = 'auto' must not appear; it needs pytest-asyncio which
         is not in the generated dev deps, and the contract tests are sync."""
         project_root, config, env = project_env
-        result = generate_pyproject(config, env, project_root, config)
+        result = generate_pyproject(config, env, project_root)
         assert isinstance(result, dict)
         assert "asyncio_mode" not in result["content"]
 
