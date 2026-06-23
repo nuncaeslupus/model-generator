@@ -352,15 +352,19 @@ class TestEnumTemplate:
         assert result is not None
         content = str(result["content"])
         assert "enum WidgetStatus {" in content
-        assert "@JsonEnum(alwaysCreate: true)" in content
-        assert "part 'enums.g.dart'" in content
+        # No @JsonEnum / part 'enums.g.dart' — helpers use .byName()/.name so
+        # the Dart analyser can fully resolve enums.dart without a generated
+        # part file, preventing ProductStatus from appearing as InvalidType.
+        assert "@JsonEnum" not in content
+        assert "part 'enums.g.dart'" not in content
         assert "@JsonValue('ACTIVE')" in content
         assert "ACTIVE," in content
         assert "@JsonValue('ARCHIVED')" in content
-        # Per-enum fromJson/toJson helper functions using $enumDecode.
+        # Per-enum fromJson/toJson helpers use Dart built-in byName/name.
         assert "widgetStatusFromJson" in content
-        assert "$enumDecode(_$WidgetStatusEnumMap" in content
+        assert "WidgetStatus.values.byName(" in content
         assert "widgetStatusToJson" in content
+        assert "object.name" in content
 
     def test_no_enums_returns_none(
         self,
