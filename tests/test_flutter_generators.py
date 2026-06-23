@@ -196,9 +196,9 @@ class TestTypeMapping:
         assert by_name["releasedAt"]["to_json"] == "utcDateTimeToJson"
         assert by_name["thumbnail"]["from_json"] == "bytesFromJson"
         assert by_name["thumbnail"]["to_json"] == "bytesToJson"
-        # Enum fields are handled by json_serializable via @JsonEnum(alwaysCreate:
-        # true) — no fromJson/toJson helpers needed in the descriptor.
-        assert by_name["status"]["from_json"] is None
+        # Enum fields get per-enum fromJson/toJson helpers derived from enum_name.
+        assert by_name["status"]["from_json"] == "widgetStatusFromJson"
+        assert by_name["status"]["to_json"] == "widgetStatusToJson"
         # Plain types carry no fromJson/toJson helpers.
         assert by_name["displayName"]["from_json"] is None
         assert by_name["viewCount"]["from_json"] is None
@@ -288,8 +288,8 @@ class TestModelTemplate:
         assert "fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson" in content
         # Binary field has no name mismatch; only fromJson/toJson is needed.
         assert "@JsonKey(fromJson: bytesFromJson, toJson: bytesToJson)" in content
-        # Enum fields: handled by json_serializable via @JsonEnum — no @JsonKey needed.
-        assert "fromJson: widgetStatusFromJson" not in content
+        # Enum fields: @JsonKey routes through per-enum fromJson/toJson helpers.
+        assert "fromJson: widgetStatusFromJson, toJson: widgetStatusToJson" in content
 
     def test_required_and_nullable_rendered(
         self,
@@ -357,6 +357,10 @@ class TestEnumTemplate:
         assert "@JsonValue('ACTIVE')" in content
         assert "ACTIVE," in content
         assert "@JsonValue('ARCHIVED')" in content
+        # Per-enum fromJson/toJson helper functions using $enumDecode.
+        assert "widgetStatusFromJson" in content
+        assert "$enumDecode(_$WidgetStatusEnumMap" in content
+        assert "widgetStatusToJson" in content
 
     def test_no_enums_returns_none(
         self,

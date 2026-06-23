@@ -29,6 +29,7 @@ import 'package:json_annotation/json_annotation.dart';
 part 'enums.g.dart';
 
 {% for enum_name, enum_def in enums.items() %}
+{% set fn_prefix = enum_name[0] | lower + enum_name[1:] %}
 {% if enum_def.description %}
 /// {{ enum_def.description }}
 {% endif %}
@@ -47,5 +48,10 @@ enum {{ enum_name }} {
 {% endif %}
 {% endfor %}
 }
+
+{{ enum_name }} {{ fn_prefix }}FromJson(Object? json) =>
+    $enumDecode(_${{ enum_name }}EnumMap, json);
+String {{ fn_prefix }}ToJson({{ enum_name }} object) =>
+    _${{ enum_name }}EnumMap[object]!;
 
 {% endfor %}
