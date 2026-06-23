@@ -4083,8 +4083,8 @@ class TestInfrastructureGenerators:
             assert line.strip() != "[tool.ruff]"
         # Python-version pins are always emitted (not tool defaults — mypy defaults
         # to the runtime Python, and requires-python must be declared).
-        assert 'requires-python = ">=3.11"' in content
-        assert 'python_version = "3.11"' in content
+        assert 'requires-python = ">=3.12"' in content
+        assert 'python_version = "3.12"' in content
 
     def test_generate_pyproject_style_overrides_emitted(self, project_env: Any) -> None:
         """All four style overrides appear verbatim in the generated pyproject.toml."""
@@ -4137,8 +4137,8 @@ class TestInfrastructureGenerators:
 
         assert result is not None
         # Default python_version still applied, no ruff-level overrides emitted.
-        assert 'requires-python = ">=3.11"' in result["content"]
-        assert 'python_version = "3.11"' in result["content"]
+        assert 'requires-python = ">=3.12"' in result["content"]
+        assert 'python_version = "3.12"' in result["content"]
         assert "line-length = " not in result["content"]
 
     def test_generate_pyproject_project_config_style_wins(
@@ -7159,3 +7159,127 @@ class TestGeneratedOutputLintClean:
             "generated output is not lint-clean after the standard quality "
             f"pass:\n{check.stdout}"
         )
+
+
+class TestResponseModelFromAttributes:
+    """TPL-11: response models are always dict-constructed; from_attributes is dead."""
+
+    def test_response_model_has_no_from_attributes(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """ConfigDict in the response model must NOT set from_attributes=True."""
+        project_root, config, env = project_env
+        results = generate_api_models(minimal_model, config, env, project_root)
+        assert isinstance(results, list)
+        response = next(r for r in results if "response" in r["path"].name)
+        assert "from_attributes=True" not in response["content"]
+        # ConfigDict is still emitted (for json_schema_extra).
+        assert "ConfigDict(" in response["content"]
+
+
+class TestPyprojectAsyncioMode:
+    """TPL-13: asyncio_mode must not be emitted — the generated tests are sync."""
+
+    def test_asyncio_mode_absent_from_pyproject(self, project_env: Any) -> None:
+        """asyncio_mode = 'auto' must not appear; it needs pytest-asyncio which
+        is not in the generated dev deps, and the contract tests are sync."""
+        project_root, config, env = project_env
+        result = generate_pyproject(config, env, project_root, config)
+        assert isinstance(result, dict)
+        assert "asyncio_mode" not in result["content"]
+
+
+class TestSortBySecretFieldExclusion:
+    """TPL-18: api_exclude_response fields must not appear in the sort_by whitelist."""
+
+    _EXCLUDE_MODEL: ClassVar[dict[str, Any]] = {
+        "domain": "accounts",
+        "entities": {
+            "Account": {
+                "table": "accounts",
+                "api": {
+                    "endpoints": ["list", "create", "get", "update", "delete"],
+                },
+                "fields": {
+                    "id": {"type": "uuid", "primary_key": True, "auto_generate": True},
+                    "username": {"type": "text", "max_length": 50, "required": True},
+                    "password_hash": {
+                        "type": "text",
+                        "max_length": 256,
+                        "api_exclude_response": True,
+                    },
+                },
+                "timestamps": {"created": True, "updated": True},
+            }
+        },
+    }
+
+    def test_excluded_field_absent_from_sort_whitelist(self, project_env: Any) -> None:
+        """A field with api_exclude_response:true must not appear in valid_fields."""
+        project_root, config, env = project_env
+        result = generate_api_routes(
+            self._EXCLUDE_MODEL, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # The valid_fields set should contain public fields...
+        assert '"username"' in content
+        # ...but must NOT include the secret field.
+        assert '"password_hash"' not in content.split("valid_fields")[1].split("}")[0]
+
+    def test_public_field_present_in_sort_whitelist(self, project_env: Any) -> None:
+        """Non-excluded fields still appear in the sort_by whitelist."""
+        project_root, config, env = project_env
+        result = generate_api_routes(
+            self._EXCLUDE_MODEL, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # valid_fields block should have username
+        valid_block = content.split("valid_fields")[1].split("}")[0]
+        assert '"username"' in valid_block
+
+
+class TestSortByInvalidFieldRaises422:
+    """TPL-19: an unknown sort_by value must raise HTTPException(422), not be silently
+    ignored."""
+
+    _MODEL: ClassVar[dict[str, Any]] = {
+        "domain": "posts",
+        "entities": {
+            "Post": {
+                "table": "posts",
+                "api": {"endpoints": ["list", "create", "get", "update", "delete"]},
+                "fields": {
+                    "id": {"type": "uuid", "primary_key": True, "auto_generate": True},
+                    "title": {"type": "text", "max_length": 200, "required": True},
+                },
+                "timestamps": {"created": True, "updated": True},
+            }
+        },
+    }
+
+    def test_invalid_sort_by_raises_http_exception(self, project_env: Any) -> None:
+        """The generated list handler must raise HTTPException(422) when sort_by is
+        not in valid_fields, so callers get a structured error instead of silence."""
+        project_root, config, env = project_env
+        result = generate_api_routes(
+            self._MODEL, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        # The else branch must exist after the `if sort_by in valid_fields` check.
+        assert "else:" in content
+        assert "raise HTTPException(" in content
+        assert "status_code=422" in content
+
+    def test_valid_sort_by_path_still_present(self, project_env: Any) -> None:
+        """The happy path — sort_by in valid_fields — is not removed."""
+        project_root, config, env = project_env
+        result = generate_api_routes(
+            self._MODEL, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert "if sort_by in valid_fields:" in content
+        assert "sort_column = getattr(" in content

@@ -125,7 +125,3 @@ tests_dir = ["tests/"]
 also_copy = ["examples/"]
 backup = false
 
-[dependency-groups]
-dev = [
-    "pyyaml>=6.0.3",
-]
