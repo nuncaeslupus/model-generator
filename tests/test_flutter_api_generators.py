@@ -356,7 +356,7 @@ class TestRequestDtos:
         outputs = generate_flutter_request_dtos(model, flutter_config, env, tmp_path)
         by_name = {Path(o["path"]).name: str(o["content"]) for o in outputs}
         content = by_name["widget_requests.dart"]
-        assert "@DecimalConverter()" in content
+        assert "fromJson: decimalFromJson, toJson: decimalToJson" in content
         assert "required Decimal unitPrice," in content
 
 

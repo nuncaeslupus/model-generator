@@ -85,15 +85,19 @@ types:
 
   financial:
     # Carried as a JSON *string* (byte-compatible with the FastAPI Numeric wire
-    # format) and decoded to a Decimal via the project's DecimalConverter.
+    # format) and decoded to a Decimal via the top-level helpers in converters.dart.
+    # fromJson/toJson are used instead of a @Converter() annotation to avoid the
+    # Freezed 3.x null-crash in DefaultValue.defaultValue.
     dart: "Decimal"
-    converter: "DecimalConverter"
+    from_json: "decimalFromJson"
+    to_json: "decimalToJson"
     imports:
       - "package:decimal/decimal.dart"
 
   percentage:
     dart: "Decimal"
-    converter: "DecimalConverter"
+    from_json: "decimalFromJson"
+    to_json: "decimalToJson"
     imports:
       - "package:decimal/decimal.dart"
 
@@ -108,14 +112,17 @@ types:
     dart: "bool"
 
   datetime:
-    # ISO8601 with trailing 'Z' on the wire; UtcDateTimeConverter round-trips it.
+    # ISO8601 with trailing 'Z' on the wire; round-tripped via top-level helpers
+    # in converters.dart using @JsonKey(fromJson:..., toJson:...).
     dart: "DateTime"
-    converter: "UtcDateTimeConverter"
+    from_json: "utcDateTimeFromJson"
+    to_json: "utcDateTimeToJson"
 
   binary:
-    # base64 string on the wire; BytesConverter decodes to Uint8List.
+    # base64 string on the wire; decoded via top-level helpers in converters.dart.
     dart: "Uint8List"
-    converter: "BytesConverter"
+    from_json: "bytesFromJson"
+    to_json: "bytesToJson"
     imports:
       - "dart:typed_data"
 

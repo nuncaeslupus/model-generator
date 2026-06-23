@@ -190,12 +190,15 @@ class TestTypeMapping:
     ) -> None:
         entity = model["entities"]["Widget"]
         by_name = {f["name"]: f for f in resolve_fields(entity, flutter_config)}
-        assert by_name["unitPrice"]["converter"] == "DecimalConverter"
-        assert by_name["releasedAt"]["converter"] == "UtcDateTimeConverter"
-        assert by_name["thumbnail"]["converter"] == "BytesConverter"
-        # Plain types carry no converter.
-        assert by_name["displayName"]["converter"] is None
-        assert by_name["viewCount"]["converter"] is None
+        assert by_name["unitPrice"]["from_json"] == "decimalFromJson"
+        assert by_name["unitPrice"]["to_json"] == "decimalToJson"
+        assert by_name["releasedAt"]["from_json"] == "utcDateTimeFromJson"
+        assert by_name["releasedAt"]["to_json"] == "utcDateTimeToJson"
+        assert by_name["thumbnail"]["from_json"] == "bytesFromJson"
+        assert by_name["thumbnail"]["to_json"] == "bytesToJson"
+        # Plain types carry no fromJson/toJson helpers.
+        assert by_name["displayName"]["from_json"] is None
+        assert by_name["viewCount"]["from_json"] is None
 
 
 # --------------------------------------------------------------------------- #
@@ -276,9 +279,12 @@ class TestModelTemplate:
         content = _render_models(model, flutter_config, env, tmp_path)
         assert "@JsonKey(name: 'owner_id')" in content
         assert "@JsonKey(name: 'token')" in content
-        assert "@DecimalConverter()" in content
-        assert "@UtcDateTimeConverter()" in content
-        assert "@BytesConverter()" in content
+        # Decimal fields: combined @JsonKey with name + fromJson/toJson helpers.
+        assert "fromJson: decimalFromJson, toJson: decimalToJson" in content
+        # DateTime fields: combined @JsonKey with fromJson/toJson helpers.
+        assert "fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson" in content
+        # Binary field has no name mismatch; only fromJson/toJson is needed.
+        assert "@JsonKey(fromJson: bytesFromJson, toJson: bytesToJson)" in content
 
     def test_required_and_nullable_rendered(
         self,
