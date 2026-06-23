@@ -6,47 +6,87 @@ How to add field types, create templates, and register generators in model-gener
 
 ## Architecture Overview
 
+`generate.py` is stack-agnostic: it resolves `--stack <name>` to a `StackSpec`
+from the shared registry and drives whichever stack the user selects. Each stack
+lives entirely in its own directory under `stacks/` and `generators/`.
+
 ```
 src/model_generator/
-├── generate.py                     # CLI entry point, GENERATORS dict, TARGETS lists
+├── generate.py                     # CLI entry point; resolves stack via registry
 ├── validate.py                     # JSON schema validation
 ├── generators/
-│   ├── __init__.py                 # Re-exports all generator functions
-│   ├── api.py                      # API models, routes, tests, pagination
-│   ├── database.py                 # Database models, init, factories
-│   ├── enums.py                    # Enum generation (create/append)
-│   ├── constraints.py              # Constraint generation (create/append)
-│   ├── infrastructure.py           # Base, engine, main, errors, validators, etc.
-│   └── migrations.py               # Alembic init and autogenerate
+│   ├── registry.py                 # StackSpec, register_stack, STACKS dict
+│   ├── python_fastapi/             # python-fastapi stack generators
+│   │   ├── __init__.py             # PYTHON_FASTAPI_STACK StackSpec + register_stack()
+│   │   ├── api.py                  # API models, routes, tests, pagination
+│   │   ├── database.py             # Database models, init, factories
+│   │   ├── enums.py                # Enum generation (create/append)
+│   │   ├── constraints.py          # Constraint generation (create/append)
+│   │   ├── infrastructure.py       # Base, engine, main, errors, validators, etc.
+│   │   └── migrations.py           # Alembic init and autogenerate
+│   └── flutter/                    # flutter stack generators
+│       ├── __init__.py             # FLUTTER_STACK StackSpec + register_stack()
+│       ├── generators.py           # Models, enums, converters, scaffold
+│       ├── api.py                  # Retrofit client, repos, dio setup, auth interceptor
+│       ├── fields.py               # Dart field-type resolution helpers
+│       └── paths.py                # lib/{pkg}/… path helpers
 ├── utils/
 │   ├── __init__.py                 # Re-exports: get_template_env, load_config, etc.
 │   ├── loaders.py                  # load_model, load_config, load_shared_enums/constraints
-│   ├── templates.py                # Jinja2 env, custom filters (wrap, path_to_import, dict2items)
+│   ├── templates.py                # Jinja2 env, custom filters (wrap, path_to_import, dict2items, camel_case)
 │   ├── parser.py                   # scan_model_files, scan_api_model_files
-│   ├── quality.py                  # run_quality_tools (ruff, mypy)
+│   ├── quality.py                  # run_config_quality (stack-driven: ruff, dart format/analyze)
 │   ├── constants.py                # GENERATED_MARKER
-│   └── conftest_generator.py       # Test conftest generation
+│   └── conftest_generator.py       # Test conftest generation (python-fastapi only)
 └── stacks/
-    └── python-fastapi/
-        ├── config.yaml             # Type mappings, paths, constraints, naming, quality
+    ├── python-fastapi/
+    │   ├── config.yaml             # Type mappings, paths, constraints, naming, quality
+    │   └── templates/
+    │       ├── database/           # model.py.j2, init.py.j2, enums.py.j2, constraints.py.j2, factory.py.j2
+    │       ├── api/                # request.py.j2, response.py.j2, route.py.j2, init.py.j2, pagination.py.j2
+    │       ├── tests/              # contract.py.j2, conftest_root.py.j2
+    │       ├── infrastructure/     # base.py.j2, engine.py.j2, main.py.j2, errors.py.j2, validators.py.j2, utils.py.j2, types.py.j2, database_init.py.j2
+    │       └── migrations/         # ini.j2, env.py.j2, script.py.mako.j2
+    └── flutter/
+        ├── config.yaml             # Dart type mappings, paths, dependencies, naming, quality
         └── templates/
-            ├── database/           # model.py.j2, init.py.j2, enums.py.j2, constraints.py.j2, factory.py.j2
-            ├── api/                # request.py.j2, response.py.j2, route.py.j2, init.py.j2, pagination.py.j2
-            ├── tests/              # contract.py.j2, conftest_root.py.j2
-            ├── infrastructure/     # base.py.j2, engine.py.j2, main.py.j2, errors.py.j2, validators.py.j2, utils.py.j2, types.py.j2, database_init.py.j2
-            └── migrations/         # ini.j2, env.py.j2, script.py.mako.j2
+            ├── models/             # model.dart.j2, enums.dart.j2, index.dart.j2
+            ├── api/                # retrofit_client.dart.j2, request.dart.j2, index.dart.j2, repository.dart.j2
+            └── infrastructure/     # pubspec.yaml.j2, analysis_options.yaml.j2, build.yaml.j2, converters.dart.j2, dio_setup.dart.j2, pagination.dart.j2, auth_interceptor.dart.j2, README.md.j2, gitignore.j2
 ```
+
+### Stack Registry
+
+Each stack module calls `register_stack(StackSpec(...))` at import time.
+`generate.py` imports every stack package on startup so all stacks are
+registered, then resolves `--stack <name>` to the matching `StackSpec`.
+
+The `StackSpec` fields that `generate.py` reads:
+
+| Field | Purpose |
+|---|---|
+| `name` | Registry key (matches `stack:` in `.model-generator.yaml`) |
+| `infrastructure_targets` | Targets dispatched to `infra_orchestrator` (skip-if-exists semantics) |
+| `domain_targets` | Targets dispatched to `generators[target]` (run per model file) |
+| `generators` | `{target: fn}` — domain-target dispatch table |
+| `infra_orchestrator` | Function that runs all infrastructure targets in order |
+| `quality_runner` | Called after generation; runs formatter + analyzer for the stack |
+| `cleanup_spec` | Glob patterns and path keys for `--clean` |
+| `validators` | Per-generation validators (e.g. `_validate_paths_base` for python-fastapi) |
+| `infra_validators` | Pre-infra validators (e.g. `_validate_auth_strategy`) |
+| `extra_deps_fn` | Returns extra pyproject deps to inject (python-fastapi only) |
 
 ### Data Flow
 
 ```
-.model-generator.yaml + config.yaml  →  merged config dict
-*.model.json + _shared/*.json         →  model dict + enums dict + constraints dict
-                                      ↓
-                          generate.py: main() → _generate_target() → GENERATORS[target]()
-                                      ↓
-                          generators/*.py: render Jinja2 template with (model, config, env)
-                                      ↓
+.model-generator.yaml + stacks/<name>/config.yaml  →  merged config dict
+*.model.json + _shared/*.json                       →  model dict + enums dict + constraints dict
+                                                    ↓
+                          generate.py: main() → STACKS[stack_name] → StackSpec
+                                                    ↓
+                          infra_orchestrator(config, env, project_root)    (once)
+                          generators[target](GenContext)                    (per model file)
+                                                    ↓
                           Output: {path, content, mode} dicts → _process_outputs() → files
 ```
 
@@ -240,20 +280,22 @@ class {{ entity_name }}(Base):
 
 ## How to Register a Generator
 
+This section covers adding a target to an **existing stack**. To add a new stack
+entirely, see [Adding a New Stack](#adding-a-new-stack) below.
+
 ### Step 1: Write the Generator Function
 
-File: Create in `generators/` or add to existing file.
+File: Create in `generators/<stack>/` or add to an existing module there.
 
 **Function signature:**
 
 ```python
 def generate_my_thing(
-    model: dict,
-    config: dict,
+    model: dict[str, Any],
+    config: dict[str, Any],
     env: Environment,
     project_root: Path,
-) -> dict | list[dict] | None:
-    """Generate my thing."""
+) -> dict[str, Any] | list[dict[str, Any]] | None:
     template = env.get_template("category/my_thing.py.j2")
     content = template.render(model=model, config=config)
 
@@ -278,57 +320,33 @@ def generate_my_thing(
 
 # Skip (nothing to generate):
 None
-
-# Instructions (not a file):
-{"info": str, "instructions": str}
 ```
 
-### Step 2: Export from `generators/__init__.py`
+### Step 2: Add to the stack's `StackSpec`
+
+In `generators/<stack>/__init__.py`, add the target to the dispatch table and
+the appropriate target list:
 
 ```python
-from .my_module import generate_my_thing
-
-__all__ = [
+# Domain target (run per model file):
+_MY_GENERATORS: dict[str, TargetGenerator] = {
     ...,
-    "generate_my_thing",
-]
-```
-
-### Step 3: Register in `generate.py`
-
-**For simple generators** (standard signature), add to the dispatch table:
-
-```python
-GENERATORS = {
-    ...,
-    "my-thing": lambda m, c, e, p, mp: generate_my_thing(m, c, e, p),
+    "my-thing": lambda c: generate_my_thing(c.model, c.config, c.env, c.project_root),
 }
-```
 
-The lambda signature is `(model, config, env, project_root, model_path)`. Use only the params your generator needs.
-
-**For generators needing extra data** (enums, constraints), add to `_generate_target()`:
-
-```python
-def _generate_target(self, target, model, config, env, project_root, model_path, enums, constraints):
+MY_STACK = StackSpec(
+    ...,
+    domain_targets=[..., "my-thing"],   # or infrastructure_targets for infra
+    generators=_MY_GENERATORS,
     ...
-    elif target == "my-thing":
-        return generate_my_thing(model, config, env, project_root, enums, constraints)
+)
 ```
 
-### Step 4: Add to Target Lists
+`GenContext` (the `c` argument) carries `model`, `config`, `env`,
+`project_root`, and `model_path`. Use only the fields your generator reads.
 
-In `generate.py`, add to the appropriate list:
-
-```python
-# For infrastructure (run once):
-INFRASTRUCTURE_TARGETS = [..., "my-thing"]
-
-# For domain-specific (run per model file):
-DOMAIN_TARGETS = [..., "my-thing"]
-```
-
-The target appears in `TARGETS` automatically (union of both + `"infrastructure"` + `"all"`).
+For infrastructure targets, call the generator from `infra_orchestrator`
+instead (infrastructure runs once, not per model file).
 
 ---
 
@@ -355,6 +373,99 @@ The target appears in `TARGETS` automatically (union of both + `"infrastructure"
 | `migration-autogen` | `generate_migration_autogen()` | — | Instructions only |
 
 Infrastructure generators (`generate_infrastructure()`) also create: `types.py`, `database/__init__.py`, `errors.py`, `validators.py`, `utils.py`, and `__init__.py` files for all package directories.
+
+---
+
+## Adding a New Stack
+
+The stack registry makes adding a third or fourth stack purely additive — no
+changes to `generate.py` or any shared code are required.
+
+### Step 1: Create the stack config
+
+```
+src/model_generator/stacks/<name>/config.yaml
+```
+
+At minimum, include `stack.name`, `paths`, `types` (abstract → target-language
+mappings), `naming`, and `quality`. Model the file on
+`stacks/python-fastapi/config.yaml` (Python) or `stacks/flutter/config.yaml`
+(Dart). The config is deep-merged with `.model-generator.yaml` at load time;
+any key the project sets overrides the stack default.
+
+### Step 2: Create the generator package
+
+```
+src/model_generator/generators/<name>/
+    __init__.py          # StackSpec definition + register_stack()
+    generators.py        # infrastructure and domain generator functions
+    ...                  # additional modules as needed
+```
+
+Generator functions follow the existing contract:
+
+```python
+def generate_my_thing(
+    model: dict[str, Any],
+    config: dict[str, Any],
+    env: Environment,
+    project_root: Path,
+) -> dict[str, Any] | list[dict[str, Any]] | None:
+    template = env.get_template("category/my_thing.ext.j2")
+    content = template.render(model=model, config=config)
+    output_file = project_root / config["paths"]["my_output_path"] / f"{model['domain']}.ext"
+    return {"path": output_file, "content": content}
+```
+
+### Step 3: Register the stack
+
+In `generators/<name>/__init__.py`, build and register a `StackSpec`:
+
+```python
+from ..registry import StackSpec, register_stack
+
+MY_STACK = StackSpec(
+    name="my-stack",                    # must match stack: in .model-generator.yaml
+    infrastructure_targets=[...],       # labels for --target; dispatched to infra_orchestrator
+    domain_targets=[...],               # dispatched to generators[target] per model file
+    generators={"target": fn, ...},     # domain-target dispatch table
+    infra_orchestrator=my_infra_fn,     # runs all infra targets in order
+    quality_runner=run_config_quality,  # formatter + analyzer (or a custom callable)
+    cleanup_spec=MY_CLEANUP,            # CleanupSpec with path keys + glob patterns
+    validators=[],                      # per-generation validators (or stack-specific ones)
+    infra_validators=[],                # pre-infra validators
+    extra_deps_fn=None,                 # returns extra runtime deps to inject (or None)
+)
+
+register_stack(MY_STACK)
+```
+
+Import the package from `generate.py`'s stack-import block so it is registered
+at startup. The Flutter stack is the canonical reference implementation.
+
+### Step 4: Add templates
+
+```
+src/model_generator/stacks/<name>/templates/
+    ...                 # one subdirectory per category; .j2 extension
+```
+
+Template variables are whatever the generator function passes to
+`template.render(...)`. Use the `camel_case` Jinja filter for camelCase
+identifiers (Dart/JS stacks) alongside the existing `snake_case` and
+`path_to_import` filters.
+
+### Step 5: Test
+
+Add `tests/stacks/<name>/` with:
+
+- Unit tests that render templates against fixture specs and assert correct
+  output (no SDK required).
+- A smoke script `scripts/smoke_generated_<name>.sh` that regenerates the
+  bundled example, runs the target SDK's tool chain, and exits non-zero on
+  any error.
+- A CI job that runs the smoke script in an environment with the SDK
+  installed (see `.github/workflows/ci.yml`'s `generated-flutter` job).
 
 ---
 

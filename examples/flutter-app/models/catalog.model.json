@@ -1,0 +1,155 @@
+{
+    "$schema": "../../../src/model_generator/schema/model.schema.json",
+    "domain": "catalog",
+    "description": "Product catalog — categories and products. Both entities are in one file (per-domain layout). Category is public; Product requires an api-key header on every endpoint.",
+    "section_header": "CATALOG MODELS",
+    "entities": {
+        "Category": {
+            "table": "categories",
+            "description": "Top-level product grouping. All endpoints are public (no auth required).",
+            "fields": {
+                "id": {
+                    "type": "uuid",
+                    "primary_key": true,
+                    "auto_generate": true,
+                    "description": "Category identifier"
+                },
+                "name": {
+                    "type": "text",
+                    "max_length": 100,
+                    "required": true,
+                    "unique": true,
+                    "description": "Human-readable category name (unique)"
+                },
+                "slug": {
+                    "type": "text",
+                    "max_length": 100,
+                    "required": true,
+                    "unique": true,
+                    "api_exclude_update": true,
+                    "description": "URL-safe slug (unique; excluded from update requests)"
+                },
+                "description": {
+                    "type": "text",
+                    "max_length": 500,
+                    "description": "Optional longer description"
+                },
+                "is_active": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether the category is visible in the catalog"
+                }
+            },
+            "timestamps": {
+                "created": true,
+                "updated": true
+            },
+            "relationships": {
+                "products": {
+                    "type": "one_to_many",
+                    "target": "Product",
+                    "back_populates": "category",
+                    "cascade": "all, delete-orphan"
+                }
+            },
+            "api": {
+                "enabled": true,
+                "prefix": "categories",
+                "endpoints": ["list", "get", "create", "update", "delete"],
+                "pagination": true
+            },
+            "tests": {
+                "enabled": true
+            }
+        },
+        "Product": {
+            "table": "products",
+            "description": "Catalog product. All endpoints require an X-Catalog-Key header (api.require_auth: true), demonstrating the api-key auth strategy.",
+            "fields": {
+                "id": {
+                    "type": "uuid",
+                    "primary_key": true,
+                    "auto_generate": true,
+                    "description": "Product identifier"
+                },
+                "category_id": {
+                    "type": "reference",
+                    "reference_table": "categories",
+                    "required": true,
+                    "on_delete": "RESTRICT",
+                    "api_exclude_update": true,
+                    "description": "Category this product belongs to (excluded from update requests)"
+                },
+                "sku": {
+                    "type": "text",
+                    "max_length": 64,
+                    "required": true,
+                    "unique": true,
+                    "api_exclude_update": true,
+                    "description": "Stock-keeping unit — globally unique; excluded from update requests"
+                },
+                "name": {
+                    "type": "text",
+                    "max_length": 200,
+                    "required": true,
+                    "description": "Product display name"
+                },
+                "price": {
+                    "type": "financial",
+                    "precision": 10,
+                    "scale": 2,
+                    "required": true,
+                    "constraints": [
+                        {"type": "positive"}
+                    ],
+                    "description": "Unit price — must be positive, two decimal places"
+                },
+                "stock_count": {
+                    "type": "counter",
+                    "default": 0,
+                    "constraints": [
+                        {"type": "non_negative"}
+                    ],
+                    "description": "Units currently in stock — non-negative integer"
+                },
+                "status": {
+                    "type": "enum",
+                    "enum_name": "ProductStatus",
+                    "enum_existing": true,
+                    "default": "DRAFT",
+                    "description": "Lifecycle status (see _shared/enums.json for ProductStatus values)"
+                },
+                "description": {
+                    "type": "text",
+                    "max_length": 1000,
+                    "description": "Optional product description"
+                }
+            },
+            "timestamps": {
+                "created": true,
+                "updated": true
+            },
+            "relationships": {
+                "category": {
+                    "type": "many_to_one",
+                    "target": "Category",
+                    "back_populates": "products"
+                }
+            },
+            "indexes": [
+                {"fields": ["category_id"]},
+                {"fields": ["status"]}
+            ],
+            "api": {
+                "enabled": true,
+                "require_auth": true,
+                "prefix": "products",
+                "endpoints": ["list", "get", "create", "update", "delete"],
+                "pagination": true
+            },
+            "tests": {
+                "enabled": true
+            }
+        }
+    }
+}

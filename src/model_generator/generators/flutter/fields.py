@@ -155,7 +155,8 @@ def resolve_fields(
         json_key    wire JSON key (snake_case, or ``api_field_name`` override)
         dart_type   concrete Dart type (nullability applied separately)
         nullable    whether the member is ``T?``
-        converter   JsonConverter annotation name, or None
+        from_json   fromJson helper function name for @JsonKey, or None
+        to_json     toJson helper function name for @JsonKey, or None
         needs_json_key  True when json_key differs from the Dart member name
         doc         list of doc-comment body lines
     """
@@ -169,6 +170,14 @@ def resolve_fields(
         json_key = _json_key(field_name, field)
         abstract = field.get("type", "")
         spec = type_map.get(abstract, {}) or {}
+        from_json = spec.get("from_json")
+        to_json = spec.get("to_json")
+        if abstract == "enum":
+            _en = str(field.get("enum_name") or "")
+            if _en:
+                _fn = _en[0].lower() + _en[1:]
+                from_json = f"{_fn}FromJson"
+                to_json = f"{_fn}ToJson"
 
         descriptors.append(
             {
@@ -176,7 +185,8 @@ def resolve_fields(
                 "json_key": json_key,
                 "dart_type": _dart_type(field, type_map),
                 "nullable": _is_nullable(field),
-                "converter": spec.get("converter"),
+                "from_json": from_json,
+                "to_json": to_json,
                 # The JsonKey annotation is only needed when the wire key and the
                 # Dart member name diverge — which is whenever the source field
                 # name is snake_case (multi-segment) or renamed via api_field_name.
@@ -267,12 +277,21 @@ def resolve_dto_fields(
         if owner_field is not None and field_name == owner_field:
             continue
 
-        spec = type_map.get(field.get("type", ""), {}) or {}
+        abstract_dto = field.get("type", "")
+        spec = type_map.get(abstract_dto, {}) or {}
         dart_member = camel_case(field_name)
         json_key = _json_key(field_name, field)
         # Create DTO fields follow the field's ``required`` flag; Update DTO
         # fields are always nullable (PATCH-style partial update).
         nullable = not bool(field.get("required", False)) if kind == "create" else True
+        from_json = spec.get("from_json")
+        to_json = spec.get("to_json")
+        if abstract_dto == "enum":
+            _en = str(field.get("enum_name") or "")
+            if _en:
+                _fn = _en[0].lower() + _en[1:]
+                from_json = f"{_fn}FromJson"
+                to_json = f"{_fn}ToJson"
 
         descriptors.append(
             {
@@ -280,7 +299,8 @@ def resolve_dto_fields(
                 "json_key": json_key,
                 "dart_type": _dart_type(field, type_map),
                 "nullable": nullable,
-                "converter": spec.get("converter"),
+                "from_json": from_json,
+                "to_json": to_json,
                 "needs_json_key": json_key != dart_member,
                 "doc": _doc_comment(field),
             }
@@ -317,7 +337,7 @@ def collect_dto_imports(
         spec = type_map.get(abstract, {}) or {}
         for imp in spec.get("imports", []) or []:
             raw_imports.add(str(imp))
-        if spec.get("converter"):
+        if spec.get("from_json") or spec.get("to_json"):
             has_converter = True
         if abstract == "enum":
             has_enum = True
@@ -354,7 +374,7 @@ def collect_model_imports(
         spec = type_map.get(abstract, {}) or {}
         for imp in spec.get("imports", []) or []:
             raw_imports.add(str(imp))
-        if spec.get("converter"):
+        if spec.get("from_json") or spec.get("to_json"):
             has_converter = True
         if abstract == "enum":
             has_enum = True

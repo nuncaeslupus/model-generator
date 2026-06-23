@@ -23,7 +23,7 @@ from model_generator.generators.flutter import (
     generate_pubspec,
 )
 from model_generator.generators.flutter.fields import resolve_fields
-from model_generator.generators.flutter.paths import package_name, resolve_path
+from model_generator.generators.flutter.paths import resolve_path
 from model_generator.generators.registry import STACKS, get_stack
 from model_generator.utils.templates import get_template_env
 
@@ -190,12 +190,18 @@ class TestTypeMapping:
     ) -> None:
         entity = model["entities"]["Widget"]
         by_name = {f["name"]: f for f in resolve_fields(entity, flutter_config)}
-        assert by_name["unitPrice"]["converter"] == "DecimalConverter"
-        assert by_name["releasedAt"]["converter"] == "UtcDateTimeConverter"
-        assert by_name["thumbnail"]["converter"] == "BytesConverter"
-        # Plain types carry no converter.
-        assert by_name["displayName"]["converter"] is None
-        assert by_name["viewCount"]["converter"] is None
+        assert by_name["unitPrice"]["from_json"] == "decimalFromJson"
+        assert by_name["unitPrice"]["to_json"] == "decimalToJson"
+        assert by_name["releasedAt"]["from_json"] == "utcDateTimeFromJson"
+        assert by_name["releasedAt"]["to_json"] == "utcDateTimeToJson"
+        assert by_name["thumbnail"]["from_json"] == "bytesFromJson"
+        assert by_name["thumbnail"]["to_json"] == "bytesToJson"
+        # Enum fields get per-enum fromJson/toJson helpers derived from enum_name.
+        assert by_name["status"]["from_json"] == "widgetStatusFromJson"
+        assert by_name["status"]["to_json"] == "widgetStatusToJson"
+        # Plain types carry no fromJson/toJson helpers.
+        assert by_name["displayName"]["from_json"] is None
+        assert by_name["viewCount"]["from_json"] is None
 
 
 # --------------------------------------------------------------------------- #
@@ -262,7 +268,7 @@ class TestModelTemplate:
     ) -> None:
         content = _render_models(model, flutter_config, env, tmp_path)
         assert "@freezed" in content
-        assert "class Widget with _$Widget {" in content
+        assert "abstract class Widget with _$Widget {" in content
         assert "const factory Widget({" in content
         assert "factory Widget.fromJson(Map<String, dynamic> json) =>" in content
 
@@ -276,9 +282,14 @@ class TestModelTemplate:
         content = _render_models(model, flutter_config, env, tmp_path)
         assert "@JsonKey(name: 'owner_id')" in content
         assert "@JsonKey(name: 'token')" in content
-        assert "@DecimalConverter()" in content
-        assert "@UtcDateTimeConverter()" in content
-        assert "@BytesConverter()" in content
+        # Decimal fields: combined @JsonKey with name + fromJson/toJson helpers.
+        assert "fromJson: decimalFromJson, toJson: decimalToJson" in content
+        # DateTime fields: combined @JsonKey with fromJson/toJson helpers.
+        assert "fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson" in content
+        # Binary field has no name mismatch; only fromJson/toJson is needed.
+        assert "@JsonKey(fromJson: bytesFromJson, toJson: bytesToJson)" in content
+        # Enum fields: @JsonKey routes through per-enum fromJson/toJson helpers.
+        assert "fromJson: widgetStatusFromJson, toJson: widgetStatusToJson" in content
 
     def test_required_and_nullable_rendered(
         self,
@@ -313,8 +324,7 @@ class TestModelTemplate:
     ) -> None:
         outputs = generate_flutter_models(model, flutter_config, env, tmp_path)
         path = outputs[0]["path"]
-        pkg = package_name(flutter_config)
-        assert path == tmp_path / "lib" / pkg / "models" / "widget.dart"
+        assert path == tmp_path / "lib" / "models" / "widget.dart"
 
 
 # --------------------------------------------------------------------------- #
@@ -341,9 +351,19 @@ class TestEnumTemplate:
         assert result is not None
         content = str(result["content"])
         assert "enum WidgetStatus {" in content
+        # No @JsonEnum / part 'enums.g.dart' — helpers use .byName()/.name so
+        # the Dart analyser can fully resolve enums.dart without a generated
+        # part file, preventing ProductStatus from appearing as InvalidType.
+        assert "@JsonEnum" not in content
+        assert "part 'enums.g.dart'" not in content
         assert "@JsonValue('ACTIVE')" in content
         assert "ACTIVE," in content
         assert "@JsonValue('ARCHIVED')" in content
+        # Per-enum fromJson/toJson helpers use Dart built-in byName/name.
+        assert "widgetStatusFromJson" in content
+        assert "WidgetStatus.values.byName(" in content
+        assert "widgetStatusToJson" in content
+        assert "object?.name" in content
 
     def test_no_enums_returns_none(
         self,
@@ -473,8 +493,7 @@ class TestConverters:
         self, flutter_config: dict[str, Any], env: Any, tmp_path: Path
     ) -> None:
         result = generate_converters(flutter_config, env, tmp_path)
-        pkg = package_name(flutter_config)
-        assert result["path"] == tmp_path / "lib" / pkg / "core" / "converters.dart"
+        assert result["path"] == tmp_path / "lib" / "core" / "converters.dart"
 
 
 class TestPubspec:
@@ -560,10 +579,11 @@ class TestProjectAgnostic:
         assert "package:custom_pkg/core/converters.dart" in content
         assert "package:custom_pkg/models/enums.dart" in content
 
-    def test_resolve_path_substitutes_package_name(
-        self, flutter_config: dict[str, Any]
-    ) -> None:
-        cfg = dict(flutter_config)
-        cfg["flutter"] = {"package_name": "my_client"}
+    def test_resolve_path_substitutes_package_name(self) -> None:
+        # resolve_path still supports {pkg} in user-overridden path values.
+        cfg = {
+            "flutter": {"package_name": "my_client"},
+            "paths": {"models": "lib/{pkg}/models", "api_core": "lib/{pkg}/core"},
+        }
         assert resolve_path(cfg, "models") == "lib/my_client/models"
         assert resolve_path(cfg, "api_core") == "lib/my_client/core"

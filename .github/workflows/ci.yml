@@ -64,3 +64,21 @@ jobs:
           python-version: "3.12"
       - run: uv sync --extra dev
       - run: make smoke-catalog-api
+
+  # Smoke-tests the flutter-app example: regenerates the Flutter client from
+  # the catalog-api spec, runs dart pub get + build_runner, and verifies
+  # dart analyze passes (zero errors). Guards the Flutter templates and the
+  # shared engine changes from Phase 0.
+  generated-flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: uv sync --extra dev
+      - run: make smoke-flutter

@@ -28,7 +28,6 @@ from model_generator.generators.flutter import (
 from model_generator.generators.flutter.fields import (
     resolve_dto_fields,
 )
-from model_generator.generators.flutter.paths import package_name
 from model_generator.utils.templates import get_template_env
 
 # --------------------------------------------------------------------------- #
@@ -260,9 +259,8 @@ class TestRetrofitClient:
         tmp_path: Path,
     ) -> None:
         outputs = generate_flutter_api_client(model, flutter_config, env, tmp_path)
-        pkg = package_name(flutter_config)
         paths = {Path(o["path"]) for o in outputs}
-        assert tmp_path / "lib" / pkg / "api" / "widget_api.dart" in paths
+        assert tmp_path / "lib" / "api" / "widget_api.dart" in paths
 
 
 # --------------------------------------------------------------------------- #
@@ -281,8 +279,12 @@ class TestRequestDtos:
         outputs = generate_flutter_request_dtos(model, flutter_config, env, tmp_path)
         by_name = {Path(o["path"]).name: str(o["content"]) for o in outputs}
         content = by_name["widget_requests.dart"]
-        assert "class CreateWidgetRequest with _$CreateWidgetRequest {" in content
-        assert "class UpdateWidgetRequest with _$UpdateWidgetRequest {" in content
+        assert "abstract class CreateWidgetRequest with _$CreateWidgetRequest {" in (
+            content
+        )
+        assert "abstract class UpdateWidgetRequest with _$UpdateWidgetRequest {" in (
+            content
+        )
 
     def test_immutable_skips_update_dto(
         self,
@@ -356,7 +358,7 @@ class TestRequestDtos:
         outputs = generate_flutter_request_dtos(model, flutter_config, env, tmp_path)
         by_name = {Path(o["path"]).name: str(o["content"]) for o in outputs}
         content = by_name["widget_requests.dart"]
-        assert "@DecimalConverter()" in content
+        assert "fromJson: decimalFromJson, toJson: decimalToJson" in content
         assert "required Decimal unitPrice," in content
 
 
@@ -459,7 +461,7 @@ class TestPagination:
         result = generate_flutter_pagination(flutter_config, env, tmp_path)
         content = str(result["content"])
         # Generic envelope + the snake_case wire keys the FastAPI stack emits.
-        assert "class Paginated<T> with _$Paginated<T> {" in content
+        assert "abstract class Paginated<T> with _$Paginated<T> {" in content
         assert "required List<T> items," in content
         assert "@JsonKey(name: 'page_info') required PageInfo pageInfo," in content
         assert "@JsonKey(name: 'page_size') required int pageSize," in content
@@ -471,8 +473,7 @@ class TestPagination:
         self, flutter_config: dict[str, Any], env: Any, tmp_path: Path
     ) -> None:
         result = generate_flutter_pagination(flutter_config, env, tmp_path)
-        pkg = package_name(flutter_config)
-        assert result["path"] == tmp_path / "lib" / pkg / "core" / "pagination.dart"
+        assert result["path"] == tmp_path / "lib" / "core" / "pagination.dart"
 
 
 # --------------------------------------------------------------------------- #

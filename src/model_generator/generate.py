@@ -394,22 +394,31 @@ def generate(
     no_root_files: bool = False,
 ) -> None:
     """Generate code from model definition."""
-    spec = get_stack(stack)
     project_root = _find_project_root(model_path)
     _validate_project_root(project_root)
 
     model = load_model(model_path)
     config = load_config(stack)
+    # .model-generator.yaml `stack:` overrides the argument default so callers
+    # don't need to pass --stack when the project config already declares it.
+    # Note: in the stack's own config.yaml, `stack:` is a metadata dict
+    # ({name, description, version}), not a stack name; only a plain string
+    # from the project yaml represents an actual override.
+    _stack_field = config.get("stack")
+    actual_stack = _stack_field if isinstance(_stack_field, str) else stack
+    if actual_stack != stack:
+        config = load_config(actual_stack)
+    spec = get_stack(actual_stack)
     for validator in spec.validators:
         validator(model, config)
-    env = get_template_env(stack, config)
+    env = get_template_env(actual_stack, config)
 
     domain = model.get("domain", "unknown")
     entity_count = len(model.get("entities", {}))
 
     print(f"\n🔧 Generating code for domain: {domain} ({entity_count} entities)")
     print(f"   Target: {target}")
-    print(f"   Stack: {stack}")
+    print(f"   Stack: {actual_stack}")
 
     outputs = []
     # When "all", iterate every concrete target plus the "infrastructure"
@@ -1226,8 +1235,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--stack",
-        default="python-fastapi",
-        help="Stack configuration to use (default: python-fastapi)",
+        default=None,
+        help=(
+            "Stack configuration to use (default: from .model-generator.yaml "
+            "or python-fastapi)"
+        ),
     )
 
     args = parser.parse_args()
@@ -1238,6 +1250,18 @@ def main() -> None:
 
         run_wizard()
         return
+
+    # Resolve stack: explicit --stack > .model-generator.yaml `stack:` > default.
+    # load_config() already reads the project yaml to pick the right stack
+    # config.yaml; extract the resolved name from the merged config so the rest
+    # of main() (get_stack, get_template_env, generate()) uses the right spec.
+    # Note: in the stack's own config.yaml, `stack:` is a metadata dict
+    # ({name, description, version}); only a plain string from the project
+    # .model-generator.yaml represents an actual stack name override.
+    if args.stack is None:
+        _probe_config = load_config("python-fastapi")
+        _stack_val = _probe_config.get("stack")
+        args.stack = _stack_val if isinstance(_stack_val, str) else "python-fastapi"
 
     # Resolve the stack registry entry. Done here (not in argparse) so --target
     # is validated against the stack's registered targets, not a static

@@ -1,4 +1,4 @@
-.PHONY: lint format test test-all smoke-example smoke-catalog-api clean sync build publish publish-force version-sync check-version-sync tag-release update-skills
+.PHONY: lint format test test-all smoke-example smoke-catalog-api smoke-flutter clean sync build publish publish-force version-sync check-version-sync tag-release update-skills
 
 sync:
 	uv sync --extra dev
@@ -94,6 +94,11 @@ smoke-example:
 # suite (requires Python 3.12 for the generated PEP 695 generics).
 smoke-catalog-api:
 	./scripts/smoke_generated_catalog_api.sh
+
+# Regenerate the flutter-app example and verify the generated Dart is valid
+# (requires Flutter/Dart SDK on PATH; CI runs this with subosito/flutter-action).
+smoke-flutter:
+	./scripts/smoke_generated_flutter.sh
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

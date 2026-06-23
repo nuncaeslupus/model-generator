@@ -13,8 +13,8 @@ Getting started, designing models, and using the CLI.
 | [Installation Guide](./user/installation.md) | Install, configure, create your first project |
 | [Model Design Guide](./user/model-design-guide.md) | Step-by-step guide to designing JSON specifications |
 | [Usage Guide](./user/usage-guide.md) | CLI workflows: generate, preview, clean, interactive mode |
+| [Flutter Stack](./user/flutter.md) | Generate a Dart/Flutter client from the same spec |
 | [Quick Reference](./user/quick-reference.md) | Lookup tables: field types, constraints, options, CLI flags |
-| [Architecture, Troubleshooting & Upgrades](./user/architecture.md) | Pipeline overview, generated layout, common errors, upgrade story |
 | [Extending Generated Code](./user/extending-generated-code.md) | Add business logic, custom routes, migrations |
 
 ---
@@ -58,7 +58,8 @@ Maintaining the tool itself.
 
 | Document | Description |
 |----------|-------------|
-| [Python-FastAPI Stack](../src/model_generator/stacks/python-fastapi/README.md) | Stack overview, template structure, how to add stacks |
+| [Python-FastAPI Stack](../src/model_generator/stacks/python-fastapi/README.md) | Stack overview, template structure |
+| [Flutter Stack](./user/flutter.md) | Dart/Flutter client — type mapping, auth, post-gen steps |
 
 ---
 
@@ -67,11 +68,12 @@ Maintaining the tool itself.
 | I want to... | Go to |
 |--------------|-------|
 | Install and try the example | [Installation Guide](./user/installation.md) |
-| Understand how generation works / fix a common error | [Architecture, Troubleshooting & Upgrades](./user/architecture.md) |
+| Generate a Flutter/Dart client | [Flutter Stack](./user/flutter.md) |
 | Design a new JSON model | [Model Design Guide](./user/model-design-guide.md) |
 | Look up a field type or option | [Quick Reference](./user/quick-reference.md) |
 | Understand the exact JSON format | [JSON Specification Reference](./agent/json-specification-reference.md) |
 | Add a new field type to the generator | [Template Extension Guide](./agent/template-extension-guide.md) |
+| Add a new stack to the generator | [Template Extension Guide](./agent/template-extension-guide.md#adding-a-new-stack) |
 | Walk a user through model design | [Model Design Questions](./agent/model-design-questions.md) |
 | Understand constraint placement | [Constraints](./deep-dives/constraints.md) |
 | Add business logic to generated code | [Extending Generated Code](./user/extending-generated-code.md) |

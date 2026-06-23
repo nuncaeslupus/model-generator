@@ -41,11 +41,13 @@ def resolve_path(config: dict[str, Any], key: str, default: str = "") -> str:
 def package_uri(config: dict[str, Any], lib_relative: str) -> str:
     """Build a ``package:<pkg>/<path>`` import URI from a lib-relative path.
 
-    ``lib_relative`` is a path under ``lib/`` (e.g. ``models/user.dart``); Dart
-    package URIs are rooted at ``lib/`` so the prefix is dropped. Derived from
+    ``lib_relative`` is a path under ``lib/`` (e.g. ``lib/models/user.dart``);
+    Dart package URIs have the form ``package:<pubspec_name>/<lib-relative>``
+    where the package name comes from ``flutter.package_name``. Derived from
     config — never hardcoded to a project name.
     """
+    pkg = package_name(config)
     relative = lib_relative
     if relative.startswith("lib/"):
         relative = relative[len("lib/") :]
-    return f"package:{relative}"
+    return f"package:{pkg}/{relative}"
