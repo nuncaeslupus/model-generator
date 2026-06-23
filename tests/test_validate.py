@@ -80,9 +80,11 @@ class TestValidateModel:
     ) -> None:
         """GEN-3: legacy index shapes model-gen normalizes must pass model-val."""
         import copy
+
         model = copy.deepcopy(minimal_user_model)
         model["entities"]["User"]["fields"]["email"] = {
-            "type": "text", "max_length": 100
+            "type": "text",
+            "max_length": 100,
         }
         model["entities"]["User"]["indexes"] = [{"type": "unique", "field": "email"}]
         path = tmp_path / "users.model.json"
@@ -94,9 +96,11 @@ class TestValidateModel:
     ) -> None:
         """GEN-3: the `integer` alias model-gen normalizes must pass model-val."""
         import copy
+
         model = copy.deepcopy(minimal_user_model)
         model["entities"]["User"]["fields"]["login_count"] = {
-            "type": "integer", "default": 0
+            "type": "integer",
+            "default": 0,
         }
         path = tmp_path / "users.model.json"
         path.write_text(json.dumps(model))

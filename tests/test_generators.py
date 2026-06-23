@@ -4102,9 +4102,7 @@ class TestInfrastructureGenerators:
     ) -> None:
         """--no-root-files suppresses pyproject.toml even in a fresh project."""
         project_root, config, env = project_env
-        result = generate_pyproject(
-            config, env, project_root, no_root_files=True
-        )
+        result = generate_pyproject(config, env, project_root, no_root_files=True)
         assert result is None
         assert not (project_root / "pyproject.toml").exists()
 
@@ -4357,9 +4355,7 @@ class TestInfrastructureGenerators:
         self, project_env: Any
     ) -> None:
         project_root, config, env = project_env
-        result = generate_env_example(
-            config, env, project_root, no_root_files=True
-        )
+        result = generate_env_example(config, env, project_root, no_root_files=True)
         assert result is None
         assert not (project_root / ".env.example").exists()
 
@@ -4475,8 +4471,7 @@ class TestInfrastructureGenerators:
 
     def test_generate_main(self, project_env: Any) -> None:
         project_root, config, env = project_env
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4490,16 +4485,14 @@ class TestInfrastructureGenerators:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("existing")
 
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert result is None
 
     def test_generate_main_no_auth_router_when_strategy_unset(
         self, project_env: Any
     ) -> None:
         project_root, config, env = project_env
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         # No auth.strategy → no auth-router import or include.
         assert "auth_router" not in result["content"]
@@ -4511,8 +4504,7 @@ class TestInfrastructureGenerators:
             **config,
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         # Default auth.path resolves to backend.src.auth.router.
         assert (
@@ -4536,8 +4528,7 @@ class TestInfrastructureGenerators:
                 "path": "src/api/auth.py",
             },
         }
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         assert "from src.api.auth import router as auth_router" in result["content"]
 
@@ -4549,8 +4540,7 @@ class TestInfrastructureGenerators:
             **config,
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         # CSRF middleware imported from sibling of auth.path
         assert "from backend.src.auth.csrf import CsrfMiddleware" in result["content"]
@@ -4562,8 +4552,7 @@ class TestInfrastructureGenerators:
 
     def test_generate_main_no_csrf_when_strategy_unset(self, project_env: Any) -> None:
         project_root, config, env = project_env
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         assert "CsrfMiddleware" not in result["content"]
 
@@ -4575,8 +4564,7 @@ class TestInfrastructureGenerators:
             **config,
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         content = result["content"]
         # slowapi pieces imported and limiter pulled from sibling of auth.path
@@ -4594,8 +4582,7 @@ class TestInfrastructureGenerators:
         self, project_env: Any
     ) -> None:
         project_root, config, env = project_env
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         content = result["content"]
         assert "RateLimitExceeded" not in content
@@ -4613,8 +4600,7 @@ class TestInfrastructureGenerators:
                 "rate_limit": {"enabled": False},
             },
         }
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         content = result["content"]
         # Auth + CSRF still wired, rate-limit pieces absent
@@ -4625,8 +4611,7 @@ class TestInfrastructureGenerators:
     def test_generate_main_cors_no_wildcard_default(self, project_env: Any) -> None:
         """CORS default is a concrete dev origin, never the wildcard."""
         project_root, config, env = project_env
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         content = result["content"]
         # No wildcard default, and credentials are never hardcoded on.
@@ -4642,8 +4627,7 @@ class TestInfrastructureGenerators:
     ) -> None:
         """CORS methods/headers are narrowed from the old ["*"] wildcards."""
         project_root, config, env = project_env
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         content = result["content"]
         assert 'allow_methods=["*"]' not in content
@@ -4663,8 +4647,7 @@ class TestInfrastructureGenerators:
             **config,
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         assert '"X-CSRF-Token",' in result["content"]
 
@@ -4673,8 +4656,7 @@ class TestInfrastructureGenerators:
     ) -> None:
         """No auth/CSRF → the X-CSRF-Token header is absent from the allowlist."""
         project_root, config, env = project_env
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         assert "X-CSRF-Token" not in result["content"]
 
@@ -4802,8 +4784,7 @@ class TestInfrastructureGenerators:
     def test_generate_main_registers_validation_handler(self, project_env: Any) -> None:
         """P4: main imports and registers the trimmed validation handler."""
         project_root, config, env = project_env
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         content = result["content"]
         assert "from fastapi.exceptions import RequestValidationError" in content
@@ -4816,8 +4797,7 @@ class TestInfrastructureGenerators:
     def test_generate_main_wires_request_body_limit(self, project_env: Any) -> None:
         """P3: main imports and installs the body-size middleware by default."""
         project_root, config, env = project_env
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         content = result["content"]
         assert "import RequestBodySizeLimitMiddleware" in content
@@ -4832,16 +4812,14 @@ class TestInfrastructureGenerators:
             **config,
             "app": {**config.get("app", {}), "max_request_body_bytes": 0},
         }
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         assert "RequestBodySizeLimitMiddleware" not in result["content"]
 
     def test_generate_main_body_limit_before_cors(self, project_env: Any) -> None:
         """P3: body limit is added before CORS so CORS stays outermost."""
         project_root, config, env = project_env
-        result = generate_main(
-            config, env, project_root, domains=["users"]        )
+        result = generate_main(config, env, project_root, domains=["users"])
         assert isinstance(result, dict)
         content = result["content"]
         body_idx = content.index(
@@ -5501,10 +5479,7 @@ class TestApiKeyAuthGenerator:
         from model_generator.generators.infrastructure import generate_api_key_auth
 
         project_root, config, env = project_env_per_entity
-        assert (
-            generate_api_key_auth(config, env, project_root)
-            is None
-        )
+        assert generate_api_key_auth(config, env, project_root) is None
 
     def test_returns_none_for_session_strategy(
         self, project_env_per_entity: Any
@@ -5514,10 +5489,7 @@ class TestApiKeyAuthGenerator:
 
         project_root, config, env = project_env_per_entity
         config = {**config, "auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
-        assert (
-            generate_api_key_auth(config, env, project_root)
-            is None
-        )
+        assert generate_api_key_auth(config, env, project_root) is None
 
     def test_emits_dependency_when_strategy_api_key(
         self, project_env_per_entity: Any
@@ -5526,9 +5498,7 @@ class TestApiKeyAuthGenerator:
 
         project_root, config, env = project_env_per_entity
         config = {**config, "auth": {"strategy": "api-key"}}
-        result = generate_api_key_auth(
-            config, env, project_root
-        )
+        result = generate_api_key_auth(config, env, project_root)
         assert isinstance(result, dict)
         assert result["path"] == project_root / "backend/src/auth/api_key.py"
         content = result["content"]
@@ -5559,9 +5529,7 @@ class TestApiKeyAuthGenerator:
                 "header_name": "X-Service-Token",
             },
         }
-        result = generate_api_key_auth(
-            config, env, project_root
-        )
+        result = generate_api_key_auth(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         assert '_KEY_ENV = "SERVICE_TOKEN"' in content
@@ -5582,9 +5550,7 @@ class TestApiKeyAuthGenerator:
             **config,
             "auth": {"strategy": "api-key", "header_name": "1 Weird.Header!"},
         }
-        result = generate_api_key_auth(
-            config, env, project_root
-        )
+        result = generate_api_key_auth(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         # The real header name is preserved in the alias...
@@ -5601,10 +5567,7 @@ class TestApiKeyAuthGenerator:
         dep_file = project_root / "backend/src/auth/api_key.py"
         dep_file.parent.mkdir(parents=True, exist_ok=True)
         dep_file.write_text("# adopter customized\n")
-        assert (
-            generate_api_key_auth(config, env, project_root)
-            is None
-        )
+        assert generate_api_key_auth(config, env, project_root) is None
 
     def test_session_generators_skip_api_key_strategy(
         self, project_env_per_entity: Any
@@ -5618,10 +5581,7 @@ class TestApiKeyAuthGenerator:
 
         project_root, config, env = project_env_per_entity
         config = {**config, "auth": {"strategy": "api-key"}}
-        assert (
-            generate_auth_router(config, env, project_root)
-            is None
-        )
+        assert generate_auth_router(config, env, project_root) is None
         assert generate_csrf(config, env, project_root) is None
         assert generate_rate_limit(config, env, project_root) is None
 
