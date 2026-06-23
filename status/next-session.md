@@ -1,6 +1,43 @@
 # Next Session Plan
 
-## Current State (2026-06-23) — P3 template batch shipped
+## Current State (2026-06-23) — P3 batch GEN-5/7/11, TOOL-9, TPL-7 (PR #63, CI running)
+
+Branch `claude/gifted-bohr-f9tdl6`. Five P3 backlog items from the 2026-06-21
+code review. 716 unit tests + `make lint` clean. PR #63 open, CI running.
+
+- **GEN-5** — Extracted duplicated `_find_project_root()` from 4 wizard action
+  modules (`generate.py`, `clean.py`, `test_runner.py`, `project_setup.py`) into
+  a shared `wizard/actions/_common.py` helper — 4 identical implementations → 1.
+- **GEN-7** — Added `dry_run: bool = False` parameter to `generate_migration_init()`;
+  gates both `mkdir` calls so callers can collect file specs without touching the
+  filesystem. `GenContext.dry_run` field wired; dispatch table passes `c.dry_run`
+  for the `migration-init` target.
+- **GEN-11** — Replaced the character-loop `snake_case` with two-pass regex
+  (`([A-Z]+)([A-Z][a-z])` then `([a-z\d])([A-Z])`), fixing consecutive-capitals
+  acronyms: `APIKey → api_key`, `HTTPSConfig → https_config`. Jinja `to_snake_case`
+  macro now delegates to the registered Python filter so both paths agree.
+- **TOOL-9** — Restored `from .utils import load_model as load_model` as a
+  separate explicit re-export line in `generate.py` — required by mypy strict's
+  `no_implicit_reexport`; the `as name` form is NOT redundant.
+- **TPL-7** — Removed ~16 dead helper functions from `constraints.py.j2`
+  (`validate_percentage`, `check_positive`, `check_non_negative`, `validate_range`,
+  `check_range`, `check_percentage`, `check_datetime_order`, etc.) and associated
+  hardcoded constants (`MIN_FILE_SIZE`, `MIN_SESSION_DURATION`, …) that no generated
+  template ever imported.
+
+**Tests:** +4 snake_case consecutive-capitals cases (`APIKey`, `HTTPSConfig`,
+`HTTPRequest`, `ApiKey`); +1 `test_generate_migration_init_dry_run_skips_mkdir`
+verifying no dirs created when `dry_run=True`. 712 → 716 tests.
+
+**Remaining open items** (from `status/code-review-2026-06-21.md`):
+TPL-15, TPL-21, SEC-8, TST-8, TST-10, TOOL-2, TOOL-4 (env: Any), TOOL-5, TOOL-7, TOOL-8.
+
+**Already confirmed closed / by-design:**
+- GEN-9 (has passing test `test_strip_json_comments_preserves_slashes_in_strings`)
+- TOOL-11 (CI comment explains why lint runs on 3.12 with py311 target — intentional)
+- TOOL-4 (stack registry refactor in Flutter Phase 0 cleaned up the dispatch table)
+
+---
 
 ### P3 template/tooling batch shipped — TPL-8/11/13/18/19/22 + TOOL-10 (PR #61)
 
