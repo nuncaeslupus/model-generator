@@ -18,6 +18,7 @@ import 'package:json_annotation/json_annotation.dart';
 {% if enum_def.description %}
 /// {{ enum_def.description }}
 {% endif %}
+@JsonEnum()
 enum {{ enum_name }} {
 {% for value in enum_def["values"] %}
 {% if value is mapping %}
