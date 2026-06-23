@@ -45,6 +45,6 @@ enum {{ enum_name }} {
 
 {{ enum_name }} {{ fn_prefix }}FromJson(Object? json) =>
     {{ enum_name }}.values.byName(json as String);
-String {{ fn_prefix }}ToJson({{ enum_name }} object) => object.name;
+String? {{ fn_prefix }}ToJson({{ enum_name }}? object) => object?.name;
 
 {% endfor %}

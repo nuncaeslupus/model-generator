@@ -363,7 +363,7 @@ class TestEnumTemplate:
         assert "widgetStatusFromJson" in content
         assert "WidgetStatus.values.byName(" in content
         assert "widgetStatusToJson" in content
-        assert "object.name" in content
+        assert "object?.name" in content
 
     def test_no_enums_returns_none(
         self,
