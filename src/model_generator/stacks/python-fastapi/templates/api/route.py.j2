@@ -134,7 +134,7 @@ from {{ auth_dep_path.rsplit('.', 1)[0] }} import {{ auth_dep_func }}
 {% set is_per_entity = config.get('generation', {}).get('layout', 'per-entity') == 'per-entity' %}
 {% for entity_name, entity in model.entities.items() %}
 {% set req_module = (entity_name | snake_case) if is_per_entity else model.domain %}
-from {{ config.paths.api_models | path_to_import }}.{{ req_module }}_requests import Create{{ entity_name }}Request{% if entity.mutability | default('mutable') != 'immutable' %}, Update{{ entity_name }}Request{% endif %}
+from {{ config.paths.api_models | path_to_import }}.{{ req_module }}_request import Create{{ entity_name }}Request{% if entity.mutability | default('mutable') != 'immutable' %}, Update{{ entity_name }}Request{% endif %}
 
 {% endfor %}
 

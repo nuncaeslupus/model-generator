@@ -683,7 +683,7 @@ class TestScanApiModelFiles:
         assert "UserResponse" in result[0]["response_models"]
 
     def test_finds_request_models(self, tmp_path: Path) -> None:
-        (tmp_path / "users_requests.py").write_text(
+        (tmp_path / "users_request.py").write_text(
             "from pydantic import BaseModel\n\n"
             "class CreateUserRequest(BaseModel):\n"
             "    pass\n"

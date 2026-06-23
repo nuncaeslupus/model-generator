@@ -4476,8 +4476,7 @@ class TestInfrastructureGenerators:
     def test_generate_main(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
 
         assert result is not None
@@ -4492,8 +4491,7 @@ class TestInfrastructureGenerators:
         output_path.write_text("existing")
 
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert result is None
 
     def test_generate_main_no_auth_router_when_strategy_unset(
@@ -4501,8 +4499,7 @@ class TestInfrastructureGenerators:
     ) -> None:
         project_root, config, env = project_env
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         # No auth.strategy → no auth-router import or include.
         assert "auth_router" not in result["content"]
@@ -4515,8 +4512,7 @@ class TestInfrastructureGenerators:
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         # Default auth.path resolves to backend.src.auth.router.
         assert (
@@ -4541,8 +4537,7 @@ class TestInfrastructureGenerators:
             },
         }
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         assert "from src.api.auth import router as auth_router" in result["content"]
 
@@ -4555,8 +4550,7 @@ class TestInfrastructureGenerators:
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         # CSRF middleware imported from sibling of auth.path
         assert "from backend.src.auth.csrf import CsrfMiddleware" in result["content"]
@@ -4569,8 +4563,7 @@ class TestInfrastructureGenerators:
     def test_generate_main_no_csrf_when_strategy_unset(self, project_env: Any) -> None:
         project_root, config, env = project_env
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         assert "CsrfMiddleware" not in result["content"]
 
@@ -4583,8 +4576,7 @@ class TestInfrastructureGenerators:
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         content = result["content"]
         # slowapi pieces imported and limiter pulled from sibling of auth.path
@@ -4603,8 +4595,7 @@ class TestInfrastructureGenerators:
     ) -> None:
         project_root, config, env = project_env
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         content = result["content"]
         assert "RateLimitExceeded" not in content
@@ -4623,8 +4614,7 @@ class TestInfrastructureGenerators:
             },
         }
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         content = result["content"]
         # Auth + CSRF still wired, rate-limit pieces absent
@@ -4636,8 +4626,7 @@ class TestInfrastructureGenerators:
         """CORS default is a concrete dev origin, never the wildcard."""
         project_root, config, env = project_env
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         content = result["content"]
         # No wildcard default, and credentials are never hardcoded on.
@@ -4654,8 +4643,7 @@ class TestInfrastructureGenerators:
         """CORS methods/headers are narrowed from the old ["*"] wildcards."""
         project_root, config, env = project_env
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         content = result["content"]
         assert 'allow_methods=["*"]' not in content
@@ -4676,8 +4664,7 @@ class TestInfrastructureGenerators:
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         assert '"X-CSRF-Token",' in result["content"]
 
@@ -4687,8 +4674,7 @@ class TestInfrastructureGenerators:
         """No auth/CSRF → the X-CSRF-Token header is absent from the allowlist."""
         project_root, config, env = project_env
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         assert "X-CSRF-Token" not in result["content"]
 
@@ -4817,8 +4803,7 @@ class TestInfrastructureGenerators:
         """P4: main imports and registers the trimmed validation handler."""
         project_root, config, env = project_env
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         content = result["content"]
         assert "from fastapi.exceptions import RequestValidationError" in content
@@ -4832,8 +4817,7 @@ class TestInfrastructureGenerators:
         """P3: main imports and installs the body-size middleware by default."""
         project_root, config, env = project_env
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         content = result["content"]
         assert "import RequestBodySizeLimitMiddleware" in content
@@ -4849,8 +4833,7 @@ class TestInfrastructureGenerators:
             "app": {**config.get("app", {}), "max_request_body_bytes": 0},
         }
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         assert "RequestBodySizeLimitMiddleware" not in result["content"]
 
@@ -4858,8 +4841,7 @@ class TestInfrastructureGenerators:
         """P3: body limit is added before CORS so CORS stays outermost."""
         project_root, config, env = project_env
         result = generate_main(
-            config, env, project_root, domains=["users"], project_config=config
-        )
+            config, env, project_root, domains=["users"]        )
         assert isinstance(result, dict)
         content = result["content"]
         body_idx = content.index(
@@ -4875,7 +4857,6 @@ class TestInfrastructureGenerators:
             env=env,
             project_root=project_root,
             domains=["items"],
-            project_config=config,
         )
 
         assert isinstance(files, list)
@@ -4897,7 +4878,6 @@ class TestInfrastructureGenerators:
             env=env,
             project_root=project_root,
             domains=["items"],
-            project_config=config,
         )
 
         # Second run — should skip some files
@@ -4906,7 +4886,6 @@ class TestInfrastructureGenerators:
             env=env,
             project_root=project_root,
             domains=["items"],
-            project_config=config,
         )
 
         assert len(files1) > 0
@@ -5182,7 +5161,7 @@ class TestAuthRouterGenerator:
         from model_generator.generators.infrastructure import generate_auth_router
 
         project_root, config, env = project_env_per_entity
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert result is None
 
     def test_emits_router_when_strategy_set(self, project_env_per_entity: Any) -> None:
@@ -5194,7 +5173,7 @@ class TestAuthRouterGenerator:
             "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
         }
 
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
 
         assert result is not None
@@ -5229,7 +5208,7 @@ class TestAuthRouterGenerator:
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
 
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         assert "from src.database.models.user import User" in content
@@ -5249,7 +5228,7 @@ class TestAuthRouterGenerator:
         auth_file.parent.mkdir(parents=True, exist_ok=True)
         auth_file.write_text("# adopter has customized this\n")
 
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert result is None
 
     def test_honors_custom_auth_path(self, project_env_per_entity: Any) -> None:
@@ -5265,7 +5244,7 @@ class TestAuthRouterGenerator:
             },
         }
 
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
         assert result is not None
         assert result["path"] == project_root / "src/auth/api.py"
@@ -5281,7 +5260,7 @@ class TestAuthRouterGenerator:
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
 
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         # Relative import keeps router and csrf in the same package
@@ -5301,7 +5280,7 @@ class TestAuthRouterGenerator:
             **config,
             "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
         }
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         # Sibling import for the limiter and limit constants
@@ -5335,7 +5314,7 @@ class TestAuthRouterGenerator:
                 "rate_limit": {"enabled": False},
             },
         }
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         assert "@limiter.limit" not in content
@@ -5357,7 +5336,7 @@ class TestAuthRouterGenerator:
             **config,
             "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
         }
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         assert "def _resolve_session_secret() -> str:" in content
@@ -5379,7 +5358,7 @@ class TestAuthRouterGenerator:
             **config,
             "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
         }
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         assert "async def _send_password_reset_email(" in content
@@ -5397,7 +5376,7 @@ class TestAuthRouterGenerator:
             **config,
             "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
         }
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         assert "from sqlalchemy import select, update" in content
@@ -5415,7 +5394,7 @@ class TestAuthRouterGenerator:
             **config,
             "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
         }
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         assert "def _token_fingerprint(password_hash: str) -> str:" in content
@@ -5435,7 +5414,7 @@ class TestAuthRouterGenerator:
             **config,
             "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
         }
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         # Two distinct serializers with distinct salts.
@@ -5462,7 +5441,7 @@ class TestAuthRouterGenerator:
             **config,
             "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
         }
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
         content = result["content"]
         # Module logger is wired.
@@ -5505,7 +5484,7 @@ class TestAuthRouterGenerator:
                 "cookie_name": "sid",
             },
         }
-        result = generate_auth_router(config, env, project_root, self._project_config())
+        result = generate_auth_router(config, env, project_root)
         assert isinstance(result, dict)
         ast.parse(result["content"])
 
@@ -5523,7 +5502,7 @@ class TestApiKeyAuthGenerator:
 
         project_root, config, env = project_env_per_entity
         assert (
-            generate_api_key_auth(config, env, project_root, self._project_config())
+            generate_api_key_auth(config, env, project_root)
             is None
         )
 
@@ -5536,7 +5515,7 @@ class TestApiKeyAuthGenerator:
         project_root, config, env = project_env_per_entity
         config = {**config, "auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
         assert (
-            generate_api_key_auth(config, env, project_root, self._project_config())
+            generate_api_key_auth(config, env, project_root)
             is None
         )
 
@@ -5548,7 +5527,7 @@ class TestApiKeyAuthGenerator:
         project_root, config, env = project_env_per_entity
         config = {**config, "auth": {"strategy": "api-key"}}
         result = generate_api_key_auth(
-            config, env, project_root, self._project_config()
+            config, env, project_root
         )
         assert isinstance(result, dict)
         assert result["path"] == project_root / "backend/src/auth/api_key.py"
@@ -5581,7 +5560,7 @@ class TestApiKeyAuthGenerator:
             },
         }
         result = generate_api_key_auth(
-            config, env, project_root, self._project_config()
+            config, env, project_root
         )
         assert isinstance(result, dict)
         content = result["content"]
@@ -5604,7 +5583,7 @@ class TestApiKeyAuthGenerator:
             "auth": {"strategy": "api-key", "header_name": "1 Weird.Header!"},
         }
         result = generate_api_key_auth(
-            config, env, project_root, self._project_config()
+            config, env, project_root
         )
         assert isinstance(result, dict)
         content = result["content"]
@@ -5623,7 +5602,7 @@ class TestApiKeyAuthGenerator:
         dep_file.parent.mkdir(parents=True, exist_ok=True)
         dep_file.write_text("# adopter customized\n")
         assert (
-            generate_api_key_auth(config, env, project_root, self._project_config())
+            generate_api_key_auth(config, env, project_root)
             is None
         )
 
@@ -5640,7 +5619,7 @@ class TestApiKeyAuthGenerator:
         project_root, config, env = project_env_per_entity
         config = {**config, "auth": {"strategy": "api-key"}}
         assert (
-            generate_auth_router(config, env, project_root, self._project_config())
+            generate_auth_router(config, env, project_root)
             is None
         )
         assert generate_csrf(config, env, project_root) is None
@@ -5912,7 +5891,6 @@ class TestEncryptedBytesGenerator:
             env=env,
             project_root=project_root,
             domains=["users"],
-            project_config=config,
             has_encrypted_binary=True,
         )
 
@@ -5932,7 +5910,6 @@ class TestEncryptedBytesGenerator:
             env=env,
             project_root=project_root,
             domains=["users"],
-            project_config=config,
             # has_encrypted_binary omitted — defaults to False
         )
 
