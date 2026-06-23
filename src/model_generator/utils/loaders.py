@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any, cast
 
-import jsonschema
 import yaml
+from jsonschema import Draft7Validator
 
 from .templates import path_to_import
 
@@ -154,9 +154,11 @@ def _validate_model_schema(data: dict[str, Any], model_path: Path) -> None:
     with schema_path.open(encoding="utf-8") as f:
         schema = json.load(f)
 
-    try:
-        jsonschema.validate(instance=data, schema=schema)
-    except jsonschema.ValidationError as e:
+    validator = Draft7Validator(schema)
+    errors = sorted(
+        validator.iter_errors(data), key=lambda e: tuple(str(p) for p in e.path)
+    )
+    for e in errors:
         print(f"  ⚠️  Model validation warning in {model_path.name}:")
         print(f"     {e.message} at path: {' -> '.join(str(p) for p in e.path)}")
         # Warn but don't exit - allow partial/WIP models
@@ -210,6 +212,17 @@ def load_config(stack: str = "python-fastapi") -> dict[str, Any]:
         stack_config = yaml.safe_load(f)
 
     merged_config = deep_merge(stack_config, project_config)
+
+    # Guard: top-level sections that must be dicts. A project config entry like
+    # `paths: "invalid"` would AttributeError deep in a generator — catch it here.
+    for _section in ("paths", "auth", "generation", "style"):
+        _val = merged_config.get(_section)
+        if _val is not None and not isinstance(_val, dict):
+            print(
+                f"Error: config.{_section} must be a mapping (got"
+                f" {type(_val).__name__!r}). Check your .model-generator.yaml."
+            )
+            sys.exit(1)
 
     # If the project overrode paths.database_models but not paths.base,
     # derive base from the new database_models so the two stay consistent.

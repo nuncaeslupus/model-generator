@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -255,6 +255,24 @@ class TestLoadConfigEdgeCases:
         finally:
             os.chdir(original_cwd)
 
+    @pytest.mark.parametrize("section", ["paths", "auth", "generation", "style"])
+    def test_non_dict_section_exits_with_code_1(
+        self, tmp_path: Path, section: str
+    ) -> None:
+        """GEN-10: non-dict value for a top-level config section exits with code 1."""
+        import yaml
+
+        project_config = tmp_path / ".model-generator.yaml"
+        project_config.write_text(yaml.dump({section: "invalid-string"}))
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            with pytest.raises(SystemExit) as exc_info:
+                load_config("python-fastapi")
+            assert exc_info.value.code == 1
+        finally:
+            os.chdir(original_cwd)
+
 
 class TestDeepMerge:
     """Test deep merge utility."""
@@ -302,9 +320,11 @@ class TestValidateModelSchema:
             "Invalid value",
             path=deque(["entities", "Foo"]),
         )
+        mock_validator = MagicMock()
+        mock_validator.iter_errors.return_value = [mock_error]
         with patch(
-            "model_generator.utils.loaders.jsonschema.validate",
-            side_effect=mock_error,
+            "model_generator.utils.loaders.Draft7Validator",
+            return_value=mock_validator,
         ):
             load_model(model_path)
 
@@ -328,9 +348,11 @@ class TestValidateModelSchema:
             "Some error",
             path=deque(["my_field"]),
         )
+        mock_validator = MagicMock()
+        mock_validator.iter_errors.return_value = [mock_error]
         with patch(
-            "model_generator.utils.loaders.jsonschema.validate",
-            side_effect=mock_error,
+            "model_generator.utils.loaders.Draft7Validator",
+            return_value=mock_validator,
         ):
             load_model(model_path)
 

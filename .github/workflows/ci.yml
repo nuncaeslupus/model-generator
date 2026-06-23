@@ -25,6 +25,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # The generator itself requires Python 3.11+ (see pyproject.toml
+      # requires-python). The matrix validates both the minimum-supported
+      # release (3.11) and the current stable release (3.12). Lint/mypy
+      # run on 3.12 but target py311 (ruff target-version/mypy python_version)
+      # so 3.12-only syntax in the generator source is caught by the lint job
+      # rather than silently compiling on the test matrix's 3.12 runner.
       matrix:
         python-version: ["3.11", "3.12"]
     steps:

@@ -4,6 +4,9 @@
 -#}
 {% from "_shared/_base.j2" import generated_marker %}
 {{ generated_marker() }}
+{% set is_per_entity = config.get('generation', {}).get('layout', 'per-entity') == 'per-entity' %}
+{% set example_entity = model.entities.keys() | list | first %}
+{% set example_module = (example_entity | snake_case) if is_per_entity else model.domain %}
 
 """
 {{ model.section_header | default(model.domain | upper + ' FACTORIES') }} - Test Data Factories.
@@ -16,9 +19,6 @@ This module contains factories for:
 {% endfor %}
 
 Usage:
-{%- set is_per_entity = config.get('generation', {}).get('layout', 'per-entity') == 'per-entity' %}
-{%- set example_entity = model.entities.keys() | list | first %}
-{%- set example_module = (example_entity | snake_case) if is_per_entity else model.domain %}
     from {{ config.paths.database_models | path_to_import }}.factories.{{ example_module }} import {{ example_entity }}Factory
 
     # Create single instance
