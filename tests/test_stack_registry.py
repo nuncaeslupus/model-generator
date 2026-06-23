@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from jinja2 import Environment
 
 from model_generator.generate import PYTHON_FASTAPI_STACK
 from model_generator.generators.registry import (
@@ -131,7 +132,7 @@ class TestGeneratorDispatch:
         ctx = GenContext(
             model={"domain": "x", "entities": {}},
             config={"paths": {}},
-            env=None,
+            env=Environment(),
             project_root=tmp_path,
             model_path=tmp_path / "x.model.json",
             enums={},

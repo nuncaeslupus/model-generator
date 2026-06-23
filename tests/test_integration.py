@@ -81,7 +81,7 @@ def test_generate_all(project_setup: Any) -> None:
         assert "class Widget(Base):" in db_model.read_text()
 
         # 2. API Models
-        api_req = project_root / "lib/api/schemas/widgets_requests.py"
+        api_req = project_root / "lib/api/schemas/widgets_request.py"
         assert api_req.exists()
         assert "class CreateWidgetRequest(BaseModel):" in api_req.read_text()
 

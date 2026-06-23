@@ -1,41 +1,33 @@
 # Next Session Plan
 
-## Current State (2026-06-23) — P3 batch GEN-5/7/11, TOOL-9, TPL-7 (PR #63, CI running)
+## Current State (2026-06-23) — P3 tooling batch TST-10/TOOL-2/4/5/7/8 (PR #65, pending)
 
-Branch `claude/gifted-bohr-f9tdl6`. Five P3 backlog items from the 2026-06-21
-code review. 716 unit tests + `make lint` clean. PR #63 open, CI running.
+Branch `claude/beautiful-shannon-foxzyy`. Six P3 backlog items from the 2026-06-21
+code review, all closed. 738 unit tests + `make lint` clean. PR #64 merged; PR #65
+being opened for this batch.
 
-- **GEN-5** — Extracted duplicated `_find_project_root()` from 4 wizard action
-  modules (`generate.py`, `clean.py`, `test_runner.py`, `project_setup.py`) into
-  a shared `wizard/actions/_common.py` helper — 4 identical implementations → 1.
-- **GEN-7** — Added `dry_run: bool = False` parameter to `generate_migration_init()`;
-  gates both `mkdir` calls so callers can collect file specs without touching the
-  filesystem. `GenContext.dry_run` field wired; dispatch table passes `c.dry_run`
-  for the `migration-init` target.
-- **GEN-11** — Replaced the character-loop `snake_case` with two-pass regex
-  (`([A-Z]+)([A-Z][a-z])` then `([a-z\d])([A-Z])`), fixing consecutive-capitals
-  acronyms: `APIKey → api_key`, `HTTPSConfig → https_config`. Jinja `to_snake_case`
-  macro now delegates to the registered Python filter so both paths agree.
-- **TOOL-9** — Restored `from .utils import load_model as load_model` as a
-  separate explicit re-export line in `generate.py` — required by mypy strict's
-  `no_implicit_reexport`; the `as name` form is NOT redundant.
-- **TPL-7** — Removed ~16 dead helper functions from `constraints.py.j2`
-  (`validate_percentage`, `check_positive`, `check_non_negative`, `validate_range`,
-  `check_range`, `check_percentage`, `check_datetime_order`, etc.) and associated
-  hardcoded constants (`MIN_FILE_SIZE`, `MIN_SESSION_DURATION`, …) that no generated
-  template ever imported.
+- **TST-10** — Added `minimal_user_model` fixture to `TestValidateModel`; refactored
+  three tests to use `copy.deepcopy(minimal_user_model)` instead of repeating the
+  full dict literal.
+- **TOOL-2** — Fixed `_find_project_root` in `generate.py`: removed the no-op `if`
+  branch; resolution now walks CWD → CWD's parent → model's parent (monorepo-aware).
+- **TOOL-4** — Changed `env: Any` → `env: Environment` in `GenContext` dataclass
+  (`generators/registry.py`); added `from jinja2 import Environment`.
+- **TOOL-5** — Removed vestigial `project_config: dict[str, Any]` parameter from
+  `generate_env_example`, `generate_pyproject`, `generate_main`, `generate_auth_router`,
+  `generate_api_key_auth`, `generate_infrastructure`. Updated all call sites and tests.
+- **TOOL-7** — Extracted inline output-writing loop to `utils/output.py:write_outputs()`.
+  Both `generate.py` and `infrastructure.py` (and the Flutter orchestrator) now delegate.
+- **TOOL-8** — Renamed `*_requests.py` → `*_request.py` throughout: `generators/api.py`,
+  `utils/parser.py`, `api/init.py.j2`, `api/route.py.j2`, `test_generators.py`,
+  `test_integration.py`, `test_edge_cases.py`.
 
-**Tests:** +4 snake_case consecutive-capitals cases (`APIKey`, `HTTPSConfig`,
-`HTTPRequest`, `ApiKey`); +1 `test_generate_migration_init_dry_run_skips_mkdir`
-verifying no dirs created when `dry_run=True`. 712 → 716 tests.
+**Tests:** 735 → 738, ruff + mypy strict clean.
 
-**Remaining open items** (from `status/code-review-2026-06-21.md`):
-TPL-15, TPL-21, SEC-8, TST-8, TST-10, TOOL-2, TOOL-4 (env: Any), TOOL-5, TOOL-7, TOOL-8.
-
-**Already confirmed closed / by-design:**
+**All code-review-2026-06-21 items now closed** (confirmed or by-design):
 - GEN-9 (has passing test `test_strip_json_comments_preserves_slashes_in_strings`)
 - TOOL-11 (CI comment explains why lint runs on 3.12 with py311 target — intentional)
-- TOOL-4 (stack registry refactor in Flutter Phase 0 cleaned up the dispatch table)
+- TOOL-4 also fixed in GenContext for completeness
 
 ---
 

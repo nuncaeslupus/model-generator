@@ -86,8 +86,8 @@ def scan_api_model_files(api_models_dir: Path) -> list[dict[str, Any]]:
         # Extract domain from filename (e.g., "users" from "users_response.py")
         if model_file.stem.endswith("_response"):
             domain_names.add(model_file.stem.replace("_response", ""))
-        elif model_file.stem.endswith("_requests"):
-            domain_names.add(model_file.stem.replace("_requests", ""))
+        elif model_file.stem.endswith("_request"):
+            domain_names.add(model_file.stem.replace("_request", ""))
 
     for domain_name in sorted(domain_names):
         domain_info: dict[str, Any] = {
@@ -112,7 +112,7 @@ def scan_api_model_files(api_models_dir: Path) -> list[dict[str, Any]]:
                 print(f"  Warning: Error parsing {response_file}: {e}")
 
         # Scan request file
-        request_file = api_models_dir / f"{domain_name}_requests.py"
+        request_file = api_models_dir / f"{domain_name}_request.py"
         if request_file.exists():
             try:
                 content = request_file.read_text(encoding="utf-8")

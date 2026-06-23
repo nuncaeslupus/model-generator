@@ -46,7 +46,7 @@ def generate_api_models(
     """Generate Pydantic response and request models.
 
     In per-entity layout (the default) returns two files per entity
-    (``{entity_snake}_response.py`` + ``{entity_snake}_requests.py``). In
+    (``{entity_snake}_response.py`` + ``{entity_snake}_request.py``). In
     per-domain layout returns one combined response file and one combined
     request file. Templates iterate ``model.entities`` so per-entity mode
     just feeds them sliced inputs — no template change required.
@@ -75,7 +75,7 @@ def generate_api_models(
             )
             outputs.append(
                 {
-                    "path": output_dir / f"{stem}_requests.py",
+                    "path": output_dir / f"{stem}_request.py",
                     "content": request_template.render(
                         model=sliced, config=config, enums=enums
                     ),
@@ -92,7 +92,7 @@ def generate_api_models(
             ),
         },
         {
-            "path": output_dir / f"{domain}_requests.py",
+            "path": output_dir / f"{domain}_request.py",
             "content": request_template.render(
                 model=filtered, config=config, enums=enums
             ),

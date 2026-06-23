@@ -27,7 +27,7 @@ from .{{ domain.name }}_response import (
 )
 {% endif %}
 {% if domain.request_models %}
-from .{{ domain.name }}_requests import (
+from .{{ domain.name }}_request import (
 {% for model in domain.request_models | sort %}
     {{ model }},
 {% endfor %}

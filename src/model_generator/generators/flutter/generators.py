@@ -21,6 +21,7 @@ from typing import Any
 from jinja2 import Environment
 
 from ...utils.loaders import load_shared_enums
+from ...utils.output import write_outputs
 from ...utils.templates import snake_case
 from .api import _has_requests
 from .fields import collect_model_imports, resolve_fields
@@ -183,7 +184,7 @@ def generate_pubspec(
     config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    project_config: dict[str, Any],
+    project_config: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Generate ``pubspec.yaml`` (skip-if-exists — the pyproject analogue).
 
@@ -199,17 +200,21 @@ def generate_pubspec(
     if pubspec_path.exists():
         return None
 
+    # Merge project_config on top of config when provided (orchestrator always
+    # passes config == project_config, but tests may pass a separate overlay).
+    effective = {**config, **(project_config or {})}
+
     template = env.get_template("infrastructure/pubspec.yaml.j2")
     deps = config.get("dependencies", {}) or {}
     runtime = list(deps.get("runtime", []) or [])
     dev = list(deps.get("dev", []) or [])
 
-    auth = (project_config.get("auth") or {}) if project_config else {}
+    auth = effective.get("auth") or {}
     if auth.get("strategy"):
         conditional = (deps.get("conditional") or {}).get("auth", []) or []
         runtime.extend(c for c in conditional if c not in runtime)
 
-    project = (project_config or {}).get("project", {}) if project_config else {}
+    project = effective.get("project", {})
     content = template.render(
         package_name=package_name(config),
         project_name=project.get("name"),
@@ -246,7 +251,7 @@ def generate_flutter_readme(
     config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    project_config: dict[str, Any],
+    project_config: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Generate ``README.md`` (skip-if-exists).
 
@@ -258,8 +263,9 @@ def generate_flutter_readme(
     if readme_path.exists():
         return None
 
+    effective = {**config, **(project_config or {})}
     template = env.get_template("infrastructure/README.md.j2")
-    project = (project_config or {}).get("project", {}) if project_config else {}
+    project = effective.get("project", {})
     content = template.render(
         package_name=package_name(config),
         project_name=project.get("name"),
@@ -291,7 +297,6 @@ def flutter_infra_orchestrator(
     config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    project_config: dict[str, Any],
     diff: bool = False,
     dry_run: bool = False,
     no_root_files: bool = False,
@@ -316,43 +321,18 @@ def flutter_infra_orchestrator(
     )
 
     candidates: list[dict[str, Any] | None] = [
-        generate_pubspec(config, env, project_root, project_config),
+        generate_pubspec(config, env, project_root),
         generate_analysis_options(config, env, project_root),
         generate_build_yaml(config, env, project_root),
         generate_converters(config, env, project_root),
         generate_flutter_pagination(config, env, project_root),
-        *generate_dio_setup(config, env, project_root, project_config),
-        generate_auth_interceptor(config, env, project_root, project_config),
-        generate_flutter_readme(config, env, project_root, project_config),
+        *generate_dio_setup(config, env, project_root),
+        generate_auth_interceptor(config, env, project_root),
+        generate_flutter_readme(config, env, project_root),
         generate_flutter_gitignore(
             config, env, project_root, no_root_files=no_root_files
         ),
     ]
     outputs = [c for c in candidates if c]
 
-    generated_files: list[Path] = []
-    for output in outputs:
-        path = output["path"]
-        content = output["content"]
-
-        # The customization-seam files (api_client_custom.dart) are emitted once
-        # and never clobbered, so adopters' edits survive regeneration.
-        if output.get("mode") == "skip-if-exists" and path.exists():
-            print(f"  ℹ️  Exists, skipped: {path}")
-            continue
-
-        if diff:
-            print(f"\n--- {path} ---")
-            print(content[:500] + "..." if len(content) > 500 else content)
-            continue
-        if dry_run:
-            print(f"  Would write: {path}")
-            continue
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as f:
-            f.write(content)
-        print(f"  ✅ Generated: {path}")
-        generated_files.append(path)
-
-    return generated_files
+    return write_outputs(outputs, diff, dry_run)

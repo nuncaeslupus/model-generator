@@ -439,9 +439,9 @@ def generate_flutter_pagination(
     return {"path": core_dir / "pagination.dart", "content": content}
 
 
-def _auth_strategy(project_config: dict[str, Any]) -> str | None:
+def _auth_strategy(config: dict[str, Any]) -> str | None:
     """The configured auth strategy, or None when auth is disabled."""
-    auth = (project_config or {}).get("auth") or {}
+    auth = (config or {}).get("auth") or {}
     strategy = auth.get("strategy")
     return str(strategy) if strategy else None
 
@@ -450,7 +450,7 @@ def generate_dio_setup(
     config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    project_config: dict[str, Any],
+    project_config: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate the dio base + the hand-editable custom hook (two files).
 
@@ -463,9 +463,12 @@ def generate_dio_setup(
     generated client is wire-compatible out of the box; adopters override per
     environment via ``buildApiClient(baseUrl: ...)``.
     """
+    # project_config overlays config for auth/project lookups (orchestrator always
+    # passes the same value; tests may pass a separate overlay).
+    effective = {**config, **(project_config or {})}
     template = env.get_template("infrastructure/dio_setup.dart.j2")
     core_dir = project_root / resolve_path(config, "api_core")
-    strategy = _auth_strategy(project_config)
+    strategy = _auth_strategy(effective)
     has_auth = strategy is not None
     auth_interceptor_uri = package_uri(
         config, f"{resolve_path(config, 'api_core')}/auth_interceptor.dart"
@@ -495,7 +498,7 @@ def generate_auth_interceptor(
     config: dict[str, Any],
     env: Environment,
     project_root: Path,
-    project_config: dict[str, Any],
+    project_config: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Generate ``lib/<pkg>/core/auth_interceptor.dart`` — conditional on auth.
 
@@ -506,11 +509,14 @@ def generate_auth_interceptor(
       ``X-API-Key``) on every request.
     * ``bcrypt-session`` → cookie passthrough + CSRF double-submit header.
     """
-    strategy = _auth_strategy(project_config)
+    # project_config overlays config for auth/project lookups (orchestrator always
+    # passes the same value; tests may pass a separate overlay).
+    effective = {**config, **(project_config or {})}
+    strategy = _auth_strategy(effective)
     if strategy is None:
         return None
 
-    auth = (project_config or {}).get("auth") or {}
+    auth = effective.get("auth") or {}
     template = env.get_template("infrastructure/auth_interceptor.dart.j2")
     core_dir = project_root / resolve_path(config, "api_core")
     content = template.render(

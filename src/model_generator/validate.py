@@ -91,8 +91,10 @@ def validate_semantics(model: dict[str, Any]) -> list[str]:
     entities = model.get("entities", {})
 
     # Validate domain name
-    domain = model.get("domain", "")
-    if domain and not _IDENTIFIER_RE.match(domain):
+    domain = model.get("domain")
+    if domain is not None and (
+        not isinstance(domain, str) or not _IDENTIFIER_RE.match(domain)
+    ):
         errors.append(
             f"  Domain name '{domain}' is not a valid Python identifier "
             f"(must match ^[a-z][a-z0-9_]*$)"
