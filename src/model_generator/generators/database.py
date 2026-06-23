@@ -118,7 +118,7 @@ def generate_factories(
     would ``NameError`` at ``create()`` time.
     """
     template = env.get_template("database/factory.py.j2")
-    factories_dir = project_root / config["paths"].get(
+    factories_dir = project_root / (config.get("paths") or {}).get(
         "factories", "backend/tests/factories"
     )
     sibling_entities = list(model.get("entities", {}).keys())
