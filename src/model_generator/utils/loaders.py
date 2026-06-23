@@ -155,7 +155,9 @@ def _validate_model_schema(data: dict[str, Any], model_path: Path) -> None:
         schema = json.load(f)
 
     validator = Draft7Validator(schema)
-    errors = sorted(validator.iter_errors(data), key=lambda e: list(e.path))
+    errors = sorted(
+        validator.iter_errors(data), key=lambda e: tuple(str(p) for p in e.path)
+    )
     for e in errors:
         print(f"  ⚠️  Model validation warning in {model_path.name}:")
         print(f"     {e.message} at path: {' -> '.join(str(p) for p in e.path)}")
