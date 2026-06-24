@@ -22,7 +22,7 @@ and ready to merge. Batch 1 is complete; batch 2 is partially done.
 | Batch                   | Total | Killed | Survived | Status   |
 |-------------------------|------:|-------:|---------:|----------|
 | batch-1-utils           | 1 610 |  1 166 |      444 | complete |
-| batch-2-generators      | 1 872 |    660 |      389 | partial  |
+| batch-2-generators      | 1 872 |    660 |      389 | partial (re-running; ~800/1872 done in current run) |
 | batch-3-conftest        | 1 233 |      — |        — | pending  |
 | batch-4-flutter-api     | 1 546 |      — |        — | pending  |
 | batch-5-flutter-gen     |   464 |      — |        — | pending  |
@@ -71,6 +71,15 @@ ps -p <PID>           # check alive
 tail -5 /tmp/mutmut-batchN.log   # check last counter line
 ```
 If the process is gone, re-run `--run BATCH` — it picks up from `.meta` pending entries.
+
+**6. Re-running an interrupted batch re-tests previously-completed mutants.**
+When `--run BATCH` is called after a crash, it passes only the pending names to
+`mutmut run`. However, mutmut regenerates the workspace on every invocation, resetting
+ALL `.meta` exit_codes (including already-completed ones in that batch) to null. The
+previously-done work is lost from `.meta` and will be re-done. This is unavoidable
+with mutmut 3.x's current behaviour — just accept the extra work. The practical rule:
+each batch should ideally run uninterrupted in a single session. There is no
+incremental resume within a batch; only across batches (via `progress.json`).
 
 **5. Uncommitted `progress.json` triggers the stop hook.**
 After `--update`, `status/mutmut-progress.json` is modified but not staged. The
