@@ -1,6 +1,41 @@
 # Next Session Plan
 
-## Current State (2026-06-24) — mutmut batch runner (PR #66, merged)
+## Current State (2026-06-24) — mutmut run COMPLETE; survivors triaged
+
+Branch `claude/mutmut-local-batches`. All 7 batches finished locally:
+**9,915 mutants, 6,518 killed / 3,397 survived (66%).** `status/mutmut-progress.json`
+shows every batch `complete`. Full triage in
+**[`status/mutmut-survivors-report.md`](./mutmut-survivors-report.md)** — read that.
+
+**Two real blockers fixed this session** (neither was a timeout — that's why the CC
+Web run failed silently):
+1. `mutmut 3.5.0` was installed (`pyproject.toml` had `mutmut>=2.4.0`, no upper
+   bound). Pinned `>=2.4.0,<3.5.0` → `3.4.0`.
+2. mutmut's `also_copy = ["examples/"]` crashed on a dangling symlink in the
+   gitignored `examples/user-auth-project/.venv/bin/python*` (pointed at a deleted
+   snap Python 3.13). Removed that stale venv.
+
+### Next step — implement the test fixes (for a sonnet session)
+
+The classifier flagged 113 "real gaps" but most are noise (`encoding=` mutations,
+`XX`-wrapped strings, template kwargs). The **~20–30 worth a test** are listed in
+the report. Priority order:
+1. **`database.py` missing-`entities` characterization tests** — ~14 mutants,
+   highest yield. One test per `generate_database_model` / `generate_init` /
+   `generate_factories`, each called with a model dict lacking `entities`. Use the
+   `project_env` fixture in `tests/test_generators.py`; pass `constraints={}` to
+   `generate_factories`.
+2. **Boolean `and`→`or`**: `flutter/paths.py::package_name`,
+   `generate.py::_cleanup_selective` — test the false branch.
+3. **`migrations.py::generate_migration_init` `mkdir(parents=True)`** — narrow.
+
+After adding tests, confirm the targeted mutants now die:
+`uv run python scripts/mutmut_batch.py --run batch-2-generators` (re-runs that
+batch; remember the whole batch re-tests — mutmut resets `.meta`).
+
+---
+
+## Previous State (2026-06-24) — mutmut batch runner (PR #66, merged)
 
 Branch `claude/mutmut-cc-web-modules-f1goys` merged into `main`. Adds
 `scripts/mutmut_batch.py` for per-module mutation testing with cross-session progress

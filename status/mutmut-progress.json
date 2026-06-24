@@ -3,51 +3,51 @@
     "batch-1-utils": {
       "status": "complete",
       "total": 1610,
-      "killed": 1166,
-      "survived": 444,
+      "killed": 1183,
+      "survived": 427,
       "pending": 0
     },
     "batch-2-generators": {
-      "status": "partial",
+      "status": "complete",
       "total": 1872,
-      "killed": 406,
-      "survived": 268,
-      "pending": 1198
+      "killed": 1343,
+      "survived": 529,
+      "pending": 0
     },
     "batch-3-conftest": {
-      "status": "pending",
+      "status": "complete",
       "total": 1233,
-      "killed": 0,
-      "survived": 0,
-      "pending": 1233
+      "killed": 473,
+      "survived": 760,
+      "pending": 0
     },
     "batch-4-flutter-api": {
-      "status": "pending",
+      "status": "complete",
       "total": 1546,
-      "killed": 0,
-      "survived": 0,
-      "pending": 1546
+      "killed": 965,
+      "survived": 581,
+      "pending": 0
     },
     "batch-5-flutter-gen": {
-      "status": "pending",
+      "status": "complete",
       "total": 464,
-      "killed": 0,
-      "survived": 0,
-      "pending": 464
+      "killed": 344,
+      "survived": 120,
+      "pending": 0
     },
     "batch-6-generate": {
-      "status": "pending",
+      "status": "complete",
       "total": 1631,
-      "killed": 0,
-      "survived": 0,
-      "pending": 1631
+      "killed": 1149,
+      "survived": 482,
+      "pending": 0
     },
     "batch-7-infrastructure": {
-      "status": "pending",
+      "status": "complete",
       "total": 1559,
-      "killed": 0,
-      "survived": 0,
-      "pending": 1559
+      "killed": 1061,
+      "survived": 498,
+      "pending": 0
     }
   }
 }
