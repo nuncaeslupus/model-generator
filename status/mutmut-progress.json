@@ -1,0 +1,53 @@
+{
+  "batches": {
+    "batch-1-utils": {
+      "status": "complete",
+      "total": 1610,
+      "killed": 1166,
+      "survived": 444,
+      "pending": 0
+    },
+    "batch-2-generators": {
+      "status": "partial",
+      "total": 1872,
+      "killed": 406,
+      "survived": 268,
+      "pending": 1198
+    },
+    "batch-3-conftest": {
+      "status": "pending",
+      "total": 1233,
+      "killed": 0,
+      "survived": 0,
+      "pending": 1233
+    },
+    "batch-4-flutter-api": {
+      "status": "pending",
+      "total": 1546,
+      "killed": 0,
+      "survived": 0,
+      "pending": 1546
+    },
+    "batch-5-flutter-gen": {
+      "status": "pending",
+      "total": 464,
+      "killed": 0,
+      "survived": 0,
+      "pending": 464
+    },
+    "batch-6-generate": {
+      "status": "pending",
+      "total": 1631,
+      "killed": 0,
+      "survived": 0,
+      "pending": 1631
+    },
+    "batch-7-infrastructure": {
+      "status": "pending",
+      "total": 1559,
+      "killed": 0,
+      "survived": 0,
+      "pending": 1559
+    }
+  }
+}

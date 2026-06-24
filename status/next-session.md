@@ -1,6 +1,121 @@
 # Next Session Plan
 
-## Current State (2026-06-23) — P3 tooling batch TST-10/TOOL-2/4/5/7/8 (PR #65, pending)
+## Current State (2026-06-24) — mutmut batch runner (PR #66, merged)
+
+Branch `claude/mutmut-cc-web-modules-f1goys` merged into `main`. Adds
+`scripts/mutmut_batch.py` for per-module mutation testing with cross-session progress
+tracking. **Batch 1 is the only fully committed result; batches 2–7 need local runs.**
+
+### What was built
+
+- **`scripts/mutmut_batch.py`** — 7-batch runner; `--setup` creates workspace and
+  commits mutant name lists; `--run BATCH` tests pending mutants for one batch;
+  `--list`/`--update` show/refresh progress; `--cmd BATCH` prints the raw command.
+- **`status/mutmut-names.json`** — all 9,915 mutant names organised by batch, committed
+  so any machine can regenerate `mutants/` (~20 s) and run without prior state.
+- **`status/mutmut-progress.json`** — durable per-batch progress record; `.meta` files
+  are ephemeral and reset on every `mutmut run` call.
+
+### Batch progress (as of last commit)
+
+| Batch                   | Total | Killed | Survived | Status   |
+|-------------------------|------:|-------:|---------:|----------|
+| batch-1-utils           | 1 610 |  1 166 |      444 | complete |
+| batch-2-generators      | 1 872 |      — |        — | pending  |
+| batch-3-conftest        | 1 233 |      — |        — | pending  |
+| batch-4-flutter-api     | 1 546 |      — |        — | pending  |
+| batch-5-flutter-gen     |   464 |      — |        — | pending  |
+| batch-6-generate        | 1 631 |      — |        — | pending  |
+| batch-7-infrastructure  | 1 559 |      — |        — | pending  |
+
+### Local run — full sequence (run uninterrupted per batch)
+
+**Key insight:** mutmut 3.x resets all `.meta` exit_codes on every invocation. Each
+batch must run to completion without interruption, or the partial work is lost. Run
+one batch per sitting; commit progress between batches.
+
+```bash
+# Prerequisites (run once after cloning / on a fresh machine)
+make sync                            # uv sync --extra dev
+uv run python scripts/mutmut_batch.py --setup   # generate mutants/ workspace (~20s)
+                                     # only needed if mutants/ doesn't exist
+
+# For each batch (2 through 7), run uninterrupted:
+uv run python scripts/mutmut_batch.py --run batch-2-generators   # ~1-2h at 4 workers
+uv run python scripts/mutmut_batch.py --update
+git add status/mutmut-progress.json
+git commit -m "test(mutmut): batch-2-generators complete — X/Y killed"
+git push
+
+uv run python scripts/mutmut_batch.py --run batch-3-conftest
+uv run python scripts/mutmut_batch.py --update
+git add status/mutmut-progress.json
+git commit -m "test(mutmut): batch-3-conftest complete — X/Y killed"
+git push
+
+# ... repeat for batches 4-7 ...
+
+# After all 7 batches done:
+uv run python scripts/mutmut_batch.py --list     # confirm all complete
+# Then run /mutmut-report skill to analyse surviving mutants
+```
+
+**Tuning `--max-children`:** default is 4; increase on machines with more cores
+(e.g. `--max-children 8`). Batch sizes: batch-3-conftest is the largest (1,233 single
+file); batch-5-flutter-gen is the smallest (464 mutants).
+
+### Failures encountered — lessons for future sessions
+
+**1. ruff format changes must be committed, not just applied locally.**
+`ruff format` was run in the previous context window and the file was reformatted, but
+the result was never staged/committed before `git push`. CI failed with
+"Would reformat: scripts/mutmut_batch.py" on the pushed commit. Fix: always run
+`git status` after `ruff format` and commit the changed file immediately.
+
+**2. mutmut 3.x resets ALL `.meta` exit_codes when `mutmut run` is called again.**
+Every `mutmut run` call (even with a subset of names) regenerates the workspace and
+sets every exit_code back to `null`. The `.meta` files therefore only reflect the
+*current* session's batch. `status/mutmut-progress.json` is the only durable record;
+commit it after every completed or interrupted batch before ending a session.
+
+**3. `--update` (reading from `.meta`) would overwrite completed batches.**
+Because `.meta` files were reset, calling `--update` after starting batch 2 showed
+batch 1 as pending again. Fixed: `_update_progress()` now skips any batch whose
+`status` is already `"complete"` in `progress.json`. Do not call `--update` mid-run
+unless you intend to capture a partial snapshot.
+
+**4. Background process (nohup) can be killed by the container.**
+The first batch-2 run (PID 8133) died at 1,049/1,872 with no exit message in the log
+— the container likely OOM-killed it or the session timed out. After launching a
+background job, verify it is still running before trusting progress:
+```bash
+ps -p <PID>           # check alive
+tail -5 /tmp/mutmut-batchN.log   # check last counter line
+```
+If the process is gone, re-run `--run BATCH` — it picks up from `.meta` pending entries.
+
+**6. Re-running an interrupted batch re-tests previously-completed mutants.**
+When `--run BATCH` is called after a crash, it passes only the pending names to
+`mutmut run`. However, mutmut regenerates the workspace on every invocation, resetting
+ALL `.meta` exit_codes (including already-completed ones in that batch) to null. The
+previously-done work is lost from `.meta` and will be re-done. This is unavoidable
+with mutmut 3.x's current behaviour — just accept the extra work. The practical rule:
+each batch should ideally run uninterrupted in a single session. There is no
+incremental resume within a batch; only across batches (via `progress.json`).
+
+**5. Uncommitted `progress.json` triggers the stop hook.**
+After `--update`, `status/mutmut-progress.json` is modified but not staged. The
+`~/.claude/stop-hook-git-check.sh` requires a clean working tree. Always commit
+`progress.json` before ending a session:
+```bash
+git add status/mutmut-progress.json
+git commit -m "test(mutmut): batch-N-... complete — X/Y killed"
+git push -u origin <branch>
+```
+
+---
+
+## Previous State (2026-06-23) — P3 tooling batch TST-10/TOOL-2/4/5/7/8 (PR #65, pending)
 
 Branch `claude/beautiful-shannon-foxzyy`. Six P3 backlog items from the 2026-06-21
 code review, all closed. 738 unit tests + `make lint` clean. PR #64 merged; PR #65
