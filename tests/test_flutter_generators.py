@@ -23,7 +23,11 @@ from model_generator.generators.flutter import (
     generate_pubspec,
 )
 from model_generator.generators.flutter.fields import resolve_fields
-from model_generator.generators.flutter.paths import resolve_path
+from model_generator.generators.flutter.paths import (
+    DEFAULT_PACKAGE_NAME,
+    package_name,
+    resolve_path,
+)
 from model_generator.generators.registry import STACKS, get_stack
 from model_generator.utils.templates import get_template_env
 
@@ -587,3 +591,23 @@ class TestProjectAgnostic:
         }
         assert resolve_path(cfg, "models") == "lib/my_client/models"
         assert resolve_path(cfg, "api_core") == "lib/my_client/core"
+
+
+class TestPackageName:
+    """Test the package_name() guard: isinstance AND non-empty strip."""
+
+    def test_falls_back_for_non_string_value(self) -> None:
+        # isinstance(42, str) is False — with an `or` mutant this branch would crash
+        # on 42.strip(); the `and` ensures the strip is never reached.
+        cfg: dict[str, Any] = {"flutter": {"package_name": 42}}
+        assert package_name(cfg) == DEFAULT_PACKAGE_NAME
+
+    def test_falls_back_for_empty_string(self) -> None:
+        # "" strips to "" which is falsy — the second operand of `and` kills the
+        # `or`-mutant branch that would return "" instead of the default.
+        cfg: dict[str, Any] = {"flutter": {"package_name": ""}}
+        assert package_name(cfg) == DEFAULT_PACKAGE_NAME
+
+    def test_falls_back_for_whitespace_string(self) -> None:
+        cfg: dict[str, Any] = {"flutter": {"package_name": "   "}}
+        assert package_name(cfg) == DEFAULT_PACKAGE_NAME

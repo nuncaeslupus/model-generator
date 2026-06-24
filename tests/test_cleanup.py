@@ -210,3 +210,13 @@ class TestCleanupSelective:
         _cleanup_selective(
             tmp_path, PATHS, dry_run=False, spec=SPEC
         )  # Should not error
+
+    def test_non_py_ini_path_values_are_not_deleted(self, tmp_path: Path) -> None:
+        # isinstance(path, str) AND endswith check: only .py/.ini path values are
+        # added to files_to_delete. With an `or` mutant any string path value would
+        # qualify (isinstance is always True for strings), deleting non-generated files.
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text("key: value")
+        paths_with_yaml = {**PATHS, "app_config": "config.yaml"}
+        _cleanup_selective(tmp_path, paths_with_yaml, dry_run=False, spec=SPEC)
+        assert config_file.exists()
