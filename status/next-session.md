@@ -1,6 +1,90 @@
 # Next Session Plan
 
-## Current State (2026-06-23) — P3 tooling batch TST-10/TOOL-2/4/5/7/8 (PR #65, pending)
+## Current State (2026-06-24) — mutmut batch runner (PR #66, CI green)
+
+Branch `claude/mutmut-cc-web-modules-f1goys`. Adds `scripts/mutmut_batch.py` for
+per-module mutation testing with cross-session progress tracking. PR #66 is CI-green
+and ready to merge. Batch 1 is complete; batch 2 is partially done.
+
+### What was built
+
+- **`scripts/mutmut_batch.py`** — 7-batch runner; `--setup` creates workspace and
+  commits mutant name lists; `--run BATCH` tests pending mutants for one batch;
+  `--list`/`--update` show/refresh progress; `--cmd BATCH` prints the raw command.
+- **`status/mutmut-names.json`** — all 9,915 mutant names organised by batch, committed
+  so future sessions can regenerate `mutants/` (~20 s) and resume without the prior
+  ephemeral workspace.
+- **`status/mutmut-progress.json`** — durable per-batch progress record (survives
+  workspace resets; `.meta` files are ephemeral).
+
+### Batch progress
+
+| Batch                   | Total | Killed | Survived | Status   |
+|-------------------------|------:|-------:|---------:|----------|
+| batch-1-utils           | 1 610 |  1 166 |      444 | complete |
+| batch-2-generators      | 1 872 |    660 |      389 | partial  |
+| batch-3-conftest        | 1 233 |      — |        — | pending  |
+| batch-4-flutter-api     | 1 546 |      — |        — | pending  |
+| batch-5-flutter-gen     |   464 |      — |        — | pending  |
+| batch-6-generate        | 1 631 |      — |        — | pending  |
+| batch-7-infrastructure  | 1 559 |      — |        — | pending  |
+
+Batch 2 was interrupted at 1,049/1,872 (660 killed, 389 survived, 823 pending). A
+re-run was started but the container session may not have persisted it. Next session:
+
+```bash
+uv run python scripts/mutmut_batch.py --list        # check what's pending
+uv run python scripts/mutmut_batch.py --run batch-2-generators --max-children 4
+uv run python scripts/mutmut_batch.py --update
+git add status/mutmut-progress.json && git commit -m "test(mutmut): batch-2-generators complete"
+```
+
+Then proceed with batches 3–7 in subsequent sessions. After all batches are done,
+run `/mutmut-report` to analyse surviving mutants.
+
+### Failures encountered — lessons for future sessions
+
+**1. ruff format changes must be committed, not just applied locally.**
+`ruff format` was run in the previous context window and the file was reformatted, but
+the result was never staged/committed before `git push`. CI failed with
+"Would reformat: scripts/mutmut_batch.py" on the pushed commit. Fix: always run
+`git status` after `ruff format` and commit the changed file immediately.
+
+**2. mutmut 3.x resets ALL `.meta` exit_codes when `mutmut run` is called again.**
+Every `mutmut run` call (even with a subset of names) regenerates the workspace and
+sets every exit_code back to `null`. The `.meta` files therefore only reflect the
+*current* session's batch. `status/mutmut-progress.json` is the only durable record;
+commit it after every completed or interrupted batch before ending a session.
+
+**3. `--update` (reading from `.meta`) would overwrite completed batches.**
+Because `.meta` files were reset, calling `--update` after starting batch 2 showed
+batch 1 as pending again. Fixed: `_update_progress()` now skips any batch whose
+`status` is already `"complete"` in `progress.json`. Do not call `--update` mid-run
+unless you intend to capture a partial snapshot.
+
+**4. Background process (nohup) can be killed by the container.**
+The first batch-2 run (PID 8133) died at 1,049/1,872 with no exit message in the log
+— the container likely OOM-killed it or the session timed out. After launching a
+background job, verify it is still running before trusting progress:
+```bash
+ps -p <PID>           # check alive
+tail -5 /tmp/mutmut-batchN.log   # check last counter line
+```
+If the process is gone, re-run `--run BATCH` — it picks up from `.meta` pending entries.
+
+**5. Uncommitted `progress.json` triggers the stop hook.**
+After `--update`, `status/mutmut-progress.json` is modified but not staged. The
+`~/.claude/stop-hook-git-check.sh` requires a clean working tree. Always commit
+`progress.json` before ending a session:
+```bash
+git add status/mutmut-progress.json
+git commit -m "test(mutmut): batch-N-... complete — X/Y killed"
+git push -u origin <branch>
+```
+
+---
+
+## Previous State (2026-06-23) — P3 tooling batch TST-10/TOOL-2/4/5/7/8 (PR #65, pending)
 
 Branch `claude/beautiful-shannon-foxzyy`. Six P3 backlog items from the 2026-06-21
 code review, all closed. 738 unit tests + `make lint` clean. PR #64 merged; PR #65
