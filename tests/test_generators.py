@@ -209,6 +209,21 @@ class TestDatabaseGenerator:
         output_dir = project_root / config["paths"]["database_models"]
         assert result["path"] == output_dir / "models.py"
 
+    def test_missing_entities_key_returns_domain_file(self, project_env: Any) -> None:
+        # Characterization: model.get("entities", {}) must not crash when the key
+        # is absent — the {} default must be used, not None.
+        # Template is mocked: Jinja2 also accesses model.entities directly, so
+        # without the mock, UndefinedError masks the Python-level gap.
+        project_root, config, env = project_env
+        model_no_entities = {"domain": "test", "description": "no entities key"}
+        with patch.object(env, "get_template") as mock_get:
+            mock_get.return_value.render.return_value = "# mocked"
+            result = generate_database_model(
+                model_no_entities, config, env, project_root
+            )
+        assert isinstance(result, dict)
+        assert "test.py" in str(result["path"])
+
 
 class TestGenerateInit:
     """Test __init__.py generation for database models."""
@@ -268,6 +283,19 @@ class TestGenerateInit:
         assert result is not None
         assert "Test Project" in result["content"]
 
+    def test_missing_entities_key_does_not_crash(self, project_env: Any) -> None:
+        # Characterization: model.get("entities", {}).keys() must not crash when
+        # the entities key is absent — the {} default propagates to the domain list.
+        project_root, config, env = project_env
+        model_no_entities = {"domain": "test"}
+        with patch(
+            "model_generator.generators.database.scan_model_files", return_value=[]
+        ):
+            result = generate_init(model_no_entities, config, env, project_root)
+        # Domain "test" with no entities is appended; template renders; returns dict.
+        assert isinstance(result, dict)
+        assert result["path"].name == "__init__.py"
+
 
 class TestFactoryGenerator:
     """Test factory generation."""
@@ -303,6 +331,20 @@ class TestFactoryGenerator:
 
         factories_dir = project_root / config["paths"]["factories"]
         assert result["path"] == factories_dir / "models.py"
+
+    def test_missing_entities_key_returns_domain_file(self, project_env: Any) -> None:
+        # Characterization: model.get("entities", {}) must not crash when the key
+        # is absent — the {} default is used for sibling_entities and table_to_entity.
+        # Template is mocked: Jinja2 also accesses model.entities directly.
+        project_root, config, env = project_env
+        model_no_entities = {"domain": "test"}
+        with patch.object(env, "get_template") as mock_get:
+            mock_get.return_value.render.return_value = "# mocked"
+            result = generate_factories(
+                model_no_entities, config, env, project_root, constraints={}
+            )
+        assert isinstance(result, dict)
+        assert "test.py" in str(result["path"])
 
     def test_ref_constraints_resolve_to_literals(self, project_env: Any) -> None:
         """financial/counter min_ref/max_ref resolve to literal constant values.
