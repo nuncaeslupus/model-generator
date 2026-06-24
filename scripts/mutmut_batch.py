@@ -290,6 +290,11 @@ def cmd_update(_args: Any = None) -> None:
 def _update_progress() -> None:
     progress = load_progress()
     for batch in BATCHES:
+        # Never downgrade a batch already marked complete — .meta files are
+        # reset when a later batch run regenerates the workspace.
+        existing = progress.get("batches", {}).get(batch, {})
+        if existing.get("status") == "complete":
+            continue
         s = batch_stats_from_meta(batch)
         if s["total"] == 0:
             continue
