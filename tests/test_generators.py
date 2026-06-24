@@ -222,7 +222,7 @@ class TestDatabaseGenerator:
                 model_no_entities, config, env, project_root
             )
         assert isinstance(result, dict)
-        assert "test.py" in str(result["path"])
+        assert result["path"].name == "test.py"
 
 
 class TestGenerateInit:
@@ -344,7 +344,7 @@ class TestFactoryGenerator:
                 model_no_entities, config, env, project_root, constraints={}
             )
         assert isinstance(result, dict)
-        assert "test.py" in str(result["path"])
+        assert result["path"].name == "test.py"
 
     def test_ref_constraints_resolve_to_literals(self, project_env: Any) -> None:
         """financial/counter min_ref/max_ref resolve to literal constant values.
