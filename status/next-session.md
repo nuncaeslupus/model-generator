@@ -1,10 +1,10 @@
 # Next Session Plan
 
-## Current State (2026-06-24) — mutmut batch runner (PR #66, CI green)
+## Current State (2026-06-24) — mutmut batch runner (PR #66, merged)
 
-Branch `claude/mutmut-cc-web-modules-f1goys`. Adds `scripts/mutmut_batch.py` for
-per-module mutation testing with cross-session progress tracking. PR #66 is CI-green
-and ready to merge. Batch 1 is complete; batch 2 is partially done.
+Branch `claude/mutmut-cc-web-modules-f1goys` merged into `main`. Adds
+`scripts/mutmut_batch.py` for per-module mutation testing with cross-session progress
+tracking. **Batch 1 is the only fully committed result; batches 2–7 need local runs.**
 
 ### What was built
 
@@ -12,35 +12,57 @@ and ready to merge. Batch 1 is complete; batch 2 is partially done.
   commits mutant name lists; `--run BATCH` tests pending mutants for one batch;
   `--list`/`--update` show/refresh progress; `--cmd BATCH` prints the raw command.
 - **`status/mutmut-names.json`** — all 9,915 mutant names organised by batch, committed
-  so future sessions can regenerate `mutants/` (~20 s) and resume without the prior
-  ephemeral workspace.
-- **`status/mutmut-progress.json`** — durable per-batch progress record (survives
-  workspace resets; `.meta` files are ephemeral).
+  so any machine can regenerate `mutants/` (~20 s) and run without prior state.
+- **`status/mutmut-progress.json`** — durable per-batch progress record; `.meta` files
+  are ephemeral and reset on every `mutmut run` call.
 
-### Batch progress
+### Batch progress (as of last commit)
 
 | Batch                   | Total | Killed | Survived | Status   |
 |-------------------------|------:|-------:|---------:|----------|
 | batch-1-utils           | 1 610 |  1 166 |      444 | complete |
-| batch-2-generators      | 1 872 |    660 |      389 | partial (re-running; ~800/1872 done in current run) |
+| batch-2-generators      | 1 872 |      — |        — | pending  |
 | batch-3-conftest        | 1 233 |      — |        — | pending  |
 | batch-4-flutter-api     | 1 546 |      — |        — | pending  |
 | batch-5-flutter-gen     |   464 |      — |        — | pending  |
 | batch-6-generate        | 1 631 |      — |        — | pending  |
 | batch-7-infrastructure  | 1 559 |      — |        — | pending  |
 
-Batch 2 was interrupted at 1,049/1,872 (660 killed, 389 survived, 823 pending). A
-re-run was started but the container session may not have persisted it. Next session:
+### Local run — full sequence (run uninterrupted per batch)
+
+**Key insight:** mutmut 3.x resets all `.meta` exit_codes on every invocation. Each
+batch must run to completion without interruption, or the partial work is lost. Run
+one batch per sitting; commit progress between batches.
 
 ```bash
-uv run python scripts/mutmut_batch.py --list        # check what's pending
-uv run python scripts/mutmut_batch.py --run batch-2-generators --max-children 4
+# Prerequisites (run once after cloning / on a fresh machine)
+make sync                            # uv sync --extra dev
+uv run python scripts/mutmut_batch.py --setup   # generate mutants/ workspace (~20s)
+                                     # only needed if mutants/ doesn't exist
+
+# For each batch (2 through 7), run uninterrupted:
+uv run python scripts/mutmut_batch.py --run batch-2-generators   # ~1-2h at 4 workers
 uv run python scripts/mutmut_batch.py --update
-git add status/mutmut-progress.json && git commit -m "test(mutmut): batch-2-generators complete"
+git add status/mutmut-progress.json
+git commit -m "test(mutmut): batch-2-generators complete — X/Y killed"
+git push
+
+uv run python scripts/mutmut_batch.py --run batch-3-conftest
+uv run python scripts/mutmut_batch.py --update
+git add status/mutmut-progress.json
+git commit -m "test(mutmut): batch-3-conftest complete — X/Y killed"
+git push
+
+# ... repeat for batches 4-7 ...
+
+# After all 7 batches done:
+uv run python scripts/mutmut_batch.py --list     # confirm all complete
+# Then run /mutmut-report skill to analyse surviving mutants
 ```
 
-Then proceed with batches 3–7 in subsequent sessions. After all batches are done,
-run `/mutmut-report` to analyse surviving mutants.
+**Tuning `--max-children`:** default is 4; increase on machines with more cores
+(e.g. `--max-children 8`). Batch sizes: batch-3-conftest is the largest (1,233 single
+file); batch-5-flutter-gen is the smallest (464 mutants).
 
 ### Failures encountered — lessons for future sessions
 
