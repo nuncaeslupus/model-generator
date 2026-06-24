@@ -8,11 +8,11 @@
       "pending": 0
     },
     "batch-2-generators": {
-      "status": "pending",
+      "status": "partial",
       "total": 1872,
-      "killed": 0,
-      "survived": 0,
-      "pending": 1872
+      "killed": 660,
+      "survived": 389,
+      "pending": 823
     },
     "batch-3-conftest": {
       "status": "pending",
