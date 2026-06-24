@@ -1,37 +1,41 @@
 # Next Session Plan
 
-## Current State (2026-06-24) — mutmut run COMPLETE; survivors triaged
+## Current State (2026-06-24) — mutmut survivor tests shipped (commit e0f1b71)
 
-Branch `claude/mutmut-local-batches`. All 7 batches finished locally:
-**9,915 mutants, 6,518 killed / 3,397 survived (66%).** `status/mutmut-progress.json`
-shows every batch `complete`. Full triage in
-**[`status/mutmut-survivors-report.md`](./mutmut-survivors-report.md)** — read that.
+Branch `claude/mutmut-local-batches`. Mutmut arc summary:
+- **Full run:** 9,915 mutants, 6,518 killed / 3,397 survived (66%). Triage in
+  **[`status/mutmut-survivors-report.md`](./mutmut-survivors-report.md)**.
+- **7 new tests** (740 → 745) targeting the top survivor clusters — committed as
+  `test(mutmut): kill top survivor clusters`.
 
-**Two real blockers fixed this session** (neither was a timeout — that's why the CC
-Web run failed silently):
-1. `mutmut 3.5.0` was installed (`pyproject.toml` had `mutmut>=2.4.0`, no upper
-   bound). Pinned `>=2.4.0,<3.5.0` → `3.4.0`.
-2. mutmut's `also_copy = ["examples/"]` crashed on a dangling symlink in the
-   gitignored `examples/user-auth-project/.venv/bin/python*` (pointed at a deleted
-   snap Python 3.13). Removed that stale venv.
+### What was added (commit e0f1b71)
 
-### Next step — implement the test fixes (for a sonnet session)
+| Cluster | Mutants targeted | Tests added | File |
+|---------|-----------------|-------------|------|
+| `database.py` `.get("entities", {})` guard | #14/16/38/40, #17/19/61/63, #22/24/33/35/73/75 | 3 | `test_generators.py` |
+| `flutter/paths.py::package_name` `and`→`or` | #9 | 3 (`TestPackageName`) | `test_flutter_generators.py` |
+| `generate.py::_cleanup_selective` `and`→`or` | #39 | 1 | `test_cleanup.py` |
 
-The classifier flagged 113 "real gaps" but most are noise (`encoding=` mutations,
-`XX`-wrapped strings, template kwargs). The **~20–30 worth a test** are listed in
-the report. Priority order:
-1. **`database.py` missing-`entities` characterization tests** — ~14 mutants,
-   highest yield. One test per `generate_database_model` / `generate_init` /
-   `generate_factories`, each called with a model dict lacking `entities`. Use the
-   `project_env` fixture in `tests/test_generators.py`; pass `constraints={}` to
-   `generate_factories`.
-2. **Boolean `and`→`or`**: `flutter/paths.py::package_name`,
-   `generate.py::_cleanup_selective` — test the false branch.
-3. **`migrations.py::generate_migration_init` `mkdir(parents=True)`** — narrow.
+**Key insight for future sessions:** when the Python guard (`dict.get(k, {})`) and the
+Jinja2 template both access the same key, mocking `env.get_template` is needed to
+isolate the Python layer — otherwise both real code and mutant throw (different
+exceptions), so mutmut sees them as equivalent.
 
-After adding tests, confirm the targeted mutants now die:
-`uv run python scripts/mutmut_batch.py --run batch-2-generators` (re-runs that
-batch; remember the whole batch re-tests — mutmut resets `.meta`).
+**Skipped:** `migrations.py::generate_migration_init` `mkdir(parents=True)` (#27/29/31)
+— `test_creates_nested_project_root` and `test_idempotent_mkdir` already existed at
+the mutmut run time; those survivors are likely a batch-run artifact.
+
+### Next steps (choose one)
+
+1. **P3 backlog** — remaining lower-priority items from
+   `status/code-review-2026-06-21.md` (Part B/D). All P0/P1/most P2 closed.
+2. **Flutter Phase 4** — offline cache via Drift/SQLite behind the repository
+   `_custom.dart` seam from Phase 2.
+3. **Optional: mutmut re-validation** — re-run `batch-2-generators` to confirm the
+   `database.py` kills (1–2 h uninterrupted). Not blocking — tests are correct
+   regardless. Command: `uv run python scripts/mutmut_batch.py --run batch-2-generators`
+4. **PR this branch** — `claude/mutmut-local-batches` has the mutmut infrastructure
+   + triage report + 7 new tests; ready to open against `main`.
 
 ---
 
