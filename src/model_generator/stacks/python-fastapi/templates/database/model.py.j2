@@ -70,10 +70,9 @@ This module contains:
 {% if rel.target in sibling_entities and rel.target != entity_name and rel.target not in ns.rel_targets %}{% set _ = ns.rel_targets.append(rel.target) %}{% endif %}
 {% endfor %}
 {% if entity.indexes is defined and entity.indexes | length > 0 %}{% set ns.has_index = true %}{% endif %}
-{% if entity.constraints is defined and entity.constraints | length > 0 %}{% set ns.has_check = true %}{% endif %}
 {% if entity.foreign_keys is defined and entity.foreign_keys | length > 0 %}{% set ns.has_fk_constraint = true %}{% endif %}
 {% for idx in entity.indexes | default([]) %}{% if idx.unique | default(false) %}{% set ns.has_unique = true %}{% endif %}{% endfor %}
-{% for tc in entity.constraints | default([]) %}{% if tc.type == 'unique' %}{% set ns.has_unique = true %}{% endif %}{% endfor %}
+{% for tc in entity.constraints | default([]) %}{% if tc.type == 'unique' %}{% set ns.has_unique = true %}{% elif tc.type in ['check', 'depends'] %}{% set ns.has_check = true %}{% endif %}{% endfor %}
 {% endfor %}
 
 {% if ns.has_uuid %}

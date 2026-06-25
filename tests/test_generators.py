@@ -925,6 +925,7 @@ class TestDatabaseGeneratorEntityConstraints:
         assert '"amount", "ref_code"' in content
         assert 'name="uq_orders_amount_ref_code"' in content
         assert "UniqueConstraint" in content
+        assert "CheckConstraint" not in content
 
     def test_depends_constraint_emits_check_constraint(self, project_env: Any) -> None:
         project_root, config, env = project_env
