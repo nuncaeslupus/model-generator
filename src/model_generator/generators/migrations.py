@@ -20,6 +20,7 @@ def generate_migration_init(
     project_root: Path,
     no_root_files: bool = False,
     dry_run: bool = False,
+    diff: bool = False,
 ) -> list[dict[str, Any]]:
     """Initialize Alembic migration structure.
 
@@ -33,7 +34,7 @@ def generate_migration_init(
     migrations_dir = project_root / config["paths"].get("migrations", "alembic")
     versions_dir = migrations_dir / "versions"
 
-    if not dry_run:
+    if not dry_run and not diff:
         migrations_dir.mkdir(parents=True, exist_ok=True)
         versions_dir.mkdir(parents=True, exist_ok=True)
 

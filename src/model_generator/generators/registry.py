@@ -56,6 +56,7 @@ class GenContext:
     constraints: dict[str, Any]
     no_root_files: bool = False
     dry_run: bool = False
+    diff: bool = False
 
 
 # A single-target generator: consumes a context, returns output dict(s) or None.

@@ -2940,6 +2940,14 @@ class TestValidatePathsBase:
         assert "hub/database/models" in out
         assert "from .base import Base" in out
 
+    def test_null_paths_does_not_raise_attribute_error(self) -> None:
+        """paths: null in YAML reaches _validate_paths_base as None; must not
+        raise AttributeError (GEN-10)."""
+        from model_generator.generate import _validate_paths_base
+
+        # YAML `paths: null` → Python None; default paths must apply without error.
+        _validate_paths_base({"paths": None})
+
 
 class TestApiTestsGenerator:
     """Test contract test generation."""
@@ -4041,6 +4049,21 @@ class TestMigrationGenerator:
         assert len(result) > 0
 
         # No directories were actually created on disk.
+        assert not (project_root / "alembic").exists()
+        assert not (project_root / "alembic" / "versions").exists()
+
+    def test_generate_migration_init_diff_skips_mkdir(
+        self, minimal_model: dict[str, Any], project_env: Any
+    ) -> None:
+        """diff=True returns file specs but does not create directories (GEN-7)."""
+        project_root, config, env = project_env
+
+        result = generate_migration_init(
+            minimal_model, config, env, project_root, diff=True
+        )
+        assert isinstance(result, list)
+        assert len(result) > 0
+
         assert not (project_root / "alembic").exists()
         assert not (project_root / "alembic" / "versions").exists()
 
