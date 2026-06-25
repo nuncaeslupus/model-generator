@@ -215,9 +215,13 @@ def load_config(stack: str = "python-fastapi") -> dict[str, Any]:
 
     # Guard: top-level sections that must be dicts. A project config entry like
     # `paths: "invalid"` would AttributeError deep in a generator — catch it here.
+    # `paths: null` (YAML null → Python None) is normalised to {} so stack
+    # defaults apply; only non-None, non-dict values are an error.
     for _section in ("paths", "auth", "generation", "style"):
         _val = merged_config.get(_section)
-        if _val is not None and not isinstance(_val, dict):
+        if _val is None:
+            merged_config[_section] = {}
+        elif not isinstance(_val, dict):
             print(
                 f"Error: config.{_section} must be a mapping (got"
                 f" {type(_val).__name__!r}). Check your .model-generator.yaml."

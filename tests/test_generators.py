@@ -2941,12 +2941,25 @@ class TestValidatePathsBase:
         assert "from .base import Base" in out
 
     def test_null_paths_does_not_raise_attribute_error(self) -> None:
-        """paths: null in YAML reaches _validate_paths_base as None; must not
-        raise AttributeError (GEN-10)."""
+        """paths: null in YAML must not AttributeError in _validate_paths_base
+        (GEN-10)."""
         from model_generator.generate import _validate_paths_base
 
-        # YAML `paths: null` → Python None; default paths must apply without error.
+        # Direct call: _validate_paths_base must handle None defensively.
         _validate_paths_base({"paths": None})
+
+    def test_loader_normalises_null_paths_to_empty_dict(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """load_config normalises `paths: null` to {} so all downstream
+        consumers (generate_migration_init, etc.) see a dict, not None (GEN-10)."""
+        from model_generator.utils.loaders import load_config
+
+        yaml_path = tmp_path / ".model-generator.yaml"
+        yaml_path.write_text("paths: null\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        config = load_config()
+        assert isinstance(config["paths"], dict)
 
 
 class TestApiTestsGenerator:
