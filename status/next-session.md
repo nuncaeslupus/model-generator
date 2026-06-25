@@ -14,7 +14,7 @@ Five P3 items from `status/code-review-2026-06-21.md`, plus one confirmed-closed
 | TPL-20 | Blank line between docstring `"""` and first import in `factory.py.j2` | `database/factory.py.j2` |
 | TPL-23 | `request: Request,` on its own indented line in rate-limited endpoints | `infrastructure/auth_router.py.j2` |
 | GEN-7 | `generate_migration_init` now accepts `diff=False`; skips `mkdir` under `--diff` | `generators/migrations.py`, `generators/registry.py`, `generate.py` |
-| GEN-10 | `_validate_paths_base` uses `config.get("paths") or {}` — handles `paths: null` | `generate.py` |
+| GEN-10 | `load_config` normalises `null` → `{}` for paths/auth/generation/style in-place; `_validate_paths_base` also guards with `or {}` | `utils/loaders.py`, `generate.py` |
 | TOOL-6 | Already resolved (`loaders.py` and `validate.py` both use `Draft7Validator`) | — |
 
 Tests: 745 → 747 (+`test_generate_migration_init_diff_skips_mkdir`, +`test_null_paths_does_not_raise_attribute_error`).
