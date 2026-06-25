@@ -1,29 +1,41 @@
 # Next Session Plan
 
-## Current State (2026-06-24) — mutmut survivor tests shipped (commit e0f1b71)
+## Current State (2026-06-25) — mutmut survivor arc continuing (PR #68, merged)
 
-Branch `claude/mutmut-local-batches`. Mutmut arc summary:
+On `main`. Mutmut arc summary:
 - **Full run:** 9,915 mutants, 6,518 killed / 3,397 survived (66%). Triage in
   **[`status/mutmut-survivors-report.md`](./mutmut-survivors-report.md)**.
-- **7 new tests** (740 → 745) targeting the top survivor clusters — committed as
-  `test(mutmut): kill top survivor clusters`.
+- **745 tests** (started at 740 before this arc).
 
-### What was added (commit e0f1b71)
+### What was shipped this session (PR #68)
 
-| Cluster | Mutants targeted | Tests added | File |
-|---------|-----------------|-------------|------|
-| `database.py` `.get("entities", {})` guard | #14/16/38/40, #17/19/61/63, #22/24/33/35/73/75 | 3 | `test_generators.py` |
-| `flutter/paths.py::package_name` `and`→`or` | #9 | 3 (`TestPackageName`) | `test_flutter_generators.py` |
-| `generate.py::_cleanup_selective` `and`→`or` | #39 | 1 | `test_cleanup.py` |
+| Cluster | Mutants killed | Tests added | File |
+|---------|---------------|-------------|------|
+| `wizard.actions._common.find_project_root` #3/4/7/8 | 4 | 3 (`TestFindProjectRoot`) | `test_wizard.py` |
+| `flutter.paths.resolve_path` default param #1/4/6 | 3 | 1 | `test_flutter_generators.py` |
+| `pyproject.toml` mypy exclude | — | — | `pyproject.toml` (pre-existing `make lint` failure fixed) |
 
-**Key insight for future sessions:** when the Python guard (`dict.get(k, {})`) and the
-Jinja2 template both access the same key, mocking `env.get_template` is needed to
-isolate the Python layer — otherwise both real code and mutant throw (different
-exceptions), so mutmut sees them as equivalent.
+### What was confirmed as noise (do not chase)
 
-**Skipped:** `migrations.py::generate_migration_init` `mkdir(parents=True)` (#27/29/31)
-— `test_creates_nested_project_root` and `test_idempotent_mkdir` already existed at
-the mutmut run time; those survivors are likely a batch-run artifact.
+Analysis of small modules revealed most classifier "real gaps" are false positives:
+
+- **Encoding mutations** (`"utf-8"` → `None`/`"UTF-8"`) in `parser`, `validate`,
+  `enums`, `constraints` — EQUIVALENT: same codec on Linux, Jinja2 `| default`
+  catches `None.paths` gracefully.
+- **`mode="append"` mutations** in `enums.py` / `constraints.py` `template.render()`
+  — EQUIVALENT: the Jinja2 template only checks `mode == 'create'`; any other value
+  renders identically.
+- **`config=config` → `None`** in `enums.py` / `constraints.py` `template.render()`
+  — EQUIVALENT: `enums.py.j2` doesn't reference `config` at all in its body.
+- **`skip_files = {"__init__.py"}` mutations** in `scan_api_model_files` — EQUIVALENT:
+  dead code; `__init__.py` never matches the `*_response.py`/`*_request.py` glob.
+- **`is_model = False` → `None`** in `scan_model_files` — EQUIVALENT: both falsy in
+  `if is_model:`.
+- **`versions_dir.mkdir(parents=True)` mutations** in `migrations.py` — EQUIVALENT:
+  `migrations_dir` is already created on the line above, so `parents=True` is redundant.
+- **`database.py` / `flutter/paths.py::package_name#9`** (49+1 survivors) — likely
+  **batch artifacts**: targeted tests were added in the prior session (PR #67) AFTER
+  the batch ran. Needs re-validation to confirm kills.
 
 ### Next steps (choose one)
 
@@ -31,11 +43,13 @@ the mutmut run time; those survivors are likely a batch-run artifact.
    `status/code-review-2026-06-21.md` (Part B/D). All P0/P1/most P2 closed.
 2. **Flutter Phase 4** — offline cache via Drift/SQLite behind the repository
    `_custom.dart` seam from Phase 2.
-3. **Optional: mutmut re-validation** — re-run `batch-2-generators` to confirm the
-   `database.py` kills (1–2 h uninterrupted). Not blocking — tests are correct
-   regardless. Command: `uv run python scripts/mutmut_batch.py --run batch-2-generators`
-4. **PR this branch** — `claude/mutmut-local-batches` has the mutmut infrastructure
-   + triage report + 7 new tests; ready to open against `main`.
+3. **Optional: mutmut re-validation** — re-run `batch-2-generators` and
+   `batch-5-flutter-gen` to confirm the `database.py` + `package_name#9` kills
+   (1–2 h each, uninterrupted). Commands:
+   ```bash
+   uv run python scripts/mutmut_batch.py --run batch-2-generators
+   uv run python scripts/mutmut_batch.py --run batch-5-flutter-gen
+   ```
 
 ---
 
