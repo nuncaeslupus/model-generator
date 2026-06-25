@@ -637,7 +637,8 @@
                 ]
             },
             "tests": {
-                "enabled": true
+                "enabled": true,
+                "scenarios": ["list_success", "get_success", "get_not_found"]
             }
         }
     }

@@ -873,6 +873,85 @@ class TestDatabaseGeneratorRangeCheck:
         assert "{}" not in content
 
 
+class TestDatabaseGeneratorEntityConstraints:
+    """EX-6: entity-level table constraints (check / unique / depends types)."""
+
+    def _model(self, constraints: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "domain": "trade",
+            "entities": {
+                "Order": {
+                    "table": "orders",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "amount": {"type": "financial", "required": True},
+                        "fee": {"type": "financial"},
+                        "ref_code": {"type": "text"},
+                    },
+                    "constraints": constraints,
+                }
+            },
+        }
+
+    def test_check_constraint_emits_check_constraint(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        constraint = {
+            "type": "check",
+            "name": "ck_orders_amount_positive",
+            "expression": "CAST(amount AS NUMERIC) >= 0",
+        }
+        result = generate_database_model(
+            self._model([constraint]), config, env, project_root
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert 'CheckConstraint("CAST(amount AS NUMERIC) >= 0"' in content
+        assert 'name="ck_orders_amount_positive"' in content
+
+    def test_unique_constraint_emits_unique_constraint(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        result = generate_database_model(
+            self._model([{"type": "unique", "fields": ["amount", "ref_code"]}]),
+            config,
+            env,
+            project_root,
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert '"amount", "ref_code"' in content
+        assert 'name="uq_orders_amount_ref_code"' in content
+        assert "UniqueConstraint" in content
+
+    def test_depends_constraint_emits_check_constraint(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        constraint = {
+            "type": "depends",
+            "field": "fee",
+            "operator": "<=",
+            "other_field": "amount",
+        }
+        result = generate_database_model(
+            self._model([constraint]), config, env, project_root
+        )
+        assert isinstance(result, dict)
+        content = result["content"]
+        assert '"fee <= amount"' in content
+        assert 'name="ck_orders_fee_amount"' in content
+
+    def test_check_constraint_imports_check_constraint(self, project_env: Any) -> None:
+        project_root, config, env = project_env
+        constraint = {"type": "check", "name": "ck_ok", "expression": "amount >= 0"}
+        result = generate_database_model(
+            self._model([constraint]), config, env, project_root
+        )
+        assert isinstance(result, dict)
+        assert "CheckConstraint" in result["content"]
+
+
 class TestDatabaseGeneratorPerEntity:
     def test_returns_list_of_dicts(
         self, multi_entity_model: dict[str, Any], project_env_per_entity: Any

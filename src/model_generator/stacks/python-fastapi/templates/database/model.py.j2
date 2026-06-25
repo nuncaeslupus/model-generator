@@ -73,6 +73,7 @@ This module contains:
 {% if entity.constraints is defined and entity.constraints | length > 0 %}{% set ns.has_check = true %}{% endif %}
 {% if entity.foreign_keys is defined and entity.foreign_keys | length > 0 %}{% set ns.has_fk_constraint = true %}{% endif %}
 {% for idx in entity.indexes | default([]) %}{% if idx.unique | default(false) %}{% set ns.has_unique = true %}{% endif %}{% endfor %}
+{% for tc in entity.constraints | default([]) %}{% if tc.type == 'unique' %}{% set ns.has_unique = true %}{% endif %}{% endfor %}
 {% endfor %}
 
 {% if ns.has_uuid %}

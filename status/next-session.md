@@ -1,12 +1,41 @@
 # Next Session Plan
 
-## Current State (2026-06-26) — P3 batch (PR #69, open)
+## Current State (2026-06-26) — P3 examples batch (PR open)
 
-On branch `fix/p3-template-generator-hygiene`. **747 tests**, `make lint` clean.
+On branch `fix/p3-examples-ex6-ex7`. **756 tests**, `make lint` clean, `make smoke-example` → 128/128.
 
-### What was shipped this session (PR #69)
+### All P3 code-review items are now closed
 
-Five P3 items from `status/code-review-2026-06-21.md`, plus one confirmed-closed:
+PRs #63 and #64 had already fixed TPL-7, TPL-15, TPL-21, SEC-8, GEN-5, GEN-11, TST-8 before this session; the previous next-session.md incorrectly listed them as open. This PR closes the final two: **EX-6** and **EX-7**.
+
+### What was shipped this session
+
+| ID | Change | File |
+|----|--------|------|
+| EX-6 | Entity-level table constraints demonstrated: `check` (`ck_transactions_amount_non_negative`) and `unique` (`portfolio_id, reference_id`) on `Transaction` in `portfolio.model.json`. Template fix: `entity.constraints` of `type: "unique"` now triggers the `UniqueConstraint` import (was only triggered by `indexes[].unique`). | `examples/…/portfolio.model.json`, `templates/database/model.py.j2`, `tests/test_generators.py` (+4 tests in `TestDatabaseGeneratorEntityConstraints`) |
+| EX-7 | `tests.scenarios` demonstrated on `UserProfile` in `users.model.json`; `json-specification-reference.md` updated to document `tests.scenarios` (with all valid values) and to replace the stale `custom_constraints` section with the correct `entity.constraints` reference (`check`/`unique`/`depends` types, including the `depends` template format). | `examples/…/users.model.json`, `docs/agent/json-specification-reference.md` |
+
+Tests: 752 → 756 (+4 `TestDatabaseGeneratorEntityConstraints`).
+
+### Next steps
+
+1. **Flutter Phase 4** — offline cache via Drift/SQLite behind the repository
+   `_custom.dart` seam from Phase 2.
+2. **Optional: mutmut re-validation** — re-run `batch-2-generators` and
+   `batch-5-flutter-gen` to confirm the `database.py` + `package_name#9` kills
+   (1–2 h each, uninterrupted). Commands:
+   ```bash
+   uv run python scripts/mutmut_batch.py --run batch-2-generators
+   uv run python scripts/mutmut_batch.py --run batch-5-flutter-gen
+   ```
+
+---
+
+## Previous State (2026-06-26) — P3 batch (PR #69, merged)
+
+On `main`. **752 tests**, `make lint` clean.
+
+### What was shipped (PR #69)
 
 | ID | Change | File |
 |----|--------|------|
@@ -16,23 +45,6 @@ Five P3 items from `status/code-review-2026-06-21.md`, plus one confirmed-closed
 | GEN-7 | `generate_migration_init` now accepts `diff=False`; skips `mkdir` under `--diff` | `generators/migrations.py`, `generators/registry.py`, `generate.py` |
 | GEN-10 | `load_config` normalises `null` → `{}` for paths/auth/generation/style in-place; `_validate_paths_base` also guards with `or {}` | `utils/loaders.py`, `generate.py` |
 | TOOL-6 | Already resolved (`loaders.py` and `validate.py` both use `Draft7Validator`) | — |
-
-Tests: 745 → 747 (+`test_generate_migration_init_diff_skips_mkdir`, +`test_null_paths_does_not_raise_attribute_error`).
-
-### Next steps (choose one)
-
-1. **P3 backlog (continued)** — remaining items from `status/code-review-2026-06-21.md`.
-   Still open after this PR: TPL-7, TPL-15, TPL-21, SEC-8, GEN-5 (partial), GEN-11,
-   EX-6, EX-7, TST-8.
-2. **Flutter Phase 4** — offline cache via Drift/SQLite behind the repository
-   `_custom.dart` seam from Phase 2.
-3. **Optional: mutmut re-validation** — re-run `batch-2-generators` and
-   `batch-5-flutter-gen` to confirm the `database.py` + `package_name#9` kills
-   (1–2 h each, uninterrupted). Commands:
-   ```bash
-   uv run python scripts/mutmut_batch.py --run batch-2-generators
-   uv run python scripts/mutmut_batch.py --run batch-5-flutter-gen
-   ```
 
 ---
 

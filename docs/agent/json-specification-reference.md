@@ -53,8 +53,8 @@ Machine-precise reference for model-generator JSON specifications. Every key, ev
 | `timestamps` | object | `{}` | Timestamp configuration |
 | `relationships` | object | `{}` | ORM relationship definitions |
 | `indexes` | array | `[]` | Index definitions |
-| `cross_field_constraints` | array | `[]` | Multi-field database constraints |
-| `custom_constraints` | array | `[]` | Raw SQL constraint expressions |
+| `cross_field_constraints` | array | `[]` | Multi-field arithmetic/comparison constraints (high-level) |
+| `constraints` | array | `[]` | Entity-level table constraints: `check`, `unique`, `depends` (raw SQL level) |
 | `api` | object | `{}` | API generation configuration |
 | `tests` | object | `{}` | Test generation configuration |
 
@@ -402,16 +402,39 @@ Defined at entity level in `cross_field_constraints` array:
 
 **For `sum_equals`:** `"fields"` lists summands, `"target_field"` is the expected total.
 
-### Custom Constraints
+### Entity-Level Table Constraints
+
+Defined at entity level in the `constraints` array. Emitted directly into `__table_args__` as SQLAlchemy constraint objects.
 
 ```json
-"custom_constraints": [
+"constraints": [
   {
-    "name": "ck_custom_business_rule",
-    "expression": "field_a * 0.1 <= field_b AND field_c IS NOT NULL"
+    "type": "check",
+    "name": "ck_orders_amount_non_negative",
+    "expression": "CAST(amount AS NUMERIC) >= 0"
+  },
+  {
+    "type": "unique",
+    "fields": ["portfolio_id", "reference_id"]
+  },
+  {
+    "type": "depends",
+    "field": "available_balance",
+    "operator": "<=",
+    "other_field": "balance"
   }
 ]
 ```
+
+| Type | Emits | Required Keys |
+|------|-------|---------------|
+| `check` | `CheckConstraint(expression, name=name)` | `name`, `expression` |
+| `unique` | `UniqueConstraint(*fields, name="uq_{table}_{fields}")` | `fields` |
+| `depends` | `CheckConstraint("field op other_field", name="ck_{table}_{field}_{other_field}")` | `field`, `operator`, `other_field` |
+
+`depends.operator` must be one of `>=`, `>`, `<=`, `<`, `==`, `!=`.
+
+Fields named in a `unique` entity constraint receive automatic `unique_suffix` in generated contract-test fixtures (same as fields in a unique `indexes` entry), preventing repeated inserts from colliding.
 
 ---
 
@@ -556,13 +579,15 @@ The `domain` and `section_header` from the model JSON still drive things like `_
 
 ```json
 "tests": {
-  "enabled": true
+  "enabled": true,
+  "scenarios": ["list_success", "get_success", "get_not_found"]
 }
 ```
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | bool | `false` | Generate contract tests for this entity |
+| `scenarios` | `string[]` | *(all)* | Whitelist of scenario tags to generate. When omitted every scenario is generated. Currently gates the **create**, **update**, and **delete** test sections; list and get sections are always generated. Valid values: `list_success`, `list_pagination`, `list_filters`, `create_success`, `create_minimal`, `create_missing_required`, `create_duplicate_unique`, `create_invalid_fk`, `get_success`, `get_not_found`, `update_success`, `update_partial`, `update_not_found`, `update_immutable_field`, `delete_success`, `delete_not_found`, `field_validation`. |
 
 ---
 
