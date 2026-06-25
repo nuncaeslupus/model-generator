@@ -1,46 +1,29 @@
 # Next Session Plan
 
-## Current State (2026-06-25) — mutmut survivor arc continuing (PR #68, merged)
+## Current State (2026-06-26) — P3 batch (PR #69, open)
 
-On `main`. Mutmut arc summary:
-- **Full run:** 9,915 mutants, 6,518 killed / 3,397 survived (66%). Triage in
-  **[`status/mutmut-survivors-report.md`](./mutmut-survivors-report.md)**.
-- **745 tests** (started at 740 before this arc).
+On branch `fix/p3-template-generator-hygiene`. **747 tests**, `make lint` clean.
 
-### What was shipped this session (PR #68)
+### What was shipped this session (PR #69)
 
-| Cluster | Mutants killed | Tests added | File |
-|---------|---------------|-------------|------|
-| `wizard.actions._common.find_project_root` #3/4/7/8 | 4 | 3 (`TestFindProjectRoot`) | `test_wizard.py` |
-| `flutter.paths.resolve_path` default param #1/4/6 | 3 | 1 | `test_flutter_generators.py` |
-| `pyproject.toml` mypy exclude | — | — | `pyproject.toml` (pre-existing `make lint` failure fixed) |
+Five P3 items from `status/code-review-2026-06-21.md`, plus one confirmed-closed:
 
-### What was confirmed as noise (do not chase)
+| ID | Change | File |
+|----|--------|------|
+| TPL-17 | Extra blank before Field Validators section header in `request.py.j2` | `api/request.py.j2` |
+| TPL-20 | Blank line between docstring `"""` and first import in `factory.py.j2` | `database/factory.py.j2` |
+| TPL-23 | `request: Request,` on its own indented line in rate-limited endpoints | `infrastructure/auth_router.py.j2` |
+| GEN-7 | `generate_migration_init` now accepts `diff=False`; skips `mkdir` under `--diff` | `generators/migrations.py`, `generators/registry.py`, `generate.py` |
+| GEN-10 | `_validate_paths_base` uses `config.get("paths") or {}` — handles `paths: null` | `generate.py` |
+| TOOL-6 | Already resolved (`loaders.py` and `validate.py` both use `Draft7Validator`) | — |
 
-Analysis of small modules revealed most classifier "real gaps" are false positives:
-
-- **Encoding mutations** (`"utf-8"` → `None`/`"UTF-8"`) in `parser`, `validate`,
-  `enums`, `constraints` — EQUIVALENT: same codec on Linux, Jinja2 `| default`
-  catches `None.paths` gracefully.
-- **`mode="append"` mutations** in `enums.py` / `constraints.py` `template.render()`
-  — EQUIVALENT: the Jinja2 template only checks `mode == 'create'`; any other value
-  renders identically.
-- **`config=config` → `None`** in `enums.py` / `constraints.py` `template.render()`
-  — EQUIVALENT: `enums.py.j2` doesn't reference `config` at all in its body.
-- **`skip_files = {"__init__.py"}` mutations** in `scan_api_model_files` — EQUIVALENT:
-  dead code; `__init__.py` never matches the `*_response.py`/`*_request.py` glob.
-- **`is_model = False` → `None`** in `scan_model_files` — EQUIVALENT: both falsy in
-  `if is_model:`.
-- **`versions_dir.mkdir(parents=True)` mutations** in `migrations.py` — EQUIVALENT:
-  `migrations_dir` is already created on the line above, so `parents=True` is redundant.
-- **`database.py` / `flutter/paths.py::package_name#9`** (49+1 survivors) — likely
-  **batch artifacts**: targeted tests were added in the prior session (PR #67) AFTER
-  the batch ran. Needs re-validation to confirm kills.
+Tests: 745 → 747 (+`test_generate_migration_init_diff_skips_mkdir`, +`test_null_paths_does_not_raise_attribute_error`).
 
 ### Next steps (choose one)
 
-1. **P3 backlog** — remaining lower-priority items from
-   `status/code-review-2026-06-21.md` (Part B/D). All P0/P1/most P2 closed.
+1. **P3 backlog (continued)** — remaining items from `status/code-review-2026-06-21.md`.
+   Still open after this PR: TPL-7, TPL-15, TPL-21, SEC-8, GEN-5 (partial), GEN-11,
+   EX-6, EX-7, TST-8.
 2. **Flutter Phase 4** — offline cache via Drift/SQLite behind the repository
    `_custom.dart` seam from Phase 2.
 3. **Optional: mutmut re-validation** — re-run `batch-2-generators` and
@@ -50,6 +33,36 @@ Analysis of small modules revealed most classifier "real gaps" are false positiv
    uv run python scripts/mutmut_batch.py --run batch-2-generators
    uv run python scripts/mutmut_batch.py --run batch-5-flutter-gen
    ```
+
+---
+
+## Previous State (2026-06-25) — mutmut survivor arc (PR #68, merged)
+
+On `main`. Mutmut arc summary:
+- **Full run:** 9,915 mutants, 6,518 killed / 3,397 survived (66%). Triage in
+  **[`status/mutmut-survivors-report.md`](./mutmut-survivors-report.md)**.
+- **745 tests** (started at 740 before this arc).
+
+### What was shipped (PR #68)
+
+| Cluster | Mutants killed | Tests added | File |
+|---------|---------------|-------------|------|
+| `wizard.actions._common.find_project_root` #3/4/7/8 | 4 | 3 (`TestFindProjectRoot`) | `test_wizard.py` |
+| `flutter.paths.resolve_path` default param #1/4/6 | 3 | 1 | `test_flutter_generators.py` |
+| `pyproject.toml` mypy exclude | — | — | `pyproject.toml` (pre-existing `make lint` failure fixed) |
+
+### What was confirmed as noise (do not chase)
+
+- **Encoding mutations** (`"utf-8"` → `None`/`"UTF-8"`) in `parser`, `validate`,
+  `enums`, `constraints` — EQUIVALENT: same codec on Linux.
+- **`mode="append"` mutations** in `enums.py` / `constraints.py` `template.render()`
+  — EQUIVALENT: Jinja2 template only checks `mode == 'create'`; any other value is identical.
+- **`config=config` → `None`** in `enums.py` / `constraints.py` — EQUIVALENT: template doesn't reference `config`.
+- **`skip_files = {"__init__.py"}` mutations** in `scan_api_model_files` — EQUIVALENT: dead code.
+- **`is_model = False` → `None`** in `scan_model_files` — EQUIVALENT: both falsy.
+- **`versions_dir.mkdir(parents=True)` mutations** in `migrations.py` — EQUIVALENT: `migrations_dir` already created above.
+- **`database.py` / `flutter/paths.py::package_name#9`** (49+1 survivors) — likely
+  **batch artifacts**: targeted tests were added AFTER the batch ran. Needs re-validation.
 
 ---
 
