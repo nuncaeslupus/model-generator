@@ -552,3 +552,46 @@ class TestRunGenerateAction:
 
         assert mock_infra.call_args.kwargs["no_root_files"] is True
         assert mock_generate.call_args.kwargs["no_root_files"] is True
+
+
+class TestFindProjectRoot:
+    """Test wizard find_project_root sentinel-file lookup."""
+
+    def test_cwd_returned_when_cwd_has_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CWD is returned when it has the marker; parent config does not override it.
+
+        Both directories carry the marker so a mutation that breaks the CWD check
+        falls through to the parent check (returning parent instead of cwd), which
+        makes the assertion fail.
+        """
+        from model_generator.wizard.actions._common import find_project_root
+
+        cwd_dir = tmp_path / "project"
+        cwd_dir.mkdir()
+        (tmp_path / ".model-generator.yaml").touch()
+        (cwd_dir / ".model-generator.yaml").touch()
+        monkeypatch.chdir(cwd_dir)
+        assert find_project_root() == cwd_dir
+
+    def test_parent_returned_when_only_parent_has_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Parent directory is returned when only the parent has the marker file."""
+        from model_generator.wizard.actions._common import find_project_root
+
+        cwd_dir = tmp_path / "project"
+        cwd_dir.mkdir()
+        (tmp_path / ".model-generator.yaml").touch()
+        monkeypatch.chdir(cwd_dir)
+        assert find_project_root() == tmp_path
+
+    def test_falls_back_to_cwd_when_no_config_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CWD is returned as a fallback when no marker exists in cwd or parent."""
+        from model_generator.wizard.actions._common import find_project_root
+
+        monkeypatch.chdir(tmp_path)
+        assert find_project_root() == tmp_path

@@ -592,6 +592,11 @@ class TestProjectAgnostic:
         assert resolve_path(cfg, "models") == "lib/my_client/models"
         assert resolve_path(cfg, "api_core") == "lib/my_client/core"
 
+    def test_resolve_path_returns_empty_string_for_missing_key(self) -> None:
+        # default is "" — mutations that change it to None or "XXXX" are caught here.
+        cfg: dict[str, Any] = {}
+        assert resolve_path(cfg, "nonexistent_key") == ""
+
 
 class TestPackageName:
     """Test the package_name() guard: isinstance AND non-empty strip."""
