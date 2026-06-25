@@ -382,6 +382,17 @@
                     ]
                 }
             ],
+            "constraints": [
+                {
+                    "type": "check",
+                    "name": "ck_transactions_amount_non_negative",
+                    "expression": "CAST(amount AS NUMERIC) >= 0"
+                },
+                {
+                    "type": "unique",
+                    "fields": ["portfolio_id", "reference_id"]
+                }
+            ],
             "api": {
                 "enabled": true,
                 "prefix": "transactions",
