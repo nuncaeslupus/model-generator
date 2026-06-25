@@ -30,8 +30,7 @@ Usage:
     # Build without saving
     obj = {{ example_entity }}Factory.build()
 """
-
-{#- Calculate necessary imports -#}
+{# Calculate necessary imports -#}
 {% set ns = namespace(
     enum_imports=[],
     has_relationships=false,

@@ -443,6 +443,7 @@ def generate(
             constraints=constraints,
             no_root_files=no_root_files,
             dry_run=dry_run,
+            diff=diff,
         )
         result = _generate_target(t, spec, ctx)
         if result is None:
@@ -578,7 +579,7 @@ def _validate_paths_base(config: dict[str, Any]) -> None:
     ``base.py``. A mismatch is silent at generation time but raises
     ``ModuleNotFoundError`` at import or test-collection time.
     """
-    paths = config.get("paths", {})
+    paths = config.get("paths") or {}
     db_models_str = paths.get("database_models", "backend/src/database/models")
     base_str = paths.get("base", f"{db_models_str}/base.py")
 
@@ -1031,6 +1032,7 @@ _PYTHON_FASTAPI_GENERATORS: dict[str, TargetGenerator] = {
         c.project_root,
         no_root_files=c.no_root_files,
         dry_run=c.dry_run,
+        diff=c.diff,
     ),
     "migration-autogen": lambda c: _run_migration_autogen(c),
 }

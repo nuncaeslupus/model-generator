@@ -268,8 +268,10 @@ router = APIRouter(tags=["auth"])
 @limiter.limit(REGISTER_LIMIT)
 {% endif %}
 async def register(
-    {% if rate_limit_enabled %}request: Request,
-    {% endif %}payload: RegisterRequest,
+{% if rate_limit_enabled %}
+    request: Request,
+{% endif %}
+    payload: RegisterRequest,
     session: AsyncSession = Depends(get_session),
 ) -> RegisterResponse:
     existing = await session.execute(
@@ -378,8 +380,10 @@ async def logout(
 @limiter.limit(FORGOT_LIMIT)
 {% endif %}
 async def forgot_password(
-    {% if rate_limit_enabled %}request: Request,
-    {% endif %}payload: ForgotPasswordRequest,
+{% if rate_limit_enabled %}
+    request: Request,
+{% endif %}
+    payload: ForgotPasswordRequest,
     session: AsyncSession = Depends(get_session),
 ) -> MessageResponse:
     """Generate a signed reset token and dispatch it via email.
