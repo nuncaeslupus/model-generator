@@ -111,7 +111,7 @@ strict = true
 warn_unused_configs = true
 warn_no_return = true
 show_error_codes = true
-exclude = [".claude/", "examples/", "tmp/"]
+exclude = [".claude/", "examples/", "tmp/", "mutants/"]
 
 [tool.pyright]
 include = ["src", "tests"]
