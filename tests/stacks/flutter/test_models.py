@@ -465,6 +465,29 @@ class TestModelsIndex:
         # No enum fields declared -> enums export still correctly suppressed.
         assert "enums.dart" not in content
 
+    def test_null_entity_omitted_from_barrel(
+        self,
+        flutter_config: dict[str, Any],
+        env: Any,
+        tmp_path: Path,
+    ) -> None:
+        # A None entity must not be exported — no .dart file was generated for it,
+        # and exporting a missing file is a hard Dart compile error.
+        model = {
+            "entities": {
+                "Nulled": None,
+                "Gadget": {
+                    "table": "gadgets",
+                    "fields": {"id": {"type": "uuid", "primary_key": True}},
+                },
+            }
+        }
+        result = generate_flutter_models_index(model, flutter_config, env, tmp_path)
+        assert result is not None
+        content = str(result["content"])
+        assert "nulled.dart" not in content
+        assert "export 'gadget.dart';" in content
+
 
 # --------------------------------------------------------------------------- #
 # Infrastructure: converters & pubspec

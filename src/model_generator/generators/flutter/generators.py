@@ -132,6 +132,8 @@ def generate_flutter_models_index(
             exports.add(dart_file.name)
 
     for entity_name, entity in (model.get("entities") or {}).items():
+        if entity is None:
+            continue
         exports.add(f"{_entity_filename(entity_name)}.dart")
         # Entities with create/update endpoints also emit a ``<entity>_requests.dart``
         # DTO file into this same models dir. On the first run the dir does not
@@ -146,6 +148,7 @@ def generate_flutter_models_index(
     has_enums = (project_root / enums_path).is_file() or any(
         (entity.get("fields") or {}).get(fname, {}).get("type") == "enum"
         for entity in (model.get("entities") or {}).values()
+        if entity is not None
         for fname in (entity.get("fields") or {})
     )
     content = template.render(
