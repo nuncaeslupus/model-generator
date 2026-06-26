@@ -1,44 +1,42 @@
 # Next Session Plan
 
-## Current State (2026-06-27) — batch-5 re-validated; mutmut arc fully closed
+## Current State (2026-06-27) — Flutter Phase 4 shipped; all PRs merged
 
-On `main` (`c4c630c`, synced with `origin/main`). **831 tests**, `make lint` clean.
+On `main` (`3bd7537`, synced with `origin/main`). **836 tests** (+ 2 xfailed),
+`make lint` clean, all CI jobs green.
 
-### What was shipped (PR #76)
+### What was shipped (PR #78 — feat/flutter-phase4-cache)
 
-Mutmut survivor triage of `batch-5-flutter-gen` (120 survivors). Delivered 4 new
-tests + 1 source fix (Gemini-flagged real bug):
+Flutter Phase 4: Drift/SQLite offline cache layer, with Gemini comment fixes and
+three CI bug-fixes discovered post-merge of PR #71:
 
-| Change | File | What it catches / fixes |
-|--------|------|------------------------|
-| `TestModelTemplate::test_null_entity_is_skipped_not_loop_stopped` | `test_models.py` | `continue` → `break` mutant: None entity silently drops all later entities |
-| `TestFlutterInfraOrchestrator::test_writes_infra_files` | `test_models.py` | Function had zero direct tests; all param-to-None mutants survived |
-| `TestFlutterInfraOrchestrator::test_dry_run_returns_empty_and_writes_nothing` | `test_models.py` | `dry_run=None` (falsy) → writes files instead of dry-running |
-| `TestModelsIndex::test_null_entity_omitted_from_barrel` | `test_models.py` | Barrel would export filename for ungenerated file → Dart compile error |
-| **fix:** `if entity is None: continue` in `generate_flutter_models_index` | `generators.py` | Actual source fix for the barrel bug above |
-| **fix:** `if entity is not None` guard in `has_enums` generator | `generators.py` | `None.get("fields")` → `AttributeError` when enums-check ran over None entities |
+| Change | File | What it does |
+|--------|------|--------------|
+| Gemini fix: `super.db` → `super(db)` in doc example | `docs/user/flutter.md` | Dart compile error: `this._db` is positional-private |
+| Gemini fix: `{}` → `{"local_cache": False}` in test | `test_models.py` | More explicit test for absent flag |
+| `generate_pubspec` adds Drift deps when `local_cache: true` | `generators/flutter/generators.py` | Was missing from pubspec generation |
+| `local_cache: true` added to flutter-app example | `examples/flutter-app/.model-generator.yaml` | Exercises Phase 4 in CI smoke job |
+| **CI fix**: `needs_pagination` + `pagination_uri` in `generate_cached_repositories` | `generators/flutter/cache.py` | `Paginated<T>` not a type — missing import |
+| **CI fix**: `column_nullable` param in `_to_companion_expr` | `generators/flutter/cache.py` | `String?` assigned to `String` for PK fields |
+| **CI fix**: guard `package:decimal/decimal.dart` on `needs_decimal` | `cached_repository.dart.j2` | Unused import → `dart analyze` exit 2 |
+| 5 new tests for the three CI fixes | `test_cache.py` | pagination import, pk null assertion, no-decimal import |
 
-### batch-5 re-validation (2026-06-27)
+### What was shipped (PR #77 — docs/batch5-revalidation)
 
-Re-ran the 120 survivors against the updated test suite. Result: **15 newly killed**
-(344 → 359 killed; 120 → 105 survived). The 4 new tests killed more than expected
-because `test_writes_infra_files` exercises 5 generator functions through the shared
-infra write path (`analysis_options`, `build_yaml`, `gitignore`, `readme`, orchestrator).
+batch-5 re-validation: 120 survivors re-run → **15 newly killed** (344 → 359).
+`mutmut-progress.json` updated.
 
-Updated `status/mutmut-progress.json`: batch-5 now shows `killed: 359, survived: 105`.
+### Mutmut arc: active
 
-Remaining 105 survivors in `flutter.generators` are confirmed noise: XX-wrapped
-strings, `package_name=pkg` kwarg unused by the template, print-statement case-swaps.
-
-### Mutmut arc: fully closed
-
-All 7 batches run and triaged (see `status/mutmut-survivors-report.md`). batch-5
-re-validated. No actionable survivors remain. The generator is at a stable,
-well-tested point.
+Batches 1, 2, and 5 are fully triaged (see `status/mutmut-survivors-report.md`),
+with no actionable survivors remaining. Batches 3, 4, 6, and 7 are complete but
+await triage.
 
 ### Next steps
 
-1. **New feature work** — new field type, new stack, or product call
+1. **Mutmut survivor triage** — batches 3/4/6/7 are complete but untriaged; run
+   `/mutmut-report` skill or manually inspect surviving mutants for real gaps
+2. **New feature work** — new field type, new stack, or product call
 
 ---
 
