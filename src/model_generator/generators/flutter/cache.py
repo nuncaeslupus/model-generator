@@ -21,6 +21,7 @@ The generated hierarchy:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -363,9 +364,21 @@ def generate_drift_database(
     if local_dir.is_dir():
         for dart_file in sorted(local_dir.glob("*_table.dart")):
             stem = dart_file.stem  # e.g. "category_table"
-            # Reconstruct PascalCase class name: "category_table" → "CategoryTable"
-            entity_part = stem[: -len("_table")]  # "category"
-            cls = "".join(p.capitalize() for p in entity_part.split("_")) + "Table"
+            # Read the exact class name from the file rather than reconstructing
+            # from the filename — capitalize() is lossy for names like APIKeyTable.
+            try:
+                content = dart_file.read_text(encoding="utf-8")
+                m = re.search(r"class\s+(\w+Table)\s+extends\s+Table", content)
+                entity_part = stem[: -len("_table")]
+                fallback = (
+                    "".join(p.capitalize() for p in entity_part.split("_")) + "Table"
+                )
+                cls = m.group(1) if m else fallback
+            except OSError:
+                entity_part = stem[: -len("_table")]
+                cls = (
+                    "".join(p.capitalize() for p in entity_part.split("_")) + "Table"
+                )
             _add(cls, stem)
 
     # Add the current model's API-enabled entities (in case lib/local/ is new).
