@@ -20,6 +20,7 @@
     entity_name   PascalCase entity name
     table_class   Dart class name, e.g. ``CategoryTable``
     table_name    SQL table name, e.g. ``local_categories``
+    pk_field      camelCase PK column name, e.g. ``id``
     fields        list of field descriptors (name, drift_col_type,
                   drift_builder, nullable)
 -#}
@@ -40,4 +41,6 @@ class {{ table_class }} extends Table {
 {% for field in fields %}
   {{ field.drift_col_type }} get {{ field.name }} => {{ field.drift_builder }}(){% if field.nullable %}.nullable(){% endif %}();
 {% endfor %}
+  @override
+  Set<Column> get primaryKey => { {{ pk_field }} };
 }

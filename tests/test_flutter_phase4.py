@@ -435,6 +435,18 @@ class TestDriftTableGeneration:
         assert "TextColumn get unitPrice => text()()" in content
         assert "TextColumn get unitPrice => text().nullable()()" not in content
 
+    def test_primary_key_override(
+        self,
+        model: dict[str, Any],
+        cache_config: dict[str, Any],
+        env: Any,
+        tmp_path: Path,
+    ) -> None:
+        """Drift requires an explicit primaryKey override for insertOnConflictUpdate."""
+        outputs = generate_drift_tables(model, cache_config, env, tmp_path)
+        content = _rendered(outputs, "widget_table.dart")
+        assert "Set<Column> get primaryKey => { id };" in content
+
     def test_mode_is_write(
         self,
         model: dict[str, Any],

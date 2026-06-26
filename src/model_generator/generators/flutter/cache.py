@@ -299,6 +299,7 @@ def generate_drift_tables(
 
         stem = _entity_file_stem(entity_name)
         cache_fields = _resolve_cache_fields(entity, config)
+        pk = primary_key_field(entity, config)
         # Prefix the SQL table name with ``local_`` so it never collides with
         # the backend's table names if the SQLite DB is ever shared.
         sql_table_name = f"local_{entity.get('table') or stem + 's'}"
@@ -307,6 +308,7 @@ def generate_drift_tables(
             entity_name=entity_name,
             table_class=table_class(entity_name),
             table_name=sql_table_name,
+            pk_field=pk["name"] if pk else "id",
             fields=cache_fields,
         )
         outputs.append(
