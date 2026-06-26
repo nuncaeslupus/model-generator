@@ -15,6 +15,7 @@ import pytest
 
 from model_generator.generators.flutter import (
     FLUTTER_STACK,
+    flutter_infra_orchestrator,
     generate_converters,
     generate_flutter_enums,
     generate_flutter_models,
@@ -305,6 +306,28 @@ class TestModelTemplate:
         path = outputs[0]["path"]
         assert path == tmp_path / "lib" / "models" / "widget.dart"
 
+    def test_null_entity_is_skipped_not_loop_stopped(
+        self,
+        flutter_config: dict[str, Any],
+        env: Any,
+        tmp_path: Path,
+    ) -> None:
+        # `continue` vs `break`: a None entity must be skipped, not abort the loop.
+        # With `break`, "Gadget" would never be reached and outputs would be empty.
+        model = {
+            "domain": "shop",
+            "entities": {
+                "Nulled": None,
+                "Gadget": {
+                    "table": "gadgets",
+                    "fields": {"id": {"type": "uuid", "primary_key": True}},
+                },
+            },
+        }
+        outputs = generate_flutter_models(model, flutter_config, env, tmp_path)
+        assert len(outputs) == 1
+        assert outputs[0]["path"].stem == "gadget"
+
 
 # --------------------------------------------------------------------------- #
 # Enums
@@ -591,3 +614,39 @@ class TestPackageName:
     def test_falls_back_for_whitespace_string(self) -> None:
         cfg: dict[str, Any] = {"flutter": {"package_name": "   "}}
         assert package_name(cfg) == DEFAULT_PACKAGE_NAME
+
+
+class TestFlutterInfraOrchestrator:
+    """Direct tests for flutter_infra_orchestrator.
+
+    The function had no direct tests — only a mocked CLI path — so every
+    parameter-to-None mutation survived. These tests execute the real function
+    body and kill those mutants.
+    """
+
+    def test_writes_infra_files(
+        self,
+        flutter_config: dict[str, Any],
+        env: Any,
+        tmp_path: Path,
+    ) -> None:
+        paths = flutter_infra_orchestrator(
+            config=flutter_config, env=env, project_root=tmp_path
+        )
+        assert len(paths) > 0
+        assert any(p.name == "pubspec.yaml" for p in paths)
+
+    def test_dry_run_returns_empty_and_writes_nothing(
+        self,
+        flutter_config: dict[str, Any],
+        env: Any,
+        tmp_path: Path,
+    ) -> None:
+        # write_outputs with dry_run=True prints "Would write" and returns [].
+        # Mutant: write_outputs(..., dry_run=None) treats None as falsy → writes
+        # files and returns a non-empty list, failing the assertion below.
+        paths = flutter_infra_orchestrator(
+            config=flutter_config, env=env, project_root=tmp_path, dry_run=True
+        )
+        assert paths == []
+        assert list(tmp_path.iterdir()) == []

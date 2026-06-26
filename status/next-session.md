@@ -1,10 +1,10 @@
 # Next Session Plan
 
-## Current State (2026-06-26) — Test suite restructure (PR #75 open)
+## Current State (2026-06-26) — Post PR #75 merge; mutmut triage in progress
 
-On branch `refactor/test-suite-restructure`. **827 tests**, `make lint` clean.
+On `main` (`1d628a3`, synced with `origin/main`). **827 tests**, `make lint` clean.
 
-### What was shipped this session
+### What was shipped (PR #75)
 
 - Split `test_generators.py` (7,923 lines, 65 classes) into 10 focused files under `tests/stacks/python_fastapi/`
 - Moved 3 flutter test files into `tests/stacks/flutter/` with shared `conftest.py`
@@ -12,10 +12,35 @@ On branch `refactor/test-suite-restructure`. **827 tests**, `make lint` clean.
 - Merged `test_validation.py` → `test_validate.py`, deleted stale `test_utils.py`
 - Added `__init__.py` hierarchy to support same-basename files in different stacks
 
+### Mutmut status — all 7 batches complete
+
+| Batch | Total | Killed | Survived |
+|-------|------:|-------:|---------:|
+| batch-1-utils | 1 610 | 1 183 | 427 |
+| batch-2-generators | 1 872 | 1 346 | 526 |
+| batch-3-conftest | 1 233 | 473 | 760 |
+| batch-4-flutter-api | 1 546 | 965 | 581 |
+| batch-5-flutter-gen | 464 | 344 | 120 |
+| batch-6-generate | 1 631 | 1 149 | 482 |
+| batch-7-infrastructure | 1 559 | 1 061 | 498 |
+
+Survivor triage complete (see `status/mutmut-survivors-report.md`). Three new tests
+added (`tests/stacks/flutter/test_models.py`, 827 → 830 collected):
+
+| Test | Kills | Gap |
+|------|-------|-----|
+| `TestModelTemplate::test_null_entity_is_skipped_not_loop_stopped` | `generate_flutter_models#21` | `continue` → `break` silently drops all later entities |
+| `TestFlutterInfraOrchestrator::test_writes_infra_files` | `#15/#21/#46/#47/#57/#60` | function had zero direct tests; all param-to-None mutants survived |
+| `TestFlutterInfraOrchestrator::test_dry_run_returns_empty_and_writes_nothing` | `#68` | `dry_run=None` falsy → would write files instead of dry-running |
+
+Remaining survivors in `flutter.generators` (~114) are noise: XX-wrapped strings in
+print/description kwargs, equivalents (template ignores `package_name=pkg`).
+
 ### Next steps
 
-1. **Review and merge PR #75** — test suite restructure
-2. **Optional: mutmut re-validation** — re-run batches after the test restructure
+1. **New feature work** — new field type, new stack, or product call
+2. **Optional: re-run batch-5-flutter-gen** to confirm the 3 new tests kill the
+   targeted mutants (`uv run python scripts/mutmut_batch.py --run batch-5-flutter-gen`)
 
 ---
 
