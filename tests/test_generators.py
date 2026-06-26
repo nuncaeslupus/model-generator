@@ -1001,6 +1001,15 @@ class TestDatabaseGeneratorPerEntity:
         for entry in result:
             assert divider_banner not in entry["content"]
 
+    def test_missing_entities_key_returns_empty_list(
+        self, project_env_per_entity: Any
+    ) -> None:
+        # Characterization: model.get("entities", {}).items() in the per-entity
+        # branch must not crash when absent — {} default → empty list returned.
+        project_root, config, env = project_env_per_entity
+        result = generate_database_model({"domain": "test"}, config, env, project_root)
+        assert result == []
+
 
 @pytest.fixture
 def composite_fk_model() -> dict[str, Any]:
@@ -1267,6 +1276,18 @@ class TestGenerateInitPerEntity:
         assert "from .author import" in result["content"]
         assert "from .post import" in result["content"]
 
+    def test_missing_entities_key_returns_none(
+        self, project_env_per_entity: Any
+    ) -> None:
+        # Characterization: for name in model.get("entities", {}) in the per-entity
+        # branch must not crash when key is absent — empty loop, empty domains → None.
+        project_root, config, env = project_env_per_entity
+        with patch(
+            "model_generator.generators.database.scan_model_files", return_value=[]
+        ):
+            result = generate_init({"domain": "test"}, config, env, project_root)
+        assert result is None
+
 
 class TestFactoryGeneratorPerEntity:
     """Per-entity factory emission and cross-entity import preservation."""
@@ -1319,6 +1340,17 @@ class TestFactoryGeneratorPerEntity:
         )
         assert "from .post import PostFactory" in author_content
         assert "PostFactory.create_batch(count, author=obj)" in author_content
+
+    def test_missing_entities_key_returns_empty_list(
+        self, project_env_per_entity: Any
+    ) -> None:
+        # Characterization: model.get("entities", {}).items() inside the per-entity
+        # branch must not crash when key is absent — {} default → empty list returned.
+        project_root, config, env = project_env_per_entity
+        result = generate_factories(
+            {"domain": "test"}, config, env, project_root, constraints={}
+        )
+        assert result == []
 
 
 @pytest.fixture
