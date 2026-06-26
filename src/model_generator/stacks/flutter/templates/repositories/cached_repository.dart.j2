@@ -45,7 +45,9 @@
 import 'dart:convert';
 
 {% endif %}
+{% if needs_decimal %}
 import 'package:decimal/decimal.dart' show Decimal;
+{% endif %}
 import 'package:drift/drift.dart' show Value;
 
 import '{{ model_uri }}';

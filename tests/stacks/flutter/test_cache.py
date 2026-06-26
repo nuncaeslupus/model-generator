@@ -927,8 +927,7 @@ class TestCachedRepositoryGeneration:
             simple_model, cache_config, env, tmp_path
         )
         content = _rendered(outputs, "thing_cached_repository.dart")
-        # Decimal import should NOT appear when no financial/percentage fields.
-        # The template always imports decimal — check at least no Decimal.parse
+        assert "package:decimal/decimal.dart" not in content
         assert "Decimal.parse" not in content
 
     def test_immutable_entity_no_update_method(
