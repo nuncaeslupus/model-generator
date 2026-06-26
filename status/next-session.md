@@ -26,10 +26,11 @@ three CI bug-fixes discovered post-merge of PR #71:
 batch-5 re-validation: 120 survivors re-run → **15 newly killed** (344 → 359).
 `mutmut-progress.json` updated.
 
-### Mutmut arc: fully closed
+### Mutmut arc: active
 
-All 7 batches run and triaged (see `status/mutmut-survivors-report.md`). No
-actionable survivors remain.
+Batches 1, 2, and 5 are fully triaged (see `status/mutmut-survivors-report.md`),
+with no actionable survivors remaining. Batches 3, 4, 6, and 7 are complete but
+await triage.
 
 ### Next steps
 
