@@ -367,9 +367,7 @@ def generate_drift_database(
             # Read the exact class name from the file rather than reconstructing
             # from the filename — capitalize() is lossy for names like APIKeyTable.
             entity_part = stem[: -len("_table")]
-            fallback = (
-                "".join(p.capitalize() for p in entity_part.split("_")) + "Table"
-            )
+            fallback = "".join(p.capitalize() for p in entity_part.split("_")) + "Table"
             try:
                 content = dart_file.read_text(encoding="utf-8")
                 m = re.search(r"class\s+(\w+Table)\s+extends\s+Table", content)
