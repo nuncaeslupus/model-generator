@@ -1,45 +1,36 @@
 # Next Session Plan
 
-## Current State (2026-06-26) — Post PR #75 merge; mutmut triage in progress
+## Current State (2026-06-27) — Post PR #76 merge; mutmut arc closed
 
-On `main` (`1d628a3`, synced with `origin/main`). **827 tests**, `make lint` clean.
+On `main` (`c4c630c`, synced with `origin/main`). **831 tests**, `make lint` clean.
 
-### What was shipped (PR #75)
+### What was shipped (PR #76)
 
-- Split `test_generators.py` (7,923 lines, 65 classes) into 10 focused files under `tests/stacks/python_fastapi/`
-- Moved 3 flutter test files into `tests/stacks/flutter/` with shared `conftest.py`
-- Centralized `project_env` fixtures (4+ duplications → 1 conftest)
-- Merged `test_validation.py` → `test_validate.py`, deleted stale `test_utils.py`
-- Added `__init__.py` hierarchy to support same-basename files in different stacks
+Mutmut survivor triage of `batch-5-flutter-gen` (120 survivors). Delivered 4 new
+tests + 1 source fix (Gemini-flagged real bug):
 
-### Mutmut status — all 7 batches complete
+| Change | File | What it catches / fixes |
+|--------|------|------------------------|
+| `TestModelTemplate::test_null_entity_is_skipped_not_loop_stopped` | `test_models.py` | `continue` → `break` mutant: None entity silently drops all later entities |
+| `TestFlutterInfraOrchestrator::test_writes_infra_files` | `test_models.py` | Function had zero direct tests; all param-to-None mutants survived |
+| `TestFlutterInfraOrchestrator::test_dry_run_returns_empty_and_writes_nothing` | `test_models.py` | `dry_run=None` (falsy) → writes files instead of dry-running |
+| `TestModelsIndex::test_null_entity_omitted_from_barrel` | `test_models.py` | Barrel would export filename for ungenerated file → Dart compile error |
+| **fix:** `if entity is None: continue` in `generate_flutter_models_index` | `generators.py` | Actual source fix for the barrel bug above |
+| **fix:** `if entity is not None` guard in `has_enums` generator | `generators.py` | `None.get("fields")` → `AttributeError` when enums-check ran over None entities |
 
-| Batch | Total | Killed | Survived |
-|-------|------:|-------:|---------:|
-| batch-1-utils | 1 610 | 1 183 | 427 |
-| batch-2-generators | 1 872 | 1 346 | 526 |
-| batch-3-conftest | 1 233 | 473 | 760 |
-| batch-4-flutter-api | 1 546 | 965 | 581 |
-| batch-5-flutter-gen | 464 | 344 | 120 |
-| batch-6-generate | 1 631 | 1 149 | 482 |
-| batch-7-infrastructure | 1 559 | 1 061 | 498 |
+Remaining ~114 survivors in `flutter.generators` are noise: XX-wrapped strings,
+`package_name=pkg` kwarg unused by the template, print-statement case-swaps.
 
-Survivor triage complete (see `status/mutmut-survivors-report.md`). Three new tests
-added (`tests/stacks/flutter/test_models.py`, 827 → 830 collected):
+### Mutmut arc: complete
 
-| Test | Kills | Gap |
-|------|-------|-----|
-| `TestModelTemplate::test_null_entity_is_skipped_not_loop_stopped` | `generate_flutter_models#21` | `continue` → `break` silently drops all later entities |
-| `TestFlutterInfraOrchestrator::test_writes_infra_files` | `#15/#21/#46/#47/#57/#60` | function had zero direct tests; all param-to-None mutants survived |
-| `TestFlutterInfraOrchestrator::test_dry_run_returns_empty_and_writes_nothing` | `#68` | `dry_run=None` falsy → would write files instead of dry-running |
-
-Remaining survivors in `flutter.generators` (~114) are noise: XX-wrapped strings in
-print/description kwargs, equivalents (template ignores `package_name=pkg`).
+All 7 batches run and triaged (see `status/mutmut-survivors-report.md`). No
+actionable survivors remain that are not already batch artifacts. The generator is
+at a stable, well-tested point.
 
 ### Next steps
 
 1. **New feature work** — new field type, new stack, or product call
-2. **Optional: re-run batch-5-flutter-gen** to confirm the 3 new tests kill the
+2. **Optional: re-run batch-5-flutter-gen** to confirm the 4 new tests kill the
    targeted mutants (`uv run python scripts/mutmut_batch.py --run batch-5-flutter-gen`)
 
 ---
