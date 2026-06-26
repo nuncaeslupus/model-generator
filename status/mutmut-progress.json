@@ -31,8 +31,8 @@
     "batch-5-flutter-gen": {
       "status": "complete",
       "total": 464,
-      "killed": 344,
-      "survived": 120,
+      "killed": 359,
+      "survived": 105,
       "pending": 0
     },
     "batch-6-generate": {

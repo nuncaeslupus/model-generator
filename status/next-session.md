@@ -1,6 +1,6 @@
 # Next Session Plan
 
-## Current State (2026-06-27) — Post PR #76 merge; mutmut arc closed
+## Current State (2026-06-27) — batch-5 re-validated; mutmut arc fully closed
 
 On `main` (`c4c630c`, synced with `origin/main`). **831 tests**, `make lint` clean.
 
@@ -18,20 +18,27 @@ tests + 1 source fix (Gemini-flagged real bug):
 | **fix:** `if entity is None: continue` in `generate_flutter_models_index` | `generators.py` | Actual source fix for the barrel bug above |
 | **fix:** `if entity is not None` guard in `has_enums` generator | `generators.py` | `None.get("fields")` → `AttributeError` when enums-check ran over None entities |
 
-Remaining ~114 survivors in `flutter.generators` are noise: XX-wrapped strings,
-`package_name=pkg` kwarg unused by the template, print-statement case-swaps.
+### batch-5 re-validation (2026-06-27)
 
-### Mutmut arc: complete
+Re-ran the 120 survivors against the updated test suite. Result: **15 newly killed**
+(344 → 359 killed; 120 → 105 survived). The 4 new tests killed more than expected
+because `test_writes_infra_files` exercises 5 generator functions through the shared
+infra write path (`analysis_options`, `build_yaml`, `gitignore`, `readme`, orchestrator).
 
-All 7 batches run and triaged (see `status/mutmut-survivors-report.md`). No
-actionable survivors remain that are not already batch artifacts. The generator is
-at a stable, well-tested point.
+Updated `status/mutmut-progress.json`: batch-5 now shows `killed: 359, survived: 105`.
+
+Remaining 105 survivors in `flutter.generators` are confirmed noise: XX-wrapped
+strings, `package_name=pkg` kwarg unused by the template, print-statement case-swaps.
+
+### Mutmut arc: fully closed
+
+All 7 batches run and triaged (see `status/mutmut-survivors-report.md`). batch-5
+re-validated. No actionable survivors remain. The generator is at a stable,
+well-tested point.
 
 ### Next steps
 
 1. **New feature work** — new field type, new stack, or product call
-2. **Optional: re-run batch-5-flutter-gen** to confirm the 4 new tests kill the
-   targeted mutants (`uv run python scripts/mutmut_batch.py --run batch-5-flutter-gen`)
 
 ---
 
