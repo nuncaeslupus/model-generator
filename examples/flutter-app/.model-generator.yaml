@@ -12,3 +12,5 @@ auth:
   strategy: api-key
   key_env: CATALOG_API_KEY
   header_name: X-Catalog-Key
+
+local_cache: true
