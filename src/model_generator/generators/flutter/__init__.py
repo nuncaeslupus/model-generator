@@ -9,6 +9,11 @@ Phase 2 adds the retrofit API client, request DTOs, repository wrappers and the
 API barrel (domain), plus the ``Paginated<T>`` envelope, dio setup and the
 conditional auth interceptor (infrastructure). Its generators live in
 :mod:`.api` and are registered onto :data:`FLUTTER_STACK` below.
+
+Phase 4 (``local_cache: true`` in ``.model-generator.yaml``) adds a
+Drift/SQLite offline cache layer: Drift ``Table`` classes (``local-tables``),
+the ``AppDatabase`` aggregator (``local-database``), and cache-first repository
+subclasses (``cached-repositories``). Its generators live in :mod:`.cache`.
 """
 
 from __future__ import annotations
@@ -33,6 +38,11 @@ from .api import (
     generate_flutter_repositories,
     generate_flutter_request_dtos,
 )
+from .cache import (
+    generate_cached_repositories,
+    generate_drift_database,
+    generate_drift_tables,
+)
 from .generators import (
     flutter_infra_orchestrator,
     generate_converters,
@@ -47,8 +57,11 @@ __all__ = [
     "FLUTTER_STACK",
     "flutter_infra_orchestrator",
     "generate_auth_interceptor",
+    "generate_cached_repositories",
     "generate_converters",
     "generate_dio_setup",
+    "generate_drift_database",
+    "generate_drift_tables",
     "generate_flutter_api_client",
     "generate_flutter_api_index",
     "generate_flutter_enums",
@@ -89,6 +102,17 @@ _FLUTTER_GENERATORS: dict[str, TargetGenerator] = {
     "repositories": lambda c: generate_flutter_repositories(
         c.model, c.config, c.env, c.project_root
     ),
+    # Phase 4 — offline cache (local_cache: true required; no-ops otherwise).
+    # Table files before the database (database scans the local dir for tables).
+    "local-tables": lambda c: generate_drift_tables(
+        c.model, c.config, c.env, c.project_root
+    ),
+    "local-database": lambda c: generate_drift_database(
+        c.model, c.config, c.env, c.project_root
+    ),
+    "cached-repositories": lambda c: generate_cached_repositories(
+        c.model, c.config, c.env, c.project_root
+    ),
 }
 
 
@@ -121,7 +145,7 @@ def _flutter_derived_cleanup_files(
 
 
 _FLUTTER_CLEANUP = CleanupSpec(
-    source_path_keys=("models", "api_client", "repositories", "api_core"),
+    source_path_keys=("models", "api_client", "repositories", "api_core", "local"),
     test_path_key="models",
     migrations_path_key=None,
     file_glob="*.dart",
@@ -157,6 +181,11 @@ FLUTTER_STACK = StackSpec(
         "api-client",
         "api-index",
         "repositories",
+        # Phase 4: table files before the database (database scans the local
+        # dir for existing tables); cached repos last (depend on both).
+        "local-tables",
+        "local-database",
+        "cached-repositories",
     ],
     generators=_FLUTTER_GENERATORS,
     infra_orchestrator=flutter_infra_orchestrator,

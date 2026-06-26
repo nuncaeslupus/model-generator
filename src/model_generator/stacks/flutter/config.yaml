@@ -30,12 +30,19 @@ dependencies:
   conditional:
     auth:
       - "flutter_secure_storage"
+    # Phase 4: add these when local_cache: true is set in .model-generator.yaml.
+    local_cache:
+      - "drift"
+      - "drift_flutter"
+      - "sqlite3_flutter_libs"
   dev:
     - "build_runner"
     - "freezed"
     - "json_serializable"
     - "retrofit_generator"
     - "flutter_lints"
+    # Phase 4 dev dep (always listed — drift_dev only activates when drift is present).
+    - "drift_dev"
 
 # Output paths relative to project root. ``{pkg}`` is substituted with
 # ``flutter.package_name`` at generation time so the whole tree is configurable.
@@ -45,6 +52,11 @@ paths:
   api_client: "lib/api"
   repositories: "lib/repositories"
   api_core: "lib/core"
+  # Phase 4: Drift Table class files (one per entity).
+  local: "lib/local"
+
+# Phase 4: set to true in .model-generator.yaml to generate Drift/SQLite cache.
+local_cache: false
 
 # Quality tools. ``dart format`` accepts the generated file paths (per-file,
 # like ``ruff format``); ``dart analyze`` must run from the package root so it
