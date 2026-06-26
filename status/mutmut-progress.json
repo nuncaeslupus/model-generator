@@ -10,8 +10,8 @@
     "batch-2-generators": {
       "status": "complete",
       "total": 1872,
-      "killed": 1343,
-      "survived": 529,
+      "killed": 1346,
+      "survived": 526,
       "pending": 0
     },
     "batch-3-conftest": {
