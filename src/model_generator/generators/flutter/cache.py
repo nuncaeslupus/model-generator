@@ -366,19 +366,16 @@ def generate_drift_database(
             stem = dart_file.stem  # e.g. "category_table"
             # Read the exact class name from the file rather than reconstructing
             # from the filename — capitalize() is lossy for names like APIKeyTable.
+            entity_part = stem[: -len("_table")]
+            fallback = (
+                "".join(p.capitalize() for p in entity_part.split("_")) + "Table"
+            )
             try:
                 content = dart_file.read_text(encoding="utf-8")
                 m = re.search(r"class\s+(\w+Table)\s+extends\s+Table", content)
-                entity_part = stem[: -len("_table")]
-                fallback = (
-                    "".join(p.capitalize() for p in entity_part.split("_")) + "Table"
-                )
                 cls = m.group(1) if m else fallback
             except OSError:
-                entity_part = stem[: -len("_table")]
-                cls = (
-                    "".join(p.capitalize() for p in entity_part.split("_")) + "Table"
-                )
+                cls = fallback
             _add(cls, stem)
 
     # Add the current model's API-enabled entities (in case lib/local/ is new).
