@@ -18,29 +18,36 @@ import yaml
 from model_generator.generators import generate_api_models
 from model_generator.utils import get_template_env, load_config
 
+_PATHS: dict[str, str] = {
+    "database_models": "src/database/models",
+    "factories": "src/database/models/factories",
+    "api_models": "src/api/models",
+    "api_routes": "src/api/routes",
+    "api_tests": "tests/api",
+    "base": "src/database/models/base.py",
+    "engine": "src/database/engine.py",
+    "main": "src/main.py",
+    "errors": "src/api/errors.py",
+    "validators": "src/api/validators.py",
+    "test_conftest_root": "tests/conftest.py",
+    "enums": "src/database/models/enums.py",
+    "constraints": "src/database/models/constraints.py",
+    "migrations": "alembic",
+}
+
 
 @pytest.fixture
 def stack_env(tmp_path: Path) -> tuple[Path, dict[str, Any], Any]:
-    """Minimal project config + Jinja2 env for the python-fastapi stack."""
-    config_data = {
+    """Minimal project config + Jinja2 env, without a pinned layout.
+
+    Omitting the ``generation`` key exercises the default (per-entity)
+    layout — the fixture intentionally differs from the conftest's
+    ``project_env``, which pins to per-domain.
+    """
+    config_data: dict[str, Any] = {
         "project": {"name": "Test Project", "version": "0.1.0"},
         "stack": "python-fastapi",
-        "paths": {
-            "database_models": "src/database/models",
-            "factories": "src/database/models/factories",
-            "api_models": "src/api/models",
-            "api_routes": "src/api/routes",
-            "api_tests": "tests/api",
-            "base": "src/database/models/base.py",
-            "engine": "src/database/engine.py",
-            "main": "src/main.py",
-            "errors": "src/api/errors.py",
-            "validators": "src/api/validators.py",
-            "test_conftest_root": "tests/conftest.py",
-            "enums": "src/database/models/enums.py",
-            "constraints": "src/database/models/constraints.py",
-            "migrations": "alembic",
-        },
+        "paths": _PATHS,
     }
     (tmp_path / ".model-generator.yaml").write_text(yaml.dump(config_data))
 

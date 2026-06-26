@@ -1,6 +1,25 @@
 # Next Session Plan
 
-## Current State (2026-06-26) — code-review backlog closed; on `main`
+## Current State (2026-06-26) — Test suite restructure (PR #75 open)
+
+On branch `refactor/test-suite-restructure`. **827 tests**, `make lint` clean.
+
+### What was shipped this session
+
+- Split `test_generators.py` (7,923 lines, 65 classes) into 10 focused files under `tests/stacks/python_fastapi/`
+- Moved 3 flutter test files into `tests/stacks/flutter/` with shared `conftest.py`
+- Centralized `project_env` fixtures (4+ duplications → 1 conftest)
+- Merged `test_validation.py` → `test_validate.py`, deleted stale `test_utils.py`
+- Added `__init__.py` hierarchy to support same-basename files in different stacks
+
+### Next steps
+
+1. **Review and merge PR #75** — test suite restructure
+2. **Optional: mutmut re-validation** — re-run batches after the test restructure
+
+---
+
+## Previous State (2026-06-26) — code-review backlog closed; on `main`
 
 On `main` (`89f6652`, synced with `origin/main`). **827 tests collected**,
 working tree clean. PR #73 (Flutter cache class-name fix + mutmut kills) is
