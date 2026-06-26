@@ -1,8 +1,53 @@
 # Next Session Plan
 
-## Current State (2026-06-26) — P3 examples batch (PR open)
+## Current State (2026-06-26) — code-review backlog closed; on `main`
 
-On branch `fix/p3-examples-ex6-ex7`. **756 tests**, `make lint` clean, `make smoke-example` → 128/128.
+On `main` (`89f6652`, synced with `origin/main`). **827 tests collected**,
+working tree clean. PR #73 (Flutter cache class-name fix + mutmut kills) is
+**merged**; the prior feature branch `fix/p3-examples-ex6-ex7-rebased` is deleted.
+
+### The `code-review-2026-06-21.md` backlog is effectively closed
+
+Every P0→P3 item from the 2026-04→06 review arc has been shipped across PRs
+#34–#73. The per-row **Status** column in `status/code-review-2026-06-21.md` is
+*original-triage state* ("verified" = a finder confirmed the issue), **not** a
+live status board — it was never re-marked as items shipped. A 2026-06-26
+verification pass cross-referenced all 85 P2/P3 table IDs against the shipped-PR
+log (84/85 referenced) and spot-checked the few unaccounted rows directly against
+the code; all were resolved:
+
+| Item | Claimed open | Reality (verified in code) |
+|------|--------------|----------------------------|
+| TPL-16 | scalar-with-default typed nullable | `model.py.j2:240-247` `has_default` logic fixes it |
+| TPL-14 | `reference` filter `str` → 500 on bad UUID | `route.py.j2:211` types it `UUID \| None` → 422 |
+| GEN-2 | conftest uses raw `json.load` | `utils/conftest_generator.py:34` uses `strip_json_comments` |
+| GEN-3 | `validate.py` skips index normalization | parses via shared `parse_model_file` (normalizes) |
+| GEN-4 | `shell=True` in ruff call | `utils/quality.py` uses `subprocess.run([...], check=False)` |
+| GEN-8 | file I/O omits `encoding="utf-8"` | all reads/writes (incl. wizard) pass `encoding="utf-8"` |
+| EX-9 | example `.gitignore` excludes `src/tests/alembic` | now explicitly preserves them (banner comment) |
+| TST-11 | CI 3.11/3.12 matrix unexplained | `ci.yml:28-33` documents it |
+| PROD-2 | no auth-without-owner-scoping | delivered by `api.require_auth` (api-key strategy) |
+
+A definitive open-vs-closed audit of every remaining row was **not** run — if a
+future session wants certainty per ID, that's the "Audit backlog truth" option.
+
+### Only remaining identified work (optional)
+
+- **mutmut batches 3/4/6/7** — `batch-3-conftest` (1 233), `batch-4-flutter-api`
+  (1 546), `batch-6-generate` (1 631), `batch-7-infrastructure` (1 559) are still
+  `pending` in `status/mutmut-progress.json`. Heavy (~1–2 h each, uninterrupted).
+  Commands and the hard-won mutmut-3.x gotchas are in the PR #66 section below.
+
+There is no pending *feature* or *correctness* work; the generator is at a
+stable, shippable point. Next direction is a product call (new field type, new
+stack, the mutmut batches, or a definitive backlog audit).
+
+---
+
+## Previous State (2026-06-26) — P3 examples batch (merged, PR #70/#73)
+
+Shipped on `fix/p3-examples-ex6-ex7` (later rebased, merged via #73). **756 tests**
+at the time, `make lint` clean, `make smoke-example` → 128/128.
 
 ### All P3 code-review items are now closed
 

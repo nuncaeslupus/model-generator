@@ -110,6 +110,17 @@ regressions from missing `Mapped[...]` (TPL-5).
 
 ## Part B — Issue backlog (prioritized)
 
+> **STATUS BANNER (added 2026-06-26): this backlog is effectively CLOSED.**
+> Every P0→P3 item below was shipped across PRs #34–#73. The per-row **Status**
+> column is the *original triage state* ("verified" = a finder confirmed the
+> issue at review time) and was **never re-marked** as items shipped — so a
+> "verified" row here does **not** mean open work. A 2026-06-26 pass
+> cross-referenced all 85 P2/P3 IDs against the shipped-PR log and spot-checked
+> the unaccounted rows against the code (all resolved). For live status see
+> [`status/next-session.md`](./next-session.md). A definitive per-ID
+> open-vs-closed audit has not been run; treat this table as historical record,
+> not a worklist.
+
 ### P0 — Ships broken/insecure code to every adopter (fix first)
 
 #### SEC-1 · Generated CRUD is unauthenticated by default; the flagship "auth" example ships a fully-open API
