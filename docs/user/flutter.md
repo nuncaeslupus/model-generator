@@ -289,7 +289,7 @@ Set `local_cache: true` in `.model-generator.yaml` to activate the Drift/SQLite 
 ```dart
 // <entity>_repository_custom.dart (yours to edit — skip-if-exists)
 class CategoryRepositoryCustom extends CategoryCachedRepository {
-  CategoryRepositoryCustom(super.client, super.db);
+  CategoryRepositoryCustom(super.client, AppDatabase db) : super(db);
 }
 ```
 
