@@ -51,6 +51,9 @@ import 'package:drift/drift.dart' show Value;
 import '{{ model_uri }}';
 import '{{ repository_uri }}';
 import '{{ local_database_uri }}';
+{% if needs_pagination %}
+import '{{ pagination_uri }}';
+{% endif %}
 {% if has_requests %}
 import '{{ requests_uri }}';
 {% endif %}

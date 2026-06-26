@@ -273,6 +273,23 @@ class TestFieldExpressions:
         expr = _to_companion_expr("is_active", self._field(type="boolean"), type_map)
         assert expr == "Value(e.isActive)"
 
+    def test_to_companion_pk_nullable_model_adds_assertion(
+        self, type_map: dict[str, Any]
+    ) -> None:
+        # PK field without required:true → freezed model emits String?, but the
+        # Drift column is non-nullable.  column_nullable=False forces a `!`.
+        pk_field = {"type": "uuid", "primary_key": True}  # no required:true
+        expr = _to_companion_expr("id", pk_field, type_map, column_nullable=False)
+        assert expr == "Value(e.id!)"
+
+    def test_to_companion_pk_required_no_assertion(
+        self, type_map: dict[str, Any]
+    ) -> None:
+        # required:true → freezed model emits String (non-nullable); no ! needed.
+        pk_field = {"type": "uuid", "primary_key": True, "required": True}
+        expr = _to_companion_expr("id", pk_field, type_map, column_nullable=False)
+        assert expr == "Value(e.id)"
+
 
 # ---------------------------------------------------------------------------
 # generate_drift_tables
@@ -788,6 +805,74 @@ class TestCachedRepositoryGeneration:
         outputs = generate_cached_repositories(model, cache_config, env, tmp_path)
         content = _rendered(outputs, "widget_cached_repository.dart")
         assert "e.status.name" in content
+
+    def test_pagination_import_when_paginated(
+        self,
+        model: dict[str, Any],
+        cache_config: dict[str, Any],
+        env: Any,
+        tmp_path: Path,
+    ) -> None:
+        """Widget uses pagination:true — cached repo must import pagination.dart."""
+        outputs = generate_cached_repositories(model, cache_config, env, tmp_path)
+        content = _rendered(outputs, "widget_cached_repository.dart")
+        assert "pagination.dart" in content
+
+    def test_no_pagination_import_when_not_paginated(
+        self,
+        cache_config: dict[str, Any],
+        env: Any,
+        tmp_path: Path,
+    ) -> None:
+        """A non-paginated list entity must not import pagination.dart."""
+        simple_model = {
+            "domain": "x",
+            "entities": {
+                "Thing": {
+                    "table": "things",
+                    "fields": {"id": {"type": "uuid", "primary_key": True}},
+                    "api": {
+                        "enabled": True,
+                        "prefix": "things",
+                        "endpoints": ["list", "get"],
+                        "pagination": False,
+                    },
+                }
+            },
+        }
+        outputs = generate_cached_repositories(
+            simple_model, cache_config, env, tmp_path
+        )
+        content = _rendered(outputs, "thing_cached_repository.dart")
+        assert "pagination.dart" not in content
+
+    def test_pk_null_assertion_in_companion(
+        self,
+        cache_config: dict[str, Any],
+        env: Any,
+        tmp_path: Path,
+    ) -> None:
+        """PK without required:true → companion uses `!` to avoid String? mismatch."""
+        pk_model = {
+            "domain": "x",
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {"type": "uuid", "primary_key": True},  # no required
+                        "name": {"type": "text", "required": True},
+                    },
+                    "api": {
+                        "enabled": True,
+                        "prefix": "items",
+                        "endpoints": ["list", "get"],
+                    },
+                }
+            },
+        }
+        outputs = generate_cached_repositories(pk_model, cache_config, env, tmp_path)
+        content = _rendered(outputs, "item_cached_repository.dart")
+        assert "Value(e.id!)" in content
 
     def test_decimal_import_when_needed(
         self,
