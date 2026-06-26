@@ -192,35 +192,53 @@ def _from_row_expr(
 
 
 def _to_companion_expr(
-    field_name: str, field: dict[str, Any], type_map: dict[str, Any]
+    field_name: str,
+    field: dict[str, Any],
+    type_map: dict[str, Any],
+    column_nullable: bool | None = None,
 ) -> str:
     """Dart expression: ``Value<T>(…)`` for the Drift companion constructor.
 
     Wraps each model field value in a Drift ``Value`` (so Drift can distinguish
     "not provided" from ``null``). Type conversions are the inverse of
     :func:`_from_row_expr`.
+
+    ``column_nullable`` overrides the field's own nullability for cases where
+    the Drift column is forced non-nullable (e.g. primary keys) even though the
+    freezed model field may be nullable (no ``required: true``).  When the
+    column is non-nullable but the model field is nullable, a null-assertion
+    ``!`` is emitted to satisfy Dart's type checker — the value is always
+    present in an API response so the assertion is safe.
     """
     abstract = field.get("type", "")
-    nullable = _is_nullable(field)
+    model_nullable = _is_nullable(field)
+    # column_nullable=False with model_nullable=True → need a null assertion (!).
+    nullable = model_nullable if column_nullable is None else column_nullable
+    needs_assert = (not nullable) and model_nullable
     dart_name = camel_case(field_name)
     e = f"e.{dart_name}"
 
     if abstract in ("financial", "percentage"):
         if nullable:
             return f"Value({e}?.toString())"
-        return f"Value({e}.toString())"
+        suffix = "!" if needs_assert else ""
+        return f"Value({e}{suffix}.toString())"
 
     if abstract == "enum":
         if nullable:
             return f"Value({e}?.name)"
-        return f"Value({e}.name)"
+        suffix = "!" if needs_assert else ""
+        return f"Value({e}{suffix}.name)"
 
     if abstract in ("json_object", "json_array"):
         if nullable:
             return f"Value({e} != null ? jsonEncode({e}!) : null)"
-        return f"Value(jsonEncode({e}))"
+        inner = f"{e}!" if needs_assert else e
+        return f"Value(jsonEncode({inner}))"
 
     # String, int, bool, DateTime, Uint8List — direct.
+    if needs_assert:
+        return f"Value({e}!)"
     return f"Value({e})"
 
 
@@ -257,7 +275,9 @@ def _resolve_cache_fields(
                 "drift_builder": _drift_col_builder(field),
                 "nullable": nullable,
                 "from_row": _from_row_expr(field_name, field, type_map),
-                "to_companion": _to_companion_expr(field_name, field, type_map),
+                "to_companion": _to_companion_expr(
+                    field_name, field, type_map, column_nullable=nullable
+                ),
                 "needs_decimal": abstract in ("financial", "percentage"),
                 "needs_json": abstract in ("json_object", "json_array"),
                 "needs_enum": abstract == "enum",
@@ -440,6 +460,9 @@ def generate_cached_repositories(
         needs_decimal = any(f["needs_decimal"] for f in cache_fields)
         needs_json = any(f["needs_json"] for f in cache_fields)
         needs_enums = any(f["needs_enum"] for f in cache_fields)
+        needs_pagination = any(
+            str(op.get("return_type", "")).startswith("Paginated") for op in ops
+        )
 
         content = template.render(
             entity_name=entity_name,
@@ -457,6 +480,7 @@ def generate_cached_repositories(
             needs_decimal=needs_decimal,
             needs_json=needs_json,
             needs_enums=needs_enums,
+            needs_pagination=needs_pagination,
             model_uri=package_uri(config, f"{models_path}/{stem}.dart"),
             repository_uri=package_uri(config, f"{repo_path}/{stem}_repository.dart"),
             local_database_uri=package_uri(
@@ -464,6 +488,7 @@ def generate_cached_repositories(
             ),
             requests_uri=package_uri(config, f"{models_path}/{stem}_requests.dart"),
             enums_uri=package_uri(config, enums_path),
+            pagination_uri=package_uri(config, f"{api_core_path}/pagination.dart"),
         )
         outputs.append(
             {

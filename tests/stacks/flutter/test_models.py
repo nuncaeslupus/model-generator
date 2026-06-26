@@ -549,6 +549,24 @@ class TestPubspec:
         assert result is not None
         assert "flutter_secure_storage:" in str(result["content"])
 
+    def test_pubspec_includes_drift_deps_when_local_cache_enabled(
+        self, flutter_config: dict[str, Any], env: Any, tmp_path: Path
+    ) -> None:
+        project_config = {"local_cache": True}
+        result = generate_pubspec(flutter_config, env, tmp_path, project_config)
+        assert result is not None
+        content = str(result["content"])
+        assert "drift:" in content
+        assert "drift_flutter:" in content
+        assert "sqlite3_flutter_libs:" in content
+
+    def test_pubspec_omits_drift_deps_when_local_cache_disabled(
+        self, flutter_config: dict[str, Any], env: Any, tmp_path: Path
+    ) -> None:
+        result = generate_pubspec(flutter_config, env, tmp_path, {"local_cache": False})
+        assert result is not None
+        assert "drift:" not in str(result["content"])
+
     def test_pubspec_ignores_python_spec_deps(
         self, flutter_config: dict[str, Any], env: Any, tmp_path: Path
     ) -> None:

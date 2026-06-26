@@ -17,6 +17,8 @@ The `flutter` stack reads the same `*.model.json` specification files as the `py
 
 The generated client is wire-compatible with a FastAPI backend built from the same spec: matching field names, pagination envelope, decimal-as-string encoding, and auth strategy.
 
+Set `local_cache: true` in `.model-generator.yaml` to add an optional Drift/SQLite offline-cache layer: Drift table classes, an `AppDatabase` aggregator, and cache-first repository subclasses that read from SQLite when available and fall back to the network.
+
 ---
 
 ## Prerequisites
@@ -68,6 +70,7 @@ dart run build_runner build --delete-conflicting-outputs
 | `auth.strategy` | — | `api-key` or `bcrypt-session`; omit for unauthenticated APIs |
 | `auth.key_env` | `API_KEY` | Environment variable holding the shared secret (`api-key` strategy only) |
 | `auth.header_name` | `X-API-Key` | HTTP header name the client sends (`api-key` strategy only) |
+| `local_cache` | `false` | Set to `true` to generate the Drift/SQLite offline cache layer (see [Offline Cache](#offline-cache-phase-4)) |
 
 Example with api-key auth:
 
@@ -103,14 +106,18 @@ lib/my_api/
 │   ├── <entity>_api.dart       # @RestApi retrofit client per entity
 │   └── api_index.dart          # barrel re-export
 ├── repositories/
-│   ├── <entity>_repository.dart        # thin wrapper (generated, overwrite)
-│   └── <entity>_repository_custom.dart # offline seam (skip-if-exists)
+│   ├── <entity>_repository.dart               # thin wrapper (generated, overwrite)
+│   ├── <entity>_repository_custom.dart        # your seam (skip-if-exists)
+│   └── <entity>_cached_repository.dart        # cache-first subclass (local_cache: true)
+├── local/                                     # local_cache: true only
+│   └── <entity>_table.dart                    # Drift Table class per entity
 └── core/
     ├── converters.dart          # DecimalConverter, UtcDateTimeConverter, BytesConverter
     ├── pagination.dart          # Paginated<T> matching the backend envelope
     ├── api_client.dart          # Dio base configuration
     ├── api_client_custom.dart   # baseUrl / interceptor wiring (skip-if-exists)
-    └── auth_interceptor.dart    # conditional on auth.strategy
+    ├── auth_interceptor.dart    # conditional on auth.strategy
+    └── local_database.dart      # Drift AppDatabase aggregator (local_cache: true)
 ```
 
 Root-level scaffold files (skip-if-exists):
@@ -237,9 +244,11 @@ auth:
   strategy: api-key
   key_env: CATALOG_API_KEY
   header_name: X-Catalog-Key
+
+local_cache: true
 ```
 
-The example exercises: `@freezed` models, the `ProductStatus` enum with `@JsonValue`, `@RestApi` clients for Category (public) and Product (auth-gated), `DecimalConverter` on the `price` field, `AuthInterceptor` adding `X-Catalog-Key`, repository wrappers, Dio setup, and pagination.
+The example exercises: `@freezed` models, the `ProductStatus` enum with `@JsonValue`, `@RestApi` clients for Category (public) and Product (auth-gated), `DecimalConverter` on the `price` field, `AuthInterceptor` adding `X-Catalog-Key`, repository wrappers, Dio setup, pagination, and the full Phase 4 offline-cache layer (Drift tables, `AppDatabase`, cached repositories).
 
 To regenerate it:
 
@@ -255,7 +264,53 @@ The `make smoke-flutter` target in the project root runs this sequence against a
 
 ---
 
-## Deferred / Not Yet Implemented
+## Offline Cache (Phase 4)
 
-- **Offline cache (Phase 4)** — the repository `_custom.dart` files are the seam point, but Drift/SQLite persistence is not generated yet. Implement it in the custom files without touching the generated repository wrapper.
+Set `local_cache: true` in `.model-generator.yaml` to activate the Drift/SQLite offline cache layer. The generator adds three file types per API-enabled entity:
+
+| File | Kind | What it does |
+|------|------|--------------|
+| `lib/local/<entity>_table.dart` | overwrite | Drift `Table` class mirroring the spec fields |
+| `lib/core/local_database.dart` | overwrite | `@DriftDatabase` aggregator updated across model files |
+| `lib/repositories/<entity>_cached_repository.dart` | overwrite | Cache-first subclass of the base repository |
+
+**Cache strategy per operation:**
+
+| Operation | Strategy |
+|-----------|----------|
+| `list()` (unpaginated, unfiltered) | Cache-first: returns local rows when populated; fetches network on miss and populates cache |
+| `list()` (paginated or filtered) | Network-only: per-page/per-filter cache keying is out of scope |
+| `getById()` | Cache-first: returns cached row when present; fetches network and stores on miss |
+| `create()` / `update()` | Write-through: network first, then upsert the result into the cache |
+| `delete()` | Write-through: network first, then remove from cache |
+
+**To activate per entity**, update `<entity>_repository_custom.dart` to extend the cached class and pass an `AppDatabase`:
+
+```dart
+// <entity>_repository_custom.dart (yours to edit — skip-if-exists)
+class CategoryRepositoryCustom extends CategoryCachedRepository {
+  CategoryRepositoryCustom(super.client, AppDatabase db) : super(db);
+}
+```
+
+Then inject `AppDatabase` wherever you create the repository (e.g. in your DI container). Entities that don't need offline reads can keep their `_custom.dart` extending the plain base class.
+
+**Dependencies** — when `local_cache: true`, the generated `pubspec.yaml` includes:
+
+```yaml
+dependencies:
+  drift: any
+  drift_flutter: any
+  sqlite3_flutter_libs: any
+
+dev_dependencies:
+  drift_dev: any
+```
+
+Run `dart pub get` and `dart run build_runner build --delete-conflicting-outputs` after generation to resolve packages and produce Drift's generated files (`local_database.g.dart`, etc.).
+
+---
+
+## Not Yet Implemented
+
 - **`dart run build_runner` invoked by the generator** — the generator is a pure file emitter. A future `--run-build` flag could shell out to `build_runner`, analogous to `run_quality_tools` in the Python stack. For now, run it manually as described above.

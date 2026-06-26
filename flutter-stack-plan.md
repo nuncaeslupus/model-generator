@@ -190,11 +190,22 @@ stubs here so offline stays additive.
 
 ---
 
-## Phase 4 — Offline cache (deferred, not built now)
+## Phase 4 — Offline cache (shipped)
 
-Drift/SQLite persistence behind the Phase-2 repository two-file pattern +
-`paths.repositories`. Keep freezed models pure (no Drift annotations) so this is
-purely additive.
+Drift/SQLite persistence behind the Phase-2 repository two-file pattern.
+Freezed models are kept pure (no Drift annotations) — the cache layer is
+purely additive and opt-in via `local_cache: true` in `.model-generator.yaml`.
+
+Implemented generators (`generators/flutter/cache.py`):
+- `generate_drift_tables` — one `Table` class per API-enabled entity (`lib/local/`)
+- `generate_drift_database` — `AppDatabase` aggregator (`lib/core/local_database.dart`)
+- `generate_cached_repositories` — cache-first repo subclass per entity (`lib/repositories/`)
+
+Templates: `local/table.dart.j2`, `infrastructure/local_database.dart.j2`,
+`repositories/cached_repository.dart.j2`.
+
+The `flutter-app` example enables `local_cache: true`; the CI smoke job validates
+the generated Drift source via `build_runner` + `dart analyze`.
 
 ---
 

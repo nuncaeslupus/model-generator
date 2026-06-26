@@ -217,6 +217,10 @@ def generate_pubspec(
         conditional = (deps.get("conditional") or {}).get("auth", []) or []
         runtime.extend(c for c in conditional if c not in runtime)
 
+    if effective.get("local_cache"):
+        conditional = (deps.get("conditional") or {}).get("local_cache", []) or []
+        runtime.extend(c for c in conditional if c not in runtime)
+
     project = effective.get("project", {})
     content = template.render(
         package_name=package_name(config),
