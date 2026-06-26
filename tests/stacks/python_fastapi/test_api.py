@@ -11,8 +11,8 @@ from model_generator.generators import (
     generate_api_models,
     generate_api_routes,
     generate_api_tests,
-    generate_validators,
 )
+from model_generator.generators.infrastructure import generate_validators
 
 
 @pytest.fixture
