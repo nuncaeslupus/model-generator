@@ -31,16 +31,28 @@ the code; all were resolved:
 A definitive open-vs-closed audit of every remaining row was **not** run — if a
 future session wants certainty per ID, that's the "Audit backlog truth" option.
 
-### Only remaining identified work (optional)
+### mutmut status — all 7 batches complete
 
-- **mutmut batches 3/4/6/7** — `batch-3-conftest` (1 233), `batch-4-flutter-api`
-  (1 546), `batch-6-generate` (1 631), `batch-7-infrastructure` (1 559) are still
-  `pending` in `status/mutmut-progress.json`. Heavy (~1–2 h each, uninterrupted).
-  Commands and the hard-won mutmut-3.x gotchas are in the PR #66 section below.
+All batches are `complete` in `status/mutmut-progress.json` (verified 2026-06-26):
 
-There is no pending *feature* or *correctness* work; the generator is at a
-stable, shippable point. Next direction is a product call (new field type, new
-stack, the mutmut batches, or a definitive backlog audit).
+| Batch | Total | Killed | Survived |
+|-------|------:|-------:|---------:|
+| batch-1-utils | 1 610 | 1 183 | 427 |
+| batch-2-generators | 1 872 | 1 346 | 526 |
+| batch-3-conftest | 1 233 | 473 | 760 |
+| batch-4-flutter-api | 1 546 | 965 | 581 |
+| batch-5-flutter-gen | 464 | 344 | 120 |
+| batch-6-generate | 1 631 | 1 149 | 482 |
+| batch-7-infrastructure | 1 559 | 1 061 | 498 |
+
+Survivor triage for batches 3/4/6/7 has not been done. To analyse: run
+`/mutmut-report` skill once the survivors are categorised, or use
+`uv run python scripts/mutmut_batch.py --list` to see current state.
+
+There is no pending *feature*, *correctness*, or *mutation-testing* work; the
+generator is at a stable, shippable point. Next direction is a product call
+(new field type, new stack, mutmut survivor triage, or a definitive backlog
+audit).
 
 ---
 
