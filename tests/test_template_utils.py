@@ -253,3 +253,38 @@ class TestTemplateEnv:
         assert env.trim_blocks is True
         assert env.lstrip_blocks is True
         assert env.keep_trailing_newline is True
+
+
+# ── deep_merge (from test_utils.py) ─────────────────────────────────────────
+
+
+from model_generator import utils  # noqa: E402
+
+
+def test_deep_merge_simple() -> None:
+    """Simple dictionary merging — override wins for shared keys."""
+    base = {"a": 1, "b": 2}
+    override = {"b": 3, "c": 4}
+    assert utils.deep_merge(base, override) == {"a": 1, "b": 3, "c": 4}
+
+
+def test_deep_merge_nested() -> None:
+    """Recursive merging preserves non-overlapping nested keys."""
+    base = {"nested": {"x": 1, "y": 2}, "other": 5, "deep": {"a": {"b": 1}}}
+    override = {"nested": {"y": 3, "z": 4}, "deep": {"a": {"c": 2}}}
+    assert utils.deep_merge(base, override) == {
+        "nested": {"x": 1, "y": 3, "z": 4},
+        "other": 5,
+        "deep": {"a": {"b": 1, "c": 2}},
+    }
+
+
+def test_path_to_import_converts_slashes() -> None:
+    """File path segments are joined with dots to form a Python import string."""
+    assert utils.path_to_import("backend/src/database/models") == (
+        "backend.src.database.models"
+    )
+    assert utils.path_to_import("backend/src/api", "routes") == (
+        "backend.src.api.routes"
+    )
+    assert utils.path_to_import("models") == "models"

@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 
 from model_generator.generators.flutter import (
     generate_cached_repositories,
@@ -35,38 +34,16 @@ from model_generator.generators.flutter.cache import (
     table_class,
     table_db_accessor,
 )
-from model_generator.utils.templates import get_template_env
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-_STACK_CONFIG_PATH = (
-    Path(__file__).parent.parent
-    / "src"
-    / "model_generator"
-    / "stacks"
-    / "flutter"
-    / "config.yaml"
-)
-
-
-@pytest.fixture
-def flutter_config() -> dict[str, Any]:
-    with _STACK_CONFIG_PATH.open(encoding="utf-8") as f:
-        cfg: dict[str, Any] = yaml.safe_load(f)
-    return cfg
 
 
 @pytest.fixture
 def cache_config(flutter_config: dict[str, Any]) -> dict[str, Any]:
     """Flutter config with local_cache enabled."""
     return {**flutter_config, "local_cache": True}
-
-
-@pytest.fixture
-def env() -> Any:
-    return get_template_env("flutter")
 
 
 @pytest.fixture
