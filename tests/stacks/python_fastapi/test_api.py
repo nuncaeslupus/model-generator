@@ -1171,7 +1171,7 @@ class TestApiTestsGenerator:
     def test_generates_test_file(
         self, minimal_model: dict[str, Any], project_env: Any
     ) -> None:
-        project_root, config diminished, env = project_env
+        project_root, config, env = project_env
         result = generate_api_tests(
             minimal_model, config, env, project_root, enums={}, constraints={}
         )

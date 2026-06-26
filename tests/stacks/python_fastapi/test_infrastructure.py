@@ -1054,9 +1054,11 @@ def project_env_with_python_root(tmp_path: Path) -> tuple[Path, dict[str, Any], 
 
     original_cwd = os.getcwd()
     os.chdir(tmp_path)
-    config = load_config("python-fastapi")
-    env = get_template_env("python-fastapi", config=config)
-    os.chdir(original_cwd)
+    try:
+        config = load_config("python-fastapi")
+        env = get_template_env("python-fastapi", config=config)
+    finally:
+        os.chdir(original_cwd)
 
     return tmp_path, config, env
 
