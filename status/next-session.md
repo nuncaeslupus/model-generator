@@ -1,9 +1,9 @@
 # Next Session Plan
 
-## Current State (2026-06-27) — batch-6 real-gap tests (PR #82, open); on `feat/batch6-generate-triage`
+## Current State (2026-06-27) — batch-7 real-gap tests (PR #83, open); on `fix/batch7-infra-package-init-gaps`
 
-On `feat/batch6-generate-triage`. **902 tests** (+ 2 xfailed), `make lint` clean.
-PR #82 open; merge when CI green.
+On `fix/batch7-infra-package-init-gaps`. **911 tests** (+ 2 xfailed), `make lint` clean.
+PR #83 open; merge when CI green.
 
 ### Mutmut arc: active
 
@@ -14,21 +14,36 @@ PR #82 open; merge when CI green.
 | batch-3-conftest | 760 | triaged — noise + 11 new tests (PR #80, merged) |
 | batch-4-flutter-api | 378 | triaged — noise + 38 new tests (PR #81, merged) |
 | batch-5-flutter-gen | 105 | triaged — noise (re-validated PR #77) |
-| batch-6-generate | 482 | real gaps patched — 17 new tests (PR #82, open) |
-| batch-7-infrastructure | 498 | **untriaged** |
+| batch-6-generate | 482 | real gaps patched — 17 new tests (PR #82, merged) |
+| batch-7-infrastructure | 498 | real gaps patched — 10 new tests (PR #83, open) |
 
-batch-6-generate: real-gap validator functions addressed (PR #82). The bulk of
-the 482 survivors fall in orchestration/cleanup/conftest-gen paths that are
-hard to test in unit isolation (`main`, `generate`, `_cleanup_*`,
-`_python_derived_cleanup_files`, `generate_conftest`) — these are likely mostly
-noise or equivalent mutations. No re-run needed unless CI turns up surprises.
+batch-7-infrastructure triage (code-read approach — batch wasn't re-run):
+
+**Real gaps found and fixed (PR #83):**
+- `generate_package_init_files` (124 mutants, 0 prior tests) — 9 new tests in
+  `TestPackageInitFilesGenerator`: covers returns-list, each-entry-is-init-py,
+  default-paths-covered, nested-test-path-walks-parents, auth-strategy-adds-auth-package,
+  no-auth-strategy-omits-auth-package, existing-init-py-skipped, no-duplicates,
+  custom-auth-path-uses-its-parent
+- `generate_infrastructure` orchestration — `test_generate_infrastructure_creates_all`
+  now checks `engine.py`, `types.py`, `errors.py`, `validators.py`, `utils.py`,
+  `__init__.py` in addition to the original 5 file names (1 test extended)
+
+**Remaining survivors — noise/equivalent (accepted, no tests added):**
+- `generate_main` (252 mutants) — well-tested; survivors are path/string constant
+  mutations and equivalent logic in import derivation
+- `generate_pyproject` (179 mutants) — well-tested; survivors are string template
+  mutations with no behavioral impact
+- `generate_infrastructure` (150 mutants) — mostly equivalent orchestration
+  mutations; individual generators are tested; `if result:` loop covered by assertion
+- `generate_test_conftest_root` (143 mutants) — well-tested; similar string/path noise
+- `generate_auth_router`, `generate_rate_limit`, `generate_csrf`, `generate_api_key_auth`
+  — all well-tested; survivors are string defaults and equivalent pattern mutations
 
 ### Next steps
 
-1. **Merge PR #82** once CI is green (batch-6 real-gap kills)
-2. **Triage batch-7-infrastructure** (498 survivors; covers `utils/` +
-   infrastructure generators) — same code-read approach as batch-6
-3. **Or: new feature work** — new field type, new stack, or product call
+1. **Merge PR #83** once CI is green (batch-7 real-gap kills)
+2. **Or: new feature work** — new field type, new stack, or product call
 
 ---
 

@@ -24,6 +24,7 @@ from model_generator.generators.infrastructure import (
     generate_gitignore,
     generate_infrastructure,
     generate_main,
+    generate_package_init_files,
     generate_pyproject,
     generate_request_limit,
     generate_test_conftest_root,
@@ -804,10 +805,16 @@ class TestInfrastructureGenerators:
         assert len(files) > 0
         file_names = [f.name for f in files]
         assert "base.py" in file_names
+        assert "engine.py" in file_names
+        assert "types.py" in file_names
+        assert "errors.py" in file_names
+        assert "validators.py" in file_names
+        assert "utils.py" in file_names
         assert "main.py" in file_names
         assert "pyproject.toml" in file_names
         assert ".env.example" in file_names
         assert "request_limit.py" in file_names
+        assert "__init__.py" in file_names
 
     def test_infrastructure_skips_existing(self, project_env: Any) -> None:
         """Infrastructure: some files skip if existing, others always regenerate."""
@@ -1244,3 +1251,104 @@ class TestPyprojectAsyncioMode:
         result = generate_pyproject(config, env, project_root)
         assert isinstance(result, dict)
         assert "asyncio_mode" not in result["content"]
+
+
+class TestPackageInitFilesGenerator:
+    """generate_package_init_files emits __init__.py for every package directory."""
+
+    def test_returns_list(self, project_env: Any) -> None:
+        project_root, config, _ = project_env
+        result = generate_package_init_files(config, project_root)
+        assert isinstance(result, list)
+        assert len(result) > 0
+
+    def test_each_entry_is_init_py(self, project_env: Any) -> None:
+        project_root, config, _ = project_env
+        result = generate_package_init_files(config, project_root)
+        for entry in result:
+            assert entry["path"].name == "__init__.py"
+            assert "content" in entry
+
+    def test_default_paths_covered(self, project_env: Any) -> None:
+        """All mandatory package dirs from the fixture paths are in the output."""
+        project_root, config, _ = project_env
+        result = generate_package_init_files(config, project_root)
+        emitted = {str(e["path"].relative_to(project_root).parent) for e in result}
+
+        # From the conftest._PATHS fixture:
+        # main=src/main.py → src_dir="src"
+        assert "src" in emitted
+        # database_models=src/database/models
+        assert "src/database/models" in emitted
+        # factories=src/database/models/factories
+        assert "src/database/models/factories" in emitted
+        # api_models=src/api/models
+        assert "src/api/models" in emitted
+        # api_dir (parent of api_models) = src/api
+        assert "src/api" in emitted
+        # api_routes=src/api/routes
+        assert "src/api/routes" in emitted
+
+    def test_nested_test_path_walks_parents(self, project_env: Any) -> None:
+        """api_tests=tests/api should also produce tests/__init__.py."""
+        project_root, config, _ = project_env
+        # conftest fixture has api_tests="tests/api"
+        result = generate_package_init_files(config, project_root)
+        emitted = {str(e["path"].relative_to(project_root).parent) for e in result}
+        assert "tests/api" in emitted
+        assert "tests" in emitted
+
+    def test_auth_strategy_adds_auth_package(self, project_env: Any) -> None:
+        """When auth.strategy is set, the auth package dir gets an __init__.py."""
+        project_root, config, _ = project_env
+        config_with_auth = {
+            **config,
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "X"},
+        }
+        result = generate_package_init_files(config_with_auth, project_root)
+        emitted = {str(e["path"].relative_to(project_root).parent) for e in result}
+        # default auth.path=backend/src/auth/router.py → parent=backend/src/auth
+        assert "backend/src/auth" in emitted
+
+    def test_no_auth_strategy_omits_auth_package(self, project_env: Any) -> None:
+        """When no auth.strategy, no auth package __init__.py is emitted."""
+        project_root, config, _ = project_env
+        result = generate_package_init_files(config, project_root)
+        emitted = {str(e["path"].relative_to(project_root).parent) for e in result}
+        assert "backend/src/auth" not in emitted
+
+    def test_existing_init_py_skipped(self, project_env: Any) -> None:
+        """Pre-existing __init__.py files are not re-emitted."""
+        project_root, config, _ = project_env
+        # Pre-create one of the expected __init__.py files.
+        existing_dir = project_root / "src"
+        existing_dir.mkdir(parents=True, exist_ok=True)
+        (existing_dir / "__init__.py").write_text("# existing\n")
+
+        result = generate_package_init_files(config, project_root)
+        emitted_parents = [e["path"].parent for e in result]
+        # The pre-existing path must not appear in the output list.
+        assert existing_dir not in emitted_parents
+
+    def test_no_duplicates_in_output(self, project_env: Any) -> None:
+        """Each path appears at most once even when path derivations overlap."""
+        project_root, config, _ = project_env
+        result = generate_package_init_files(config, project_root)
+        paths = [e["path"] for e in result]
+        assert len(paths) == len(set(paths))
+
+    def test_custom_auth_path_uses_its_parent(self, project_env: Any) -> None:
+        """A custom auth.path changes which directory gets the init file."""
+        project_root, config, _ = project_env
+        config_with_auth = {
+            **config,
+            "auth": {
+                "strategy": "bcrypt-session",
+                "pepper_env": "X",
+                "path": "src/auth/router.py",
+            },
+        }
+        result = generate_package_init_files(config_with_auth, project_root)
+        emitted = {str(e["path"].relative_to(project_root).parent) for e in result}
+        assert "src/auth" in emitted
+        assert "backend/src/auth" not in emitted
