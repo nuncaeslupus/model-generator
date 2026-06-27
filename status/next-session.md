@@ -1,50 +1,56 @@
 # Next Session Plan
 
-## Current State (2026-06-27) — batch-3 triage done; PR #80 in review
+## Current State (2026-06-27) — batch-4 triage done; PR #81 open
 
-On branch `test/conftest-gen-mutmut-gaps` (PR #80, open). **847 tests** (+ 2
+On branch `test/flutter-api-mutmut-gaps` (PR #81, open). **885 tests** (+ 2
 xfailed), `make lint` clean.
 
-### What is in PR #80 (test/conftest-gen-mutmut-gaps)
+### What is in PR #81 (test/flutter-api-mutmut-gaps)
 
-batch-3-conftest triage: re-ran 1,233 mutants (473 killed / 760 survived, 62%).
+batch-4-flutter-api triage: 38 new tests across `test_models.py` and `test_api.py`.
+Re-ran 1,546 mutants with new tests: **1168 killed / 378 survived (75.5%)**, up from
+965/1546 (62.4%). **203 additional mutations killed.**
+
 Survivors decompose into two clusters:
 
-- **~55% noise** (~420) — string literal mutations in `generate_conftest`'s
-  line-by-line output builder (docstrings, blank lines, generated code strings).
-  Accept; pinning exact string content would be brittle.
-- **~45% real gaps** (~340) — operator inversions and XX-wrapped key lookups in
-  helper functions with no positive-branch test coverage.
+- **~55% noise** (~200) — string key mutations in Jinja context dicts (op dict
+  keys `"kind"`, `"path"`, `"method"`, etc.) whose values are passed to templates
+  but never explicitly asserted in tests. Equivalent mutations.
+- **~45% residual real gaps** (~178) — import flag logic in `collect_dto_imports`
+  (55) and `collect_model_imports` (28); URI path construction in
+  `generate_flutter_repositories` (47); `resolve_dto_fields` exclusion combos (44);
+  `_build_ops` op-dict completeness (41). Worth a future pass if the kill rate target
+  is raised above 75%.
 
-11 new tests in `tests/stacks/python_fastapi/test_conftest_gen.py`:
+38 new tests closed:
 
-| Class | Function | Gap closed |
-|-------|----------|------------|
-| `TestFieldInUniqueIndex` | `_field_in_unique_index` | `not in` inversion; no test for field IS in index |
-| `TestTopologicalSort` | `topological_sort` | `d.discard(None)` instead of `d.discard(e)`; circular fallback untested |
-| `TestFindForeignKeyDependencies` | `find_foreign_key_dependencies` | `"REFERENCE"` case swap; optional FK not distinguished from required |
-| `TestGenerateFixtureWithDeps` | `generate_fixture` | `dep_entity not in all_entities` inversion; missing-dep silently skipped |
-
-Gemini review addressed: exact list equality in sort tests, full dict equality in
-FK-dep tests, `author_id not in combined` assertion for missing-dep test.
+| Class | Function(s) | Gap closed |
+|-------|------------|------------|
+| `TestDartListType` | `_dart_list_type` | All 8 Python→Dart token mappings; every mapping key was a surviving mutant |
+| `TestDocComment` | `_doc_comment` | All 6 constraint branches (range/length/pattern/non_negative/positive) + top-level min/max_length — never previously tested |
+| `TestIsAutoPk` | `_is_auto_pk` | `auto_generate: False` path, non-PK field, default-True behaviour |
+| `TestPrimaryKeyField` | `primary_key_field` | Fallback when no PK field; integer-PK dart type |
+| `TestApiHelpers` | `_api_prefix`, `_has_requests` | Table-name fallback (underscores→hyphens), strip-slashes, empty fallback; update-only+not-immutable → True (untested second return branch) |
+| `TestRetrofitClient` additions | `_filters`, `_build_ops` | Non-enum filter type_map path; empty-prefix entity exercises `rstrip('/')` |
+| `TestRequestDtos` addition | `resolve_dto_fields` | `api_readonly: True` excluded from both create and update DTOs |
 
 ### Mutmut arc: active
 
 | Batch | Survived | Status |
 |-------|----------|--------|
-| batch-1-utils | 427 | triaged — noise (see survivors report) |
-| batch-2-generators | 526 | triaged — noise (see survivors report) |
-| batch-3-conftest | 760 | **triaged this session** — noise + 11 new tests |
-| batch-4-flutter-api | 581 | **untriaged** |
+| batch-1-utils | 427 | triaged — noise |
+| batch-2-generators | 526 | triaged — noise |
+| batch-3-conftest | 760 | triaged — noise + 11 new tests (PR #80, merged) |
+| batch-4-flutter-api | 378 | **triaged this session** — noise + 38 new tests (PR #81) |
 | batch-5-flutter-gen | 105 | triaged — noise (re-validated PR #77) |
 | batch-6-generate | 482 | **untriaged** |
 | batch-7-infrastructure | 498 | **untriaged** |
 
 ### Next steps
 
-1. **Merge PR #80** — then triage batch-4-flutter-api next (38% survival rate;
-   covers `flutter/api.py` + `flutter/fields.py` — fresh code worth inspecting)
-2. **New feature work** — new field type, new stack, or product call
+1. **Merge PR #81** — then triage batch-6-generate (482 survivors; covers
+   `generate.py` — `main`, `validate_auth_strategy`, `cleanup_*` helpers)
+2. **Or: new feature work** — new field type, new stack, or product call
 
 ---
 

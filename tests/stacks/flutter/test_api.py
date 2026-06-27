@@ -24,6 +24,10 @@ from model_generator.generators.flutter import (
     generate_flutter_repositories,
     generate_flutter_request_dtos,
 )
+from model_generator.generators.flutter.api import (
+    _api_prefix,
+    _has_requests,
+)
 from model_generator.generators.flutter.fields import (
     resolve_dto_fields,
 )
@@ -239,6 +243,63 @@ class TestRetrofitClient:
         paths = {Path(o["path"]) for o in outputs}
         assert tmp_path / "lib" / "api" / "widget_api.dart" in paths
 
+    def test_non_enum_filter_uses_type_map_dart_type(
+        self,
+        flutter_config: dict[str, Any],
+        env: Any,
+        tmp_path: Path,
+    ) -> None:
+        # Exercises the type_map lookup branch in _filters (not the enum branch).
+        m = {
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "is_active": {"type": "boolean", "required": True},
+                    },
+                    "api": {
+                        "enabled": True,
+                        "prefix": "items",
+                        "endpoints": ["list"],
+                        "filters": ["is_active"],
+                    },
+                }
+            }
+        }
+        content = _clients(m, flutter_config, env, tmp_path)["item_api.dart"]
+        assert "@Query('is_active') bool? isActive" in content
+
+    def test_empty_prefix_url_construction(
+        self,
+        flutter_config: dict[str, Any],
+        env: Any,
+        tmp_path: Path,
+    ) -> None:
+        # Entity with no api.prefix and no table → base_path = "/".
+        # rstrip('/') prevents "//{id}" — this test exercises that branch.
+        m = {
+            "entities": {
+                "Thing": {
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                    },
+                    "api": {"enabled": True, "endpoints": ["get", "delete"]},
+                }
+            }
+        }
+        content = _clients(m, flutter_config, env, tmp_path)["thing_api.dart"]
+        assert "@GET('/{id}')" in content
+        assert "@DELETE('/{id}')" in content
+
 
 # --------------------------------------------------------------------------- #
 # Request DTOs
@@ -337,6 +398,26 @@ class TestRequestDtos:
         content = by_name["widget_requests.dart"]
         assert "fromJson: decimalFromJson, toJson: decimalToJson" in content
         assert "required Decimal unitPrice," in content
+
+    def test_api_readonly_field_excluded(self, flutter_config: dict[str, Any]) -> None:
+        # api_readonly: True must be excluded from both create and update DTOs.
+        entity = {
+            "fields": {
+                "id": {"type": "uuid", "primary_key": True, "auto_generate": True},
+                "name": {"type": "text", "required": True},
+                "slug": {"type": "text", "required": True, "api_readonly": True},
+            },
+            "api": {"endpoints": ["list", "create", "update"]},
+        }
+        create = {
+            f["name"] for f in resolve_dto_fields(entity, flutter_config, "create")
+        }
+        update = {
+            f["name"] for f in resolve_dto_fields(entity, flutter_config, "update")
+        }
+        assert "slug" not in create
+        assert "slug" not in update
+        assert "name" in create
 
 
 # --------------------------------------------------------------------------- #
@@ -536,6 +617,49 @@ class TestAuthInterceptor:
         assert "csrfCookieName = 'csrf_token';" in content
         assert "csrfHeaderName = 'X-CSRF-Token';" in content
         assert "headerName" not in content
+
+
+# --------------------------------------------------------------------------- #
+# _api_prefix and _has_requests helpers
+# --------------------------------------------------------------------------- #
+
+
+class TestApiHelpers:
+    """Direct tests for _api_prefix and _has_requests.
+
+    Both functions have branches that the integration tests never exercise:
+    the table-name fallback in _api_prefix and the update-only (no create)
+    branch in _has_requests. Every untested branch is an independent mutant.
+    """
+
+    def test_api_prefix_uses_table_fallback(self) -> None:
+        # No api.prefix → table name with underscores converted to hyphens.
+        entity: dict[str, Any] = {"table": "my_widgets", "api": {}}
+        assert _api_prefix(entity) == "my-widgets"
+
+    def test_api_prefix_strips_surrounding_slashes(self) -> None:
+        entity: dict[str, Any] = {"api": {"prefix": "/items/"}}
+        assert _api_prefix(entity) == "items"
+
+    def test_api_prefix_empty_when_neither_prefix_nor_table(self) -> None:
+        assert _api_prefix({}) == ""
+
+    def test_has_requests_true_when_update_only_and_not_immutable(self) -> None:
+        # The second return branch: update in endpoints AND not immutable → True.
+        entity: dict[str, Any] = {"api": {"endpoints": ["list", "get", "update"]}}
+        assert _has_requests(entity) is True
+
+    def test_has_requests_false_when_update_only_and_immutable(self) -> None:
+        # Immutable: update endpoint is skipped (no Update DTO) → False.
+        entity: dict[str, Any] = {
+            "mutability": "immutable",
+            "api": {"endpoints": ["list", "get", "update"]},
+        }
+        assert _has_requests(entity) is False
+
+    def test_has_requests_false_when_no_create_or_update(self) -> None:
+        entity: dict[str, Any] = {"api": {"endpoints": ["list", "get", "delete"]}}
+        assert _has_requests(entity) is False
 
 
 # --------------------------------------------------------------------------- #
