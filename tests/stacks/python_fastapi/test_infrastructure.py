@@ -1320,8 +1320,10 @@ class TestPackageInitFilesGenerator:
     def test_existing_init_py_skipped(self, project_env: Any) -> None:
         """Pre-existing __init__.py files are not re-emitted."""
         project_root, config, _ = project_env
-        # Pre-create one of the expected __init__.py files.
-        existing_dir = project_root / "src"
+        # Derive the path the same way the generator does so this test stays
+        # correct if the fixture's paths config changes.
+        main_path = config.get("paths", {}).get("main", "src/main.py")
+        existing_dir = project_root / Path(main_path).parent
         existing_dir.mkdir(parents=True, exist_ok=True)
         (existing_dir / "__init__.py").write_text("# existing\n")
 
