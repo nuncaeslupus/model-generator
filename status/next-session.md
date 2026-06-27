@@ -1,41 +1,49 @@
 # Next Session Plan
 
-## Current State (2026-06-27) — Flutter Phase 4 shipped; all PRs merged
+## Current State (2026-06-27) — batch-3 triage done; PR #80 in review
 
-On `main` (`3bd7537`, synced with `origin/main`). **836 tests** (+ 2 xfailed),
-`make lint` clean, all CI jobs green.
+On branch `test/conftest-gen-mutmut-gaps` (PR #80, open). **847 tests** (+ 2
+xfailed), `make lint` clean.
 
-### What was shipped (PR #78 — feat/flutter-phase4-cache)
+### What is in PR #80 (test/conftest-gen-mutmut-gaps)
 
-Flutter Phase 4: Drift/SQLite offline cache layer, with Gemini comment fixes and
-three CI bug-fixes discovered post-merge of PR #71:
+batch-3-conftest triage: re-ran 1,233 mutants (473 killed / 760 survived, 62%).
+Survivors decompose into two clusters:
 
-| Change | File | What it does |
-|--------|------|--------------|
-| Gemini fix: `super.db` → `super(db)` in doc example | `docs/user/flutter.md` | Dart compile error: `this._db` is positional-private |
-| Gemini fix: `{}` → `{"local_cache": False}` in test | `test_models.py` | More explicit test for absent flag |
-| `generate_pubspec` adds Drift deps when `local_cache: true` | `generators/flutter/generators.py` | Was missing from pubspec generation |
-| `local_cache: true` added to flutter-app example | `examples/flutter-app/.model-generator.yaml` | Exercises Phase 4 in CI smoke job |
-| **CI fix**: `needs_pagination` + `pagination_uri` in `generate_cached_repositories` | `generators/flutter/cache.py` | `Paginated<T>` not a type — missing import |
-| **CI fix**: `column_nullable` param in `_to_companion_expr` | `generators/flutter/cache.py` | `String?` assigned to `String` for PK fields |
-| **CI fix**: guard `package:decimal/decimal.dart` on `needs_decimal` | `cached_repository.dart.j2` | Unused import → `dart analyze` exit 2 |
-| 5 new tests for the three CI fixes | `test_cache.py` | pagination import, pk null assertion, no-decimal import |
+- **~55% noise** (~420) — string literal mutations in `generate_conftest`'s
+  line-by-line output builder (docstrings, blank lines, generated code strings).
+  Accept; pinning exact string content would be brittle.
+- **~45% real gaps** (~340) — operator inversions and XX-wrapped key lookups in
+  helper functions with no positive-branch test coverage.
 
-### What was shipped (PR #77 — docs/batch5-revalidation)
+11 new tests in `tests/stacks/python_fastapi/test_conftest_gen.py`:
 
-batch-5 re-validation: 120 survivors re-run → **15 newly killed** (344 → 359).
-`mutmut-progress.json` updated.
+| Class | Function | Gap closed |
+|-------|----------|------------|
+| `TestFieldInUniqueIndex` | `_field_in_unique_index` | `not in` inversion; no test for field IS in index |
+| `TestTopologicalSort` | `topological_sort` | `d.discard(None)` instead of `d.discard(e)`; circular fallback untested |
+| `TestFindForeignKeyDependencies` | `find_foreign_key_dependencies` | `"REFERENCE"` case swap; optional FK not distinguished from required |
+| `TestGenerateFixtureWithDeps` | `generate_fixture` | `dep_entity not in all_entities` inversion; missing-dep silently skipped |
+
+Gemini review addressed: exact list equality in sort tests, full dict equality in
+FK-dep tests, `author_id not in combined` assertion for missing-dep test.
 
 ### Mutmut arc: active
 
-Batches 1, 2, and 5 are fully triaged (see `status/mutmut-survivors-report.md`),
-with no actionable survivors remaining. Batches 3, 4, 6, and 7 are complete but
-await triage.
+| Batch | Survived | Status |
+|-------|----------|--------|
+| batch-1-utils | 427 | triaged — noise (see survivors report) |
+| batch-2-generators | 526 | triaged — noise (see survivors report) |
+| batch-3-conftest | 760 | **triaged this session** — noise + 11 new tests |
+| batch-4-flutter-api | 581 | **untriaged** |
+| batch-5-flutter-gen | 105 | triaged — noise (re-validated PR #77) |
+| batch-6-generate | 482 | **untriaged** |
+| batch-7-infrastructure | 498 | **untriaged** |
 
 ### Next steps
 
-1. **Mutmut survivor triage** — batches 3/4/6/7 are complete but untriaged; run
-   `/mutmut-report` skill or manually inspect surviving mutants for real gaps
+1. **Merge PR #80** — then triage batch-4-flutter-api next (38% survival rate;
+   covers `flutter/api.py` + `flutter/fields.py` — fresh code worth inspecting)
 2. **New feature work** — new field type, new stack, or product call
 
 ---
