@@ -22,7 +22,13 @@ from model_generator.generators.flutter import (
     generate_flutter_models_index,
     generate_pubspec,
 )
-from model_generator.generators.flutter.fields import resolve_fields
+from model_generator.generators.flutter.fields import (
+    _dart_list_type,
+    _doc_comment,
+    _is_auto_pk,
+    primary_key_field,
+    resolve_fields,
+)
 from model_generator.generators.flutter.paths import (
     DEFAULT_PACKAGE_NAME,
     package_name,
@@ -182,6 +188,155 @@ class TestTypeMapping:
         # Plain types carry no fromJson/toJson helpers.
         assert by_name["displayName"]["from_json"] is None
         assert by_name["viewCount"]["from_json"] is None
+
+
+# --------------------------------------------------------------------------- #
+# _dart_list_type — Python spec token → Dart element type
+# --------------------------------------------------------------------------- #
+
+
+class TestDartListType:
+    """Direct tests for _dart_list_type.
+
+    Each mapping key is an independent mutant; testing every pair kills them.
+    """
+
+    def test_string_tokens(self) -> None:
+        assert _dart_list_type("str") == "String"
+        assert _dart_list_type("string") == "String"
+
+    def test_int_tokens(self) -> None:
+        assert _dart_list_type("int") == "int"
+        assert _dart_list_type("integer") == "int"
+
+    def test_float_and_number_tokens(self) -> None:
+        assert _dart_list_type("float") == "double"
+        assert _dart_list_type("number") == "num"
+
+    def test_bool_tokens(self) -> None:
+        assert _dart_list_type("bool") == "bool"
+        assert _dart_list_type("boolean") == "bool"
+
+    def test_dict_maps_to_map(self) -> None:
+        assert _dart_list_type("dict") == "Map<String, dynamic>"
+
+    def test_any_maps_to_dynamic(self) -> None:
+        assert _dart_list_type("any") == "dynamic"
+
+    def test_unmapped_token_passes_through(self) -> None:
+        assert _dart_list_type("String") == "String"
+        assert _dart_list_type("MyModel") == "MyModel"
+
+
+# --------------------------------------------------------------------------- #
+# _doc_comment — constraint → Dart doc-comment lines
+# --------------------------------------------------------------------------- #
+
+
+class TestDocComment:
+    """Direct tests for _doc_comment.
+
+    All constraint branches are untested by higher-level tests; every ctype
+    comparison and format string is an independent surviving mutant.
+    """
+
+    def test_description_becomes_first_line(self) -> None:
+        lines = _doc_comment({"description": "The widget label."})
+        assert lines == ["The widget label."]
+
+    def test_range_both_bounds(self) -> None:
+        lines = _doc_comment({"constraints": [{"type": "range", "min": 1, "max": 100}]})
+        assert "Constraint: 1 <= value <= 100." in lines
+
+    def test_range_min_only(self) -> None:
+        lines = _doc_comment({"constraints": [{"type": "range", "min": 0}]})
+        assert "Constraint: value >= 0." in lines
+
+    def test_range_max_only(self) -> None:
+        lines = _doc_comment({"constraints": [{"type": "range", "max": 50}]})
+        assert "Constraint: value <= 50." in lines
+
+    def test_length_both_bounds(self) -> None:
+        lines = _doc_comment({"constraints": [{"type": "length", "min": 2, "max": 50}]})
+        assert "Length: 2–50 chars." in lines
+
+    def test_length_min_only(self) -> None:
+        lines = _doc_comment({"constraints": [{"type": "length", "min": 3}]})
+        assert "Length: at least 3 chars." in lines
+
+    def test_length_max_only(self) -> None:
+        lines = _doc_comment({"constraints": [{"type": "length", "max": 20}]})
+        assert "Length: at most 20 chars." in lines
+
+    def test_pattern_constraint(self) -> None:
+        field = {"constraints": [{"type": "pattern", "regex": "^[a-z]+$"}]}
+        lines = _doc_comment(field)
+        assert "Must match pattern: ^[a-z]+$" in lines
+
+    def test_non_negative_constraint(self) -> None:
+        lines = _doc_comment({"constraints": [{"type": "non_negative"}]})
+        assert "Constraint: value >= 0." in lines
+
+    def test_positive_constraint(self) -> None:
+        lines = _doc_comment({"constraints": [{"type": "positive"}]})
+        assert "Constraint: value > 0." in lines
+
+    def test_top_level_min_max_length_both(self) -> None:
+        lines = _doc_comment({"min_length": 5, "max_length": 20})
+        assert "Length: 5–20 chars." in lines
+
+    def test_top_level_min_length_only(self) -> None:
+        lines = _doc_comment({"min_length": 2})
+        assert "Length: at least 2 chars." in lines
+
+    def test_top_level_max_length_only(self) -> None:
+        lines = _doc_comment({"max_length": 100})
+        assert "Length: at most 100 chars." in lines
+
+    def test_empty_field_returns_empty(self) -> None:
+        assert _doc_comment({}) == []
+
+    def test_unknown_constraint_type_ignored(self) -> None:
+        assert _doc_comment({"constraints": [{"type": "unique"}]}) == []
+
+
+# --------------------------------------------------------------------------- #
+# _is_auto_pk and primary_key_field
+# --------------------------------------------------------------------------- #
+
+
+class TestIsAutoPk:
+    """Direct tests for _is_auto_pk.
+
+    The AND of primary_key AND auto_generate is the key operator; each negation
+    is a separate surviving mutant without these tests.
+    """
+
+    def test_auto_pk_true(self) -> None:
+        assert _is_auto_pk({"primary_key": True, "auto_generate": True})
+
+    def test_client_supplied_pk_is_not_auto(self) -> None:
+        assert not _is_auto_pk({"primary_key": True, "auto_generate": False})
+
+    def test_non_pk_field_is_not_auto_pk(self) -> None:
+        assert not _is_auto_pk({"primary_key": False, "auto_generate": True})
+
+    def test_auto_generate_defaults_to_true(self) -> None:
+        assert _is_auto_pk({"primary_key": True})
+
+
+class TestPrimaryKeyField:
+    def test_fallback_when_no_pk_field(self, flutter_config: dict[str, Any]) -> None:
+        entity = {"fields": {"name": {"type": "text"}}}
+        pk = primary_key_field(entity, flutter_config)
+        assert pk == {"name": "id", "json_key": "id", "dart_type": "String"}
+
+    def test_integer_pk_yields_int_dart_type(
+        self, flutter_config: dict[str, Any]
+    ) -> None:
+        entity = {"fields": {"seq": {"type": "counter", "primary_key": True}}}
+        pk = primary_key_field(entity, flutter_config)
+        assert pk["dart_type"] == "int"
 
 
 # --------------------------------------------------------------------------- #
