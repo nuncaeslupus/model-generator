@@ -1,8 +1,9 @@
 # Next Session Plan
 
-## Current State (2026-06-27) — batch-4 triage merged (#81); on `main`
+## Current State (2026-06-27) — batch-6 real-gap tests (PR #82, open); on `feat/batch6-generate-triage`
 
-On `main`. **885 tests** (+ 2 xfailed), `make lint` clean, working tree clean.
+On `feat/batch6-generate-triage`. **902 tests** (+ 2 xfailed), `make lint` clean.
+PR #82 open; merge when CI green.
 
 ### Mutmut arc: active
 
@@ -13,34 +14,20 @@ On `main`. **885 tests** (+ 2 xfailed), `make lint` clean, working tree clean.
 | batch-3-conftest | 760 | triaged — noise + 11 new tests (PR #80, merged) |
 | batch-4-flutter-api | 378 | triaged — noise + 38 new tests (PR #81, merged) |
 | batch-5-flutter-gen | 105 | triaged — noise (re-validated PR #77) |
-| batch-6-generate | 482 | **untriaged** |
+| batch-6-generate | 482 | real gaps patched — 17 new tests (PR #82, open) |
 | batch-7-infrastructure | 498 | **untriaged** |
 
-batch-6-generate covers `generate.py` (1,631 mutants total, 29.5% survival).
-Survivor distribution by function:
-
-| Function | Mutants | Likely |
-|---|---|---|
-| `main` | 312 | mostly noise (orchestration, many equivalent string mutations) |
-| `_validate_auth_strategy` | 184 | real gaps likely — complex conditional logic |
-| `generate` | 112 | mixed |
-| `_cleanup_selective` | 111 | mixed |
-| `_prepare_infra_modules` | 99 | real gaps likely — already has some tests from WIZ-1 |
-| `_validate_composite_foreign_keys` | 88 | real gaps likely |
-| `_cleanup_full` | 81 | mixed |
-| `_python_derived_cleanup_files` | 79 | mixed |
-| `_validate_auth_scope_coverage` | 68 | real gaps likely |
-| `_validate_auth_config` | 61 | real gaps likely |
-| `_validate_paths_base` | 60 | real gaps likely — already has `TestValidatePathsBase` |
-| `generate_conftest` | 57 | mixed |
-| others | ~172 | — |
+batch-6-generate: real-gap validator functions addressed (PR #82). The bulk of
+the 482 survivors fall in orchestration/cleanup/conftest-gen paths that are
+hard to test in unit isolation (`main`, `generate`, `_cleanup_*`,
+`_python_derived_cleanup_files`, `generate_conftest`) — these are likely mostly
+noise or equivalent mutations. No re-run needed unless CI turns up surprises.
 
 ### Next steps
 
-1. **Triage batch-6-generate** — read `generate.py` test coverage, identify gaps
-   in the validator functions; re-run the batch (1-2h) to confirm kills
-2. **Or: triage batch-7-infrastructure** (498 survivors; covers `utils/` +
-   infrastructure generators)
+1. **Merge PR #82** once CI is green (batch-6 real-gap kills)
+2. **Triage batch-7-infrastructure** (498 survivors; covers `utils/` +
+   infrastructure generators) — same code-read approach as batch-6
 3. **Or: new feature work** — new field type, new stack, or product call
 
 ---
