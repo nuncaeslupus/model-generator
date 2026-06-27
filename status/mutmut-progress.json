@@ -24,8 +24,8 @@
     "batch-4-flutter-api": {
       "status": "complete",
       "total": 1546,
-      "killed": 965,
-      "survived": 581,
+      "killed": 1168,
+      "survived": 378,
       "pending": 0
     },
     "batch-5-flutter-gen": {
