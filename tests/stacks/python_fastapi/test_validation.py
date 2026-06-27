@@ -107,6 +107,92 @@ class TestValidateCompositeForeignKeys:
         assert "ghost_table" in out
         assert "not found in this model" in out
 
+    def test_multiple_errors_accumulate_before_exit(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """All validation errors in a FK are collected, not short-circuited on first."""
+        from model_generator.generate import _validate_composite_foreign_keys
+
+        # Both length mismatch AND unknown field — both errors must appear in output.
+        bad = {
+            **self._valid_fk(),
+            "fields": ["tenant_id", "ghost_col"],
+            "references_columns": ["x"],
+        }
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_composite_foreign_keys(self._model_with_fk(bad))
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "must match" in out
+        assert "ghost_col" in out
+
+    def test_second_fk_label_uses_correct_index(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A second invalid FK must be labelled foreign_keys[1], not [0]."""
+        from model_generator.generate import _validate_composite_foreign_keys
+
+        bad_fk = {**self._valid_fk(), "references_table": "ghost"}
+        model = {
+            "entities": {
+                "OrderItem": {
+                    "table": "order_items",
+                    "fields": {
+                        "id": {"type": "uuid"},
+                        "tenant_id": {"type": "uuid"},
+                        "order_id": {"type": "uuid"},
+                    },
+                    "foreign_keys": [self._valid_fk(), bad_fk],
+                },
+                "Order": {"table": "orders", "fields": {}},
+            }
+        }
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_composite_foreign_keys(model)
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "foreign_keys[1]" in out
+        assert "foreign_keys[0]" not in out
+
+    def test_errors_from_multiple_entities_accumulate(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Bad FKs on two different entities both appear in the error output."""
+        from model_generator.generate import _validate_composite_foreign_keys
+
+        model: dict[str, Any] = {
+            "entities": {
+                "Alpha": {
+                    "table": "alphas",
+                    "fields": {"id": {"type": "uuid"}},
+                    "foreign_keys": [
+                        {
+                            "fields": ["id"],
+                            "references_table": "ghost_a",
+                            "references_columns": ["id"],
+                        }
+                    ],
+                },
+                "Beta": {
+                    "table": "betas",
+                    "fields": {"id": {"type": "uuid"}},
+                    "foreign_keys": [
+                        {
+                            "fields": ["id"],
+                            "references_table": "ghost_b",
+                            "references_columns": ["id"],
+                        }
+                    ],
+                },
+            }
+        }
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_composite_foreign_keys(model)
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "ghost_a" in out
+        assert "ghost_b" in out
+
 
 class TestValidateGenerationConfig:
     """Test the _validate_generation_config helper."""
@@ -200,6 +286,42 @@ class TestValidatePathsBase:
         assert "paths.base" in out
         assert "hub/database/base.py" in out
         assert "hub/database/models" in out
+        assert "from .base import Base" in out
+
+    def test_wrong_filename_error_shows_suggestion(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The wrong-filename error must print the correct suggested path."""
+        from model_generator.generate import _validate_paths_base
+
+        with pytest.raises(SystemExit):
+            _validate_paths_base(
+                {
+                    "paths": {
+                        "database_models": "src/db/models",
+                        "base": "src/db/models/foundation.py",
+                    }
+                }
+            )
+        out = capsys.readouterr().out
+        assert "src/db/models/base.py" in out
+
+    def test_wrong_parent_error_shows_relative_import_reason(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The wrong-parent error must explain the from .base import constraint."""
+        from model_generator.generate import _validate_paths_base
+
+        with pytest.raises(SystemExit):
+            _validate_paths_base(
+                {
+                    "paths": {
+                        "database_models": "hub/database/models",
+                        "base": "hub/database/base.py",
+                    }
+                }
+            )
+        out = capsys.readouterr().out
         assert "from .base import Base" in out
 
     def test_null_paths_does_not_raise_attribute_error(self) -> None:

@@ -55,6 +55,25 @@ class TestValidateAuthConfig:
         assert "no_dots_here" in out
         assert "dotted path" in out
 
+    def test_multiple_scoped_entities_all_named_in_error(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Error message must list every scoped entity, not just the first."""
+        from model_generator.generate import _validate_auth_config
+
+        model = {
+            "entities": {
+                "Alpha": {"api": {"scope": {"owner_field": "user_id"}}},
+                "Beta": {"api": {"scope": {"owner_field": "user_id"}}},
+            }
+        }
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_config(model, config={})
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "Alpha" in out
+        assert "Beta" in out
+
 
 class TestValidateAuthStrategy:
     """Test the _validate_auth_strategy helper."""
@@ -177,6 +196,54 @@ class TestValidateAuthStrategy:
         assert "per-entity" in out
         assert "per-domain" in out
 
+    def test_null_auth_in_config_treated_as_no_strategy(self) -> None:
+        """config = {"auth": None} must be treated the same as no auth key."""
+        from model_generator.generate import _validate_auth_strategy
+
+        _validate_auth_strategy([self._user_model()], {"auth": None})
+
+    def test_bcrypt_session_with_empty_string_pepper_exits(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "bcrypt-session", "pepper_env": ""}}
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_strategy([self._user_model()], config)
+        assert excinfo.value.code == 1
+        assert "pepper_env" in capsys.readouterr().out
+
+    def test_bcrypt_session_with_whitespace_pepper_exits(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "bcrypt-session", "pepper_env": "   "}}
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_strategy([self._user_model()], config)
+        assert excinfo.value.code == 1
+        assert "pepper_env" in capsys.readouterr().out
+
+    def test_api_key_with_none_key_env_exits(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """key_env=None fails isinstance(str) check — must exit, not pass."""
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "api-key", "key_env": None}}
+        with pytest.raises(SystemExit) as excinfo:
+            _validate_auth_strategy([self._user_model()], config)
+        assert excinfo.value.code == 1
+        assert "key_env" in capsys.readouterr().out
+
+    def test_user_found_in_second_model_passes(self) -> None:
+        """User entity in the second model file must satisfy the bcrypt requirement."""
+        from model_generator.generate import _validate_auth_strategy
+
+        config = {"auth": {"strategy": "bcrypt-session", "pepper_env": "X"}}
+        no_user_model: dict[str, Any] = {"entities": {"Item": {"fields": {}}}}
+        _validate_auth_strategy([no_user_model, self._user_model()], config)
+
     @pytest.mark.parametrize("missing", ["username", "email", "last_login_at"])
     def test_user_missing_router_field_exits(
         self, capsys: pytest.CaptureFixture[str], missing: Any
@@ -272,6 +339,53 @@ class TestValidateAuthScopeCoverage:
         assert "Warning" in out
         assert "require_auth" in out
         assert "Widget" in out
+
+    def test_entity_without_api_key_is_api_enabled_by_default(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Entity with no 'api' key at all is treated as api-enabled (default True)."""
+        from model_generator.generate import _validate_auth_scope_coverage
+
+        models: list[dict[str, Any]] = [{"entities": {"Widget": {}}}]
+        _validate_auth_scope_coverage(models, {"auth": {"strategy": "bcrypt-session"}})
+        out = capsys.readouterr().out
+        assert "Warning" in out
+        assert "Widget" in out
+
+    def test_warning_lists_all_api_enabled_entity_names_sorted(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The footer lists every API-enabled entity, sorted alphabetically."""
+        from model_generator.generate import _validate_auth_scope_coverage
+
+        models = [
+            {
+                "entities": {
+                    "Zebra": {"api": {"enabled": True}},
+                    "Alpha": {"api": {"enabled": True}},
+                }
+            }
+        ]
+        _validate_auth_scope_coverage(models, {"auth": {"strategy": "bcrypt-session"}})
+        out = capsys.readouterr().out
+        alpha_pos = out.index("Alpha")
+        zebra_pos = out.index("Zebra")
+        assert alpha_pos < zebra_pos
+
+    def test_entities_across_multiple_models_aggregated(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Entities from two separate model files are both counted in the warning."""
+        from model_generator.generate import _validate_auth_scope_coverage
+
+        models = [
+            {"entities": {"Widget": {"api": {"enabled": True}}}},
+            {"entities": {"Gadget": {"api": {"enabled": True}}}},
+        ]
+        _validate_auth_scope_coverage(models, {"auth": {"strategy": "bcrypt-session"}})
+        out = capsys.readouterr().out
+        assert "Widget" in out
+        assert "Gadget" in out
 
 
 class TestLoadConfigAuthDependency:

@@ -464,6 +464,108 @@ class TestPrepareInfraModules:
                 _, _, _, extra_deps, _ = _prepare_infra_modules([model_path], config)
             assert "pandas>=2.0.0" in extra_deps
 
+    def test_per_domain_layout_uses_domains_not_entity_stems(self) -> None:
+        """Per-domain layout: route_modules / factory_modules = domain names."""
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        from model_generator.generate import _prepare_infra_modules
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = Path(tmp) / "acme.model.json"
+            model_path.write_text(
+                json.dumps(
+                    {
+                        "domain": "acme",
+                        "entities": {
+                            "Widget": {
+                                "fields": {"id": {"type": "uuid", "primary_key": True}}
+                            },
+                            "Gadget": {
+                                "fields": {"id": {"type": "uuid", "primary_key": True}}
+                            },
+                        },
+                    }
+                )
+            )
+            config = {"generation": {"layout": "per-domain"}}
+            with patch("model_generator.generate._validate_auth_strategy"):
+                domains, route_modules, factory_modules, _, _ = _prepare_infra_modules(
+                    [model_path], config
+                )
+        assert "acme" in domains
+        assert route_modules == ["acme"]
+        assert factory_modules == ["acme"]
+        assert "widget" not in route_modules
+        assert "gadget" not in route_modules
+
+    def test_api_disabled_entity_excluded_from_route_modules(self) -> None:
+        """An entity with api.enabled=false must not appear in route_modules."""
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        from model_generator.generate import _prepare_infra_modules
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = Path(tmp) / "test.model.json"
+            model_path.write_text(
+                json.dumps(
+                    {
+                        "domain": "test",
+                        "entities": {
+                            "Public": {
+                                "fields": {"id": {"type": "uuid", "primary_key": True}},
+                                "api": {"enabled": True},
+                            },
+                            "Internal": {
+                                "fields": {"id": {"type": "uuid", "primary_key": True}},
+                                "api": {"enabled": False},
+                            },
+                        },
+                    }
+                )
+            )
+            config = {"generation": {"layout": "per-entity"}}
+            with patch("model_generator.generate._validate_auth_strategy"):
+                _, route_modules, _, _, _ = _prepare_infra_modules([model_path], config)
+        assert "public" in route_modules
+        assert "internal" not in route_modules
+
+    def test_extra_deps_deduplicated_across_models(self) -> None:
+        """Same dependency declared in two models appears only once in extra_deps."""
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        from model_generator.generate import _prepare_infra_modules
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = []
+            for name in ("alpha", "beta"):
+                p = Path(tmp) / f"{name}.model.json"
+                p.write_text(
+                    json.dumps(
+                        {
+                            "domain": name,
+                            "dependencies": ["shared-lib>=1.0"],
+                            "entities": {
+                                "Item": {
+                                    "fields": {
+                                        "id": {"type": "uuid", "primary_key": True}
+                                    }
+                                }
+                            },
+                        }
+                    )
+                )
+                paths.append(p)
+            config = {"generation": {"layout": "per-entity"}}
+            with patch("model_generator.generate._validate_auth_strategy"):
+                _, _, _, extra_deps, _ = _prepare_infra_modules(paths, config)
+        assert extra_deps.count("shared-lib>=1.0") == 1
+
 
 class TestRunGenerateAction:
     """WIZ-5 / WIZ-4: run_generate's real control flow (not a mock dispatch)."""
