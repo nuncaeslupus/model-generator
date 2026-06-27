@@ -1,38 +1,9 @@
 # Next Session Plan
 
-## Current State (2026-06-27) — batch-4 triage done; PR #81 open
+## Current State (2026-06-27) — batch-6 real-gap tests (PR #82, open); on `feat/batch6-generate-triage`
 
-On branch `test/flutter-api-mutmut-gaps` (PR #81, open). **885 tests** (+ 2
-xfailed), `make lint` clean.
-
-### What is in PR #81 (test/flutter-api-mutmut-gaps)
-
-batch-4-flutter-api triage: 38 new tests across `test_models.py` and `test_api.py`.
-Re-ran 1,546 mutants with new tests: **1168 killed / 378 survived (75.5%)**, up from
-965/1546 (62.4%). **203 additional mutations killed.**
-
-Survivors decompose into two clusters:
-
-- **~55% noise** (~200) — string key mutations in Jinja context dicts (op dict
-  keys `"kind"`, `"path"`, `"method"`, etc.) whose values are passed to templates
-  but never explicitly asserted in tests. Equivalent mutations.
-- **~45% residual real gaps** (~178) — import flag logic in `collect_dto_imports`
-  (55) and `collect_model_imports` (28); URI path construction in
-  `generate_flutter_repositories` (47); `resolve_dto_fields` exclusion combos (44);
-  `_build_ops` op-dict completeness (41). Worth a future pass if the kill rate target
-  is raised above 75%.
-
-38 new tests closed:
-
-| Class | Function(s) | Gap closed |
-|-------|------------|------------|
-| `TestDartListType` | `_dart_list_type` | All 8 Python→Dart token mappings; every mapping key was a surviving mutant |
-| `TestDocComment` | `_doc_comment` | All 6 constraint branches (range/length/pattern/non_negative/positive) + top-level min/max_length — never previously tested |
-| `TestIsAutoPk` | `_is_auto_pk` | `auto_generate: False` path, non-PK field, default-True behaviour |
-| `TestPrimaryKeyField` | `primary_key_field` | Fallback when no PK field; integer-PK dart type |
-| `TestApiHelpers` | `_api_prefix`, `_has_requests` | Table-name fallback (underscores→hyphens), strip-slashes, empty fallback; update-only+not-immutable → True (untested second return branch) |
-| `TestRetrofitClient` additions | `_filters`, `_build_ops` | Non-enum filter type_map path; empty-prefix entity exercises `rstrip('/')` |
-| `TestRequestDtos` addition | `resolve_dto_fields` | `api_readonly: True` excluded from both create and update DTOs |
+On `feat/batch6-generate-triage`. **902 tests** (+ 2 xfailed), `make lint` clean.
+PR #82 open; merge when CI green.
 
 ### Mutmut arc: active
 
@@ -41,16 +12,23 @@ Survivors decompose into two clusters:
 | batch-1-utils | 427 | triaged — noise |
 | batch-2-generators | 526 | triaged — noise |
 | batch-3-conftest | 760 | triaged — noise + 11 new tests (PR #80, merged) |
-| batch-4-flutter-api | 378 | **triaged this session** — noise + 38 new tests (PR #81) |
+| batch-4-flutter-api | 378 | triaged — noise + 38 new tests (PR #81, merged) |
 | batch-5-flutter-gen | 105 | triaged — noise (re-validated PR #77) |
-| batch-6-generate | 482 | **untriaged** |
+| batch-6-generate | 482 | real gaps patched — 17 new tests (PR #82, open) |
 | batch-7-infrastructure | 498 | **untriaged** |
+
+batch-6-generate: real-gap validator functions addressed (PR #82). The bulk of
+the 482 survivors fall in orchestration/cleanup/conftest-gen paths that are
+hard to test in unit isolation (`main`, `generate`, `_cleanup_*`,
+`_python_derived_cleanup_files`, `generate_conftest`) — these are likely mostly
+noise or equivalent mutations. No re-run needed unless CI turns up surprises.
 
 ### Next steps
 
-1. **Merge PR #81** — then triage batch-6-generate (482 survivors; covers
-   `generate.py` — `main`, `validate_auth_strategy`, `cleanup_*` helpers)
-2. **Or: new feature work** — new field type, new stack, or product call
+1. **Merge PR #82** once CI is green (batch-6 real-gap kills)
+2. **Triage batch-7-infrastructure** (498 survivors; covers `utils/` +
+   infrastructure generators) — same code-read approach as batch-6
+3. **Or: new feature work** — new field type, new stack, or product call
 
 ---
 
