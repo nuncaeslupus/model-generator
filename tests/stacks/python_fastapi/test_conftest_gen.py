@@ -401,13 +401,20 @@ class TestTopologicalSort:
         from model_generator.utils.conftest_generator import topological_sort
 
         result = topological_sort({"A", "B", "C"}, {"A": set(), "B": set(), "C": set()})
-        assert set(result) == {"A", "B", "C"}
+        assert result == ["A", "B", "C"]
 
     def test_independent_entities_all_present(self) -> None:
         from model_generator.utils.conftest_generator import topological_sort
 
         result = topological_sort({"X", "Y"}, {})
-        assert set(result) == {"X", "Y"}
+        assert result == ["X", "Y"]
+
+    def test_circular_dependency_fallback(self) -> None:
+        from model_generator.utils.conftest_generator import topological_sort
+
+        # Circular deps have no ready entities; sort falls back to alphabetical
+        result = topological_sort({"A", "B"}, {"A": {"B"}, "B": {"A"}})
+        assert result == ["A", "B"]
 
 
 class TestFindForeignKeyDependencies:
@@ -436,7 +443,7 @@ class TestFindForeignKeyDependencies:
             },
         }
         deps = find_foreign_key_dependencies(entities)
-        assert "Author" in deps["Post"]
+        assert deps == {"Author": set(), "Post": {"Author"}}
 
     def test_optional_reference_does_not_create_dependency(self) -> None:
         from model_generator.utils.conftest_generator import (
@@ -461,7 +468,7 @@ class TestFindForeignKeyDependencies:
             },
         }
         deps = find_foreign_key_dependencies(entities)
-        assert "Tag" not in deps["Post"]
+        assert deps == {"Tag": set(), "Post": set()}
 
 
 class TestGenerateFixtureWithDeps:
@@ -523,3 +530,4 @@ class TestGenerateFixtureWithDeps:
         combined = "\n".join(lines)
         # Fixture still emits — just without the missing dep parameter
         assert "def post_id(" in combined
+        assert "author_id" not in combined
