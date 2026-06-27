@@ -343,3 +343,191 @@ class TestConftestLoadAllModelsComments:
         models = load_all_models(models_dir)
         qty = models["items"]["entities"]["Item"]["fields"]["qty"]
         assert qty["type"] == "counter"  # integer alias normalized
+
+
+class TestFieldInUniqueIndex:
+    """_field_in_unique_index must return True when field IS in a unique index."""
+
+    def test_field_in_unique_index_returns_true(self) -> None:
+        from model_generator.utils.conftest_generator import _field_in_unique_index
+
+        entity_data = {
+            "fields": {},
+            "indexes": [{"unique": True, "fields": ["email", "tenant_id"]}],
+        }
+        assert _field_in_unique_index("email", entity_data) is True
+
+    def test_field_not_in_unique_index_returns_false(self) -> None:
+        from model_generator.utils.conftest_generator import _field_in_unique_index
+
+        entity_data = {
+            "fields": {},
+            "indexes": [{"unique": True, "fields": ["email"]}],
+        }
+        assert _field_in_unique_index("username", entity_data) is False
+
+    def test_field_in_unique_constraint_returns_true(self) -> None:
+        from model_generator.utils.conftest_generator import _field_in_unique_index
+
+        entity_data = {
+            "fields": {},
+            "indexes": [],
+            "constraints": [{"type": "unique", "fields": ["slug"]}],
+        }
+        assert _field_in_unique_index("slug", entity_data) is True
+
+    def test_non_unique_index_ignored(self) -> None:
+        from model_generator.utils.conftest_generator import _field_in_unique_index
+
+        entity_data = {
+            "fields": {},
+            "indexes": [{"unique": False, "fields": ["name"]}],
+        }
+        assert _field_in_unique_index("name", entity_data) is False
+
+
+class TestTopologicalSort:
+    """topological_sort must place dependencies before dependents."""
+
+    def test_dependency_comes_before_dependent(self) -> None:
+        from model_generator.utils.conftest_generator import topological_sort
+
+        deps = {"Post": {"Author"}, "Author": set(), "Comment": {"Post"}}
+        result = topological_sort(set(deps.keys()), deps)
+        assert result.index("Author") < result.index("Post")
+        assert result.index("Post") < result.index("Comment")
+
+    def test_no_dependencies_returns_all(self) -> None:
+        from model_generator.utils.conftest_generator import topological_sort
+
+        result = topological_sort({"A", "B", "C"}, {"A": set(), "B": set(), "C": set()})
+        assert result == ["A", "B", "C"]
+
+    def test_independent_entities_all_present(self) -> None:
+        from model_generator.utils.conftest_generator import topological_sort
+
+        result = topological_sort({"X", "Y"}, {})
+        assert result == ["X", "Y"]
+
+    def test_circular_dependency_fallback(self) -> None:
+        from model_generator.utils.conftest_generator import topological_sort
+
+        # Circular deps have no ready entities; sort falls back to alphabetical
+        result = topological_sort({"A", "B"}, {"A": {"B"}, "B": {"A"}})
+        assert result == ["A", "B"]
+
+
+class TestFindForeignKeyDependencies:
+    """find_foreign_key_dependencies must detect reference-type required fields."""
+
+    def test_required_reference_creates_dependency(self) -> None:
+        from model_generator.utils.conftest_generator import (
+            find_foreign_key_dependencies,
+        )
+
+        entities = {
+            "Author": {
+                "table": "authors",
+                "fields": {"id": {"type": "uuid", "primary_key": True}},
+            },
+            "Post": {
+                "table": "posts",
+                "fields": {
+                    "id": {"type": "uuid", "primary_key": True},
+                    "author_id": {
+                        "type": "reference",
+                        "reference_table": "authors",
+                        "required": True,
+                    },
+                },
+            },
+        }
+        deps = find_foreign_key_dependencies(entities)
+        assert deps == {"Author": set(), "Post": {"Author"}}
+
+    def test_optional_reference_does_not_create_dependency(self) -> None:
+        from model_generator.utils.conftest_generator import (
+            find_foreign_key_dependencies,
+        )
+
+        entities = {
+            "Tag": {
+                "table": "tags",
+                "fields": {"id": {"type": "uuid", "primary_key": True}},
+            },
+            "Post": {
+                "table": "posts",
+                "fields": {
+                    "id": {"type": "uuid", "primary_key": True},
+                    "tag_id": {
+                        "type": "reference",
+                        "reference_table": "tags",
+                        # required omitted — optional FK
+                    },
+                },
+            },
+        }
+        deps = find_foreign_key_dependencies(entities)
+        assert deps == {"Tag": set(), "Post": set()}
+
+
+class TestGenerateFixtureWithDeps:
+    """generate_fixture must wire dep entity params when reference fields exist."""
+
+    def _author_entities(self) -> dict[str, Any]:
+        return {
+            "Author": {
+                "table": "authors",
+                "fields": {
+                    "id": {"type": "uuid", "primary_key": True, "auto_generate": True}
+                },
+                "api_prefix": "authors",
+            },
+            "Post": {
+                "table": "posts",
+                "fields": {
+                    "id": {"type": "uuid", "primary_key": True, "auto_generate": True},
+                    "author_id": {
+                        "type": "reference",
+                        "reference_table": "authors",
+                        "required": True,
+                    },
+                    "title": {"type": "text", "required": True},
+                },
+                "api_prefix": "posts",
+            },
+        }
+
+    def test_fixture_includes_dep_param(self) -> None:
+        from model_generator.utils.conftest_generator import generate_fixture
+
+        entities = self._author_entities()
+        lines = generate_fixture(
+            "Post",
+            entities["Post"],
+            "post_id",
+            required_deps={"Author"},
+            all_entities=entities,
+            enums={},
+        )
+        combined = "\n".join(lines)
+        assert "author_id" in combined
+
+    def test_fixture_dep_not_in_all_entities_is_skipped(self) -> None:
+        from model_generator.utils.conftest_generator import generate_fixture
+
+        entities = self._author_entities()
+        # Remove Author from all_entities — dep should be silently skipped
+        all_without_author = {k: v for k, v in entities.items() if k != "Author"}
+        lines = generate_fixture(
+            "Post",
+            entities["Post"],
+            "post_id",
+            required_deps={"Author"},
+            all_entities=all_without_author,
+            enums={},
+        )
+        combined = "\n".join(lines)
+        # Fixture still emits — just without the missing dep parameter
+        assert "def post_id(" in combined
+        assert "author_id" not in combined
