@@ -34,7 +34,6 @@ interactive = [
 ]
 dev = [
     "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
     "questionary>=2.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
@@ -99,9 +98,6 @@ python_functions = ["test_*"]
 addopts = "--strict-markers --tb=short"
 markers = [
     "slow: marks tests as slow",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-    "cli: marks tests as CLI tests",
 ]
 
 [tool.mypy]

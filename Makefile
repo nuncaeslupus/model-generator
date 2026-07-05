@@ -1,4 +1,4 @@
-.PHONY: lint format test test-all smoke-example smoke-catalog-api smoke-flutter clean sync build publish publish-force version-sync check-version-sync tag-release update-skills
+.PHONY: lint format test test-all smoke-example smoke-catalog-api smoke-flutter clean sync build publish publish-force tag-release update-skills
 
 sync:
 	uv sync --extra dev
@@ -54,10 +54,9 @@ tag-release:
 		echo "       The bump commit must be pushed/merged first. Run: git pull"; \
 		exit 1; \
 	fi; \
-	$(MAKE) check-version-sync; \
 	if git ls-remote --exit-code --tags origin "$$TAG" >/dev/null 2>&1; then \
 		echo "ERROR: tag $$TAG already exists on origin (version $$VER already released?)."; \
-		echo "       Bump [project].version, run 'make version-sync', commit, merge, retry."; \
+		echo "       Bump [project].version, commit, merge, retry."; \
 		exit 1; \
 	fi; \
 	echo "Tagging $$(git rev-parse --short HEAD) on main as $$TAG ..."; \
@@ -67,13 +66,7 @@ tag-release:
 	echo "Pushed $$TAG. release.yml will build, publish model-generator-kit==$$VER"; \
 	echo "to PyPI, and cut the GitHub release. Watch: gh run watch (or the Actions tab)."
 
-version-sync:
-	uv run scripts/sync_version.py
-
-check-version-sync:
-	uv run scripts/check_version_sync.py
-
-lint: check-version-sync
+lint:
 	uv run ruff check . && uv run ruff format --check . && uv run mypy . --explicit-package-bases
 
 format:
