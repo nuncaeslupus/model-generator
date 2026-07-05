@@ -43,21 +43,32 @@ def _max_request_body_bytes(config: dict[str, Any]) -> int:
         return DEFAULT_MAX_REQUEST_BODY_BYTES
 
 
+def _bootstrap_file(
+    env: Environment, output_path: Path, template_name: str, **render_kwargs: Any
+) -> dict[str, Any] | None:
+    """Shared bootstrap-file emission: skip if it exists, else render+return.
+
+    Path resolution differs per caller (some read a `config["paths"]` key
+    with a fallback, some derive a sibling directory), so each of the six
+    simple generators below still computes its own ``output_path`` and
+    calls this to do the exists-check/render/return part they all share.
+    """
+    if output_path.exists():
+        return None
+
+    template = env.get_template(template_name)
+    content = template.render(**render_kwargs)
+
+    return {"path": output_path, "content": content}
+
+
 def generate_base(
     config: dict[str, Any], env: Environment, project_root: Path
 ) -> dict[str, Any] | None:
     """Generate SQLAlchemy Base class."""
     db_models = config["paths"].get("database_models", "backend/src/database/models")
     base_path = config["paths"].get("base", f"{db_models}/base.py")
-    output_path = project_root / base_path
-
-    if output_path.exists():
-        return None
-
-    template = env.get_template("infrastructure/base.py.j2")
-    content = template.render()
-
-    return {"path": output_path, "content": content}
+    return _bootstrap_file(env, project_root / base_path, "infrastructure/base.py.j2")
 
 
 def generate_engine(
@@ -65,15 +76,9 @@ def generate_engine(
 ) -> dict[str, Any] | None:
     """Generate database engine and session management."""
     engine_path = config["paths"].get("engine", "backend/src/database/engine.py")
-    output_path = project_root / engine_path
-
-    if output_path.exists():
-        return None
-
-    template = env.get_template("infrastructure/engine.py.j2")
-    content = template.render()
-
-    return {"path": output_path, "content": content}
+    return _bootstrap_file(
+        env, project_root / engine_path, "infrastructure/engine.py.j2"
+    )
 
 
 def generate_types(
@@ -82,15 +87,9 @@ def generate_types(
     """Generate custom SQLAlchemy types (SqliteNumeric for financial/percentage)."""
     db_models = config["paths"].get("database_models", "backend/src/database/models")
     db_dir = str(Path(db_models).parent)
-    output_path = project_root / db_dir / "types.py"
-
-    if output_path.exists():
-        return None
-
-    template = env.get_template("infrastructure/types.py.j2")
-    content = template.render()
-
-    return {"path": output_path, "content": content}
+    return _bootstrap_file(
+        env, project_root / db_dir / "types.py", "infrastructure/types.py.j2"
+    )
 
 
 def generate_database_init(
@@ -99,15 +98,11 @@ def generate_database_init(
     """Generate database package __init__.py with get_session export."""
     db_models = config["paths"].get("database_models", "backend/src/database/models")
     db_dir = str(Path(db_models).parent)
-    output_path = project_root / db_dir / "__init__.py"
-
-    if output_path.exists():
-        return None
-
-    template = env.get_template("infrastructure/database_init.py.j2")
-    content = template.render()
-
-    return {"path": output_path, "content": content}
+    return _bootstrap_file(
+        env,
+        project_root / db_dir / "__init__.py",
+        "infrastructure/database_init.py.j2",
+    )
 
 
 def generate_errors(
@@ -115,21 +110,15 @@ def generate_errors(
 ) -> dict[str, Any] | None:
     """Generate API error formatting utilities."""
     errors_path = config["paths"].get("errors", "backend/src/api/errors.py")
-    output_path = project_root / errors_path
-
-    if output_path.exists():
-        return None
-
     expose_integrity_error_fields = bool(
         _app_config(config).get("expose_integrity_error_fields", False)
     )
-
-    template = env.get_template("infrastructure/errors.py.j2")
-    content = template.render(
-        expose_integrity_error_fields=expose_integrity_error_fields
+    return _bootstrap_file(
+        env,
+        project_root / errors_path,
+        "infrastructure/errors.py.j2",
+        expose_integrity_error_fields=expose_integrity_error_fields,
     )
-
-    return {"path": output_path, "content": content}
 
 
 def generate_validators(
@@ -141,15 +130,9 @@ def generate_validators(
     who add domain-specific validators are not overwritten on regeneration.
     """
     validators_path = config["paths"].get("validators", "backend/src/api/validators.py")
-    output_path = project_root / validators_path
-
-    if output_path.exists():
-        return None
-
-    template = env.get_template("infrastructure/validators.py.j2")
-    content = template.render()
-
-    return {"path": output_path, "content": content}
+    return _bootstrap_file(
+        env, project_root / validators_path, "infrastructure/validators.py.j2"
+    )
 
 
 def generate_utils(
@@ -600,17 +583,6 @@ def generate_rate_limit(
     return {"path": output_path, "content": content}
 
 
-def api_key_dependency_module(auth: dict[str, Any]) -> str:
-    """Return the file path (relative to project root) of the api-key module.
-
-    The ``require_api_key`` dependency lives in the auth package, a sibling of
-    where the session strategy's router would live, so the module path tracks
-    ``auth.path``'s directory (default ``backend/src/auth/``).
-    """
-    auth_path = auth.get("path", "backend/src/auth/router.py")
-    return str(Path(auth_path).parent / "api_key.py")
-
-
 def generate_api_key_auth(
     config: dict[str, Any],
     env: Environment,
@@ -627,7 +599,11 @@ def generate_api_key_auth(
     if auth.get("strategy") != "api-key":
         return None
 
-    output_path = project_root / api_key_dependency_module(auth)
+    # The require_api_key dependency lives in the auth package, a sibling of
+    # where the session strategy's router would live, so the module path
+    # tracks auth.path's directory (default backend/src/auth/).
+    auth_path = auth.get("path", "backend/src/auth/router.py")
+    output_path = project_root / Path(auth_path).parent / "api_key.py"
     if output_path.exists():
         return None
 

@@ -191,7 +191,6 @@ def generate_api_routes(
     project_root: Path,
     enums: dict[str, Any] | None = None,
     constraints: dict[str, Any] | None = None,
-    model_path: Path | None = None,
 ) -> dict[str, Any] | list[dict[str, Any]] | None:
     """Generate FastAPI routes.
 
@@ -205,9 +204,9 @@ def generate_api_routes(
         return None
 
     if enums is None:
-        enums = load_shared_enums(model_path or project_root)
+        enums = load_shared_enums(project_root)
     if constraints is None:
-        constraints = load_shared_constraints(model_path or project_root)
+        constraints = load_shared_constraints(project_root)
 
     template = env.get_template("api/route.py.j2")
     output_dir = project_root / config["paths"]["api_routes"]
