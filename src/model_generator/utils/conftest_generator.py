@@ -117,37 +117,6 @@ def find_foreign_key_dependencies(
     return dependencies
 
 
-def topological_sort(
-    entities: set[str], dependencies: dict[str, set[str]]
-) -> list[str]:
-    """
-    Sort entities by dependency order (dependencies first).
-    """
-    # Build a copy of dependencies
-    deps = {e: set(dependencies.get(e, [])) for e in entities}
-
-    sorted_entities = []
-    while deps:
-        # Find entities with no dependencies
-        ready = [e for e, d in deps.items() if not d]
-
-        if not ready:
-            # Circular dependency or missing entity
-            # Just take remaining entities in arbitrary order
-            ready = list(deps.keys())
-
-        # Add them to result
-        sorted_entities.extend(sorted(ready))
-
-        # Remove them from graph
-        for e in ready:
-            deps.pop(e)
-            for d in deps.values():
-                d.discard(e)
-
-    return sorted_entities
-
-
 def get_fixture_name(entity_name: str, entity_data: dict[str, Any]) -> str:
     """
     Generate fixture name for entity.
@@ -318,9 +287,7 @@ def _field_in_unique_index(field_name: str, entity_data: dict[str, Any]) -> bool
     return False
 
 
-def needs_unique_suffix(
-    entity_data: dict[str, Any], dep_mapping: dict[str, str]
-) -> bool:
+def needs_unique_suffix(entity_data: dict[str, Any]) -> bool:
     """Check if entity needs unique_suffix variable."""
     for field_name, field in entity_data["fields"].items():
         # Skip excluded and auto-generated fields
@@ -367,8 +334,15 @@ def generate_fixture(
     enums: dict[str, str],
     constraints: dict[str, dict[str, Any]] | None = None,
     auth_strategy: str | None = None,
+    alt: bool = False,
 ) -> list[str]:
     """Generate fixture code for an entity.
+
+    When ``alt`` is set, generates a second, independent-entity variant named
+    ``{fixture_name}_alt`` instead (for entities referenced more than once by
+    the same table+column — see ``find_alt_fixtures_needed``); it takes no
+    dependency params and its create payload never receives ``constraints``,
+    matching the original ``generate_alt_fixture`` behavior.
 
     When ``auth_strategy`` is set, the User fixture POSTs to
     ``/api/v1/auth/register`` instead of ``/api/v1/users`` — the latter
@@ -379,41 +353,46 @@ def generate_fixture(
 
     # Build fixture parameters
     params = ["client: TestClient"]
-    dep_mapping = {}  # {field_name: fixture_param_name}
+    dep_mapping: dict[str, str] = {}  # {field_name: fixture_param_name}
 
-    # Add dependencies as parameters
-    for dep_entity in sorted(required_deps):
-        if dep_entity in all_entities:
-            dep_fixture = get_fixture_name(dep_entity, all_entities[dep_entity])
-            params.append(f"{dep_fixture}: str")
+    if not alt:
+        # Add dependencies as parameters (alt fixtures are for independent
+        # entities, so they never take dependency params)
+        for dep_entity in sorted(required_deps):
+            if dep_entity in all_entities:
+                dep_fixture = get_fixture_name(dep_entity, all_entities[dep_entity])
+                params.append(f"{dep_fixture}: str")
 
-            # Find which field uses this dependency
-            for field_name, field in entity_data["fields"].items():
-                if field.get("type") == "reference":
-                    ref_table = field.get("reference_table")
-                    if all_entities[dep_entity]["table"] == ref_table:
-                        dep_mapping[field_name] = dep_fixture
+                # Find which field uses this dependency
+                for field_name, field in entity_data["fields"].items():
+                    if field.get("type") == "reference":
+                        ref_table = field.get("reference_table")
+                        if all_entities[dep_entity]["table"] == ref_table:
+                            dep_mapping[field_name] = dep_fixture
+
+    output_name = f"{fixture_name}_alt" if alt else fixture_name
 
     # Fixture signature
     lines.append("@pytest.fixture")
-    lines.append(f"def {fixture_name}({', '.join(params)}) -> str:")
+    lines.append(f"def {output_name}({', '.join(params)}) -> str:")
 
     # Docstring
     pk_field = get_primary_key_field(entity_data)
     return_desc = f"its {pk_field}" if pk_field != "id" else "its ID"
+    label = "an alternate test" if alt else "a test"
     use_register = bool(auth_strategy) and entity_name == "User"
     if use_register:
         lines.append(
-            f'    """Create a test {entity_name.lower()} via /auth/register '
+            f'    """Create {label} {entity_name.lower()} via /auth/register '
             f'and return {return_desc}."""'
         )
     else:
         lines.append(
-            f'    """Create a test {entity_name.lower()} and return {return_desc}."""'
+            f'    """Create {label} {entity_name.lower()} and return {return_desc}."""'
         )
 
     # Only generate unique_suffix if needed
-    if needs_unique_suffix(entity_data, dep_mapping):
+    if needs_unique_suffix(entity_data):
         lines.append("    unique_suffix = str(uuid.uuid4())[:8]")
     lines.append("")
 
@@ -428,7 +407,7 @@ def generate_fixture(
 
     # Generate minimal create data
     create_lines = generate_minimal_create_data(
-        entity_name, entity_data, dep_mapping, enums, constraints
+        entity_name, entity_data, dep_mapping, enums, None if alt else constraints
     )
     lines.extend(create_lines)
 
@@ -475,66 +454,6 @@ def find_alt_fixtures_needed(entities: dict[str, dict[str, Any]]) -> set[str]:
                         break
 
     return needed
-
-
-def generate_alt_fixture(
-    base_fixture_name: str,
-    entity_name: str,
-    entity_data: dict[str, Any],
-    enums: dict[str, str],
-    constraints: dict[str, dict[str, Any]] | None = None,
-    auth_strategy: str | None = None,
-) -> list[str]:
-    """Generate an _alt fixture that creates a second instance of the same entity."""
-    alt_fixture_name = f"{base_fixture_name}_alt"
-    lines = []
-
-    # Build simple fixture with no deps (alt fixtures are for independent entities)
-    params = ["client: TestClient"]
-    dep_mapping: dict[str, str] = {}
-
-    lines.append("@pytest.fixture")
-    lines.append(f"def {alt_fixture_name}({', '.join(params)}) -> str:")
-
-    pk_field = get_primary_key_field(entity_data)
-    return_desc = f"its {pk_field}" if pk_field != "id" else "its ID"
-    use_register = bool(auth_strategy) and entity_name == "User"
-    if use_register:
-        lines.append(
-            f'    """Create an alternate test {entity_name.lower()} '
-            f'via /auth/register and return {return_desc}."""'
-        )
-    else:
-        lines.append(
-            f'    """Create an alternate test {entity_name.lower()} '
-            f'and return {return_desc}."""'
-        )
-
-    if needs_unique_suffix(entity_data, dep_mapping):
-        lines.append("    unique_suffix = str(uuid.uuid4())[:8]")
-    lines.append("")
-
-    lines.append("    response = client.post(")
-    if use_register:
-        lines.append('        "/api/v1/auth/register",')
-    else:
-        api_prefix = entity_data["api_prefix"]
-        lines.append(f'        "/api/v1/{api_prefix}",')
-    lines.append("        json={")
-
-    create_lines = generate_minimal_create_data(
-        entity_name, entity_data, dep_mapping, enums
-    )
-    lines.extend(create_lines)
-
-    lines.append("        },")
-    lines.append("    )")
-    lines.append("")
-    lines.append("    assert response.status_code == 201")
-    lines.append(f'    return cast(str, response.json()["{pk_field}"])')
-    lines.append("")
-
-    return lines
 
 
 def generate_conftest(
@@ -699,13 +618,9 @@ def generate_conftest(
         lines.append(f"        app.dependency_overrides.pop({dep_func}, None)")
         lines.append("")
 
-    # Sort entities by dependency
-    entity_names = set(entities.keys())
-    sorted_entities = topological_sort(entity_names, dependencies)
-
     # Group entities by dependency level for comments
     level_groups: dict[int, list[str]] = {}
-    for entity_name in sorted_entities:
+    for entity_name in entities:
         deps = dependencies.get(entity_name, set())
         level = len(deps)
         if level not in level_groups:
@@ -760,13 +675,16 @@ def generate_conftest(
             entity_data = entities[entity_name]
             fixture_name = get_fixture_name(entity_name, entity_data)
             if fixture_name in alt_needed:
-                alt_lines = generate_alt_fixture(
-                    fixture_name,
+                alt_lines = generate_fixture(
                     entity_name,
                     entity_data,
+                    fixture_name,
+                    set(),
+                    entities,
                     enums,
                     constraints,
                     auth_strategy=auth_strategy,
+                    alt=True,
                 )
                 lines.extend(alt_lines)
 

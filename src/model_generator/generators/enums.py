@@ -45,44 +45,33 @@ def generate_enums(
 
     if file_exists:
         existing_enums = get_existing_enums(enums_file)
-        new_enums = {
+        enums = {
             name: definition
             for name, definition in enum_defs.items()
             if name not in existing_enums
         }
 
-        if not new_enums:
+        if not enums:
             print(f"  ℹ️  All enums already exist in {enums_file}")
             return None
 
-        template = env.get_template("database/enums.py.j2")
-        content = template.render(
-            mode="append",
-            section_header="ENUMS",
-            enums=new_enums,
-            config=config,
-        )
-
-        return {
-            "path": enums_file,
-            "content": "\n" + content,
-            "mode": "append",
-            "new_count": len(new_enums),
-            "skipped": len(enum_defs) - len(new_enums),
-        }
+        mode = "append"
     else:
-        template = env.get_template("database/enums.py.j2")
-        content = template.render(
-            mode="create",
-            section_header="ENUMS",
-            enums=enum_defs,
-            config=config,
-        )
+        enums = enum_defs
+        mode = "create"
 
-        return {
-            "path": enums_file,
-            "content": content,
-            "mode": "write",
-            "new_count": len(enum_defs),
-            "skipped": 0,
-        }
+    template = env.get_template("database/enums.py.j2")
+    content = template.render(
+        mode=mode,
+        section_header="ENUMS",
+        enums=enums,
+        config=config,
+    )
+
+    return {
+        "path": enums_file,
+        "content": ("\n" + content) if file_exists else content,
+        "mode": "append" if file_exists else "write",
+        "new_count": len(enums),
+        "skipped": len(enum_defs) - len(enums),
+    }
