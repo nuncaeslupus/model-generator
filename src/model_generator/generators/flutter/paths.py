@@ -27,14 +27,14 @@ def package_name(config: dict[str, Any]) -> str:
     return DEFAULT_PACKAGE_NAME
 
 
-def resolve_path(config: dict[str, Any], key: str, default: str = "") -> str:
+def resolve_path(config: dict[str, Any], key: str) -> str:
     """Resolve a ``paths.<key>`` entry, substituting the ``{pkg}`` placeholder.
 
     e.g. ``lib/{pkg}/models`` → ``lib/app_api/models``. Project overrides in
     ``.model-generator.yaml`` are honored because they flow through the same
     merged ``config["paths"]`` and are subject to the same substitution.
     """
-    raw = (config.get("paths") or {}).get(key, default)
+    raw = (config.get("paths") or {}).get(key) or ""
     return str(raw).replace("{pkg}", package_name(config))
 
 
@@ -47,7 +47,5 @@ def package_uri(config: dict[str, Any], lib_relative: str) -> str:
     config — never hardcoded to a project name.
     """
     pkg = package_name(config)
-    relative = lib_relative
-    if relative.startswith("lib/"):
-        relative = relative[len("lib/") :]
+    relative = lib_relative.removeprefix("lib/")
     return f"package:{pkg}/{relative}"

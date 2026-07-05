@@ -24,7 +24,6 @@ from typing import Any
 from ...utils.quality import run_config_quality
 from ..registry import (
     CleanupSpec,
-    GenContext,
     StackSpec,
     TargetGenerator,
     register_stack,
@@ -200,7 +199,3 @@ FLUTTER_STACK = StackSpec(
 
 
 register_stack(FLUTTER_STACK)
-
-
-# Re-export GenContext for symmetry with the python stack's import surface.
-_ = GenContext

@@ -296,7 +296,6 @@ def generate_flutter_request_dtos(
         file_stem = f"{_entity_filename(entity_name)}_requests"
 
         content = template.render(
-            entity_name=entity_name,
             file_stem=file_stem,
             create_class=f"Create{entity_name}Request",
             create_fields=resolve_dto_fields(entity, config, "create"),
