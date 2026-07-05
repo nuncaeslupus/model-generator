@@ -34,7 +34,7 @@ def resolve_path(config: dict[str, Any], key: str) -> str:
     ``.model-generator.yaml`` are honored because they flow through the same
     merged ``config["paths"]`` and are subject to the same substitution.
     """
-    raw = (config.get("paths") or {}).get(key, "")
+    raw = (config.get("paths") or {}).get(key) or ""
     return str(raw).replace("{pkg}", package_name(config))
 
 
