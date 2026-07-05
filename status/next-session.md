@@ -1,5 +1,44 @@
 # Next Session Plan
 
+## Pending: Ponytail audit backlog (2026-07-05)
+
+Full over-engineering audit (10 finders + adversarial verify) landed 48
+confirmed cuts, 2 bug-shaped findings needing a decision first, and a
+suggested 10-PR batching. See
+[`status/ponytail-audit-2026-07-05.md`](./ponytail-audit-2026-07-05.md).
+`claude-arsenal` is not initialized in this repo (confirmed again) — tracked
+as a plain markdown backlog like the 2026-06-21 code-review doc.
+
+**Batch 6 (generate.py wrapper removal) done, uncommitted on `main`:**
+GEN-3 (dropped the 3 unpatched `_v` wrappers, kept the 2 test-patched seams),
+GEN-6 (`_process_outputs` deleted, callers use `write_outputs` directly),
+GEN-7 (`"infrastructure"` no-op dropped from `targets_to_generate`),
+VAL-1 (`model-val --all` removed — directory path already does the same
+thing; CHANGELOG note added since it's a published CLI flag), VAL-2
+(`load_schema`'s dead `exists()`/`sys.exit` guard on a package-bundled file
+removed), VAL-3 (`main()`'s duplicate raw `json.load` re-parse for the entity
+count replaced with the shared `parse_model_file`, also fixing a latent crash
+on `//`-commented specs).
+
+**BUG-1 decided + fixed, uncommitted on `main`:** confirmed the intent was
+`api_exclude_create` (the same key `request.py.j2` already reads, and the
+key the Flutter stack already uses) — `api_exclude_request` was a stale
+rename with zero readers. Renamed all 8 guards (`_shared/_tests.j2:9,92`,
+`tests/contract.py.j2:358,630,748,1510,1630,1724`) to `api_exclude_create`.
+Added `TestApiTestsGenerator::test_api_exclude_create_field_omitted_from_create_test`
+(RED against the old key, GREEN after the rename) since no existing spec
+exercised this branch. CHANGELOG entry added — this is a real generated-output
+behavior fix, not just a cleanup.
+
+912 tests pass, `make lint` clean. Shipped on `fix/ponytail-bug1-and-gen-val-cleanup`,
+**PR #84 open** — merge when CI green.
+
+**Remaining batches (see the audit doc's "Suggested PR batching" section):**
+BUG-2 decision, then batches 1 (config purge), 2 (tooling hygiene),
+3 (test dedup), 4 (infrastructure.py consolidation), 5 (constraints/enums/
+conftest dedup), 7 (flutter generator cleanup), 8 (wizard cleanup + BUG-2),
+9 (quality.py merge), 10 (schema/constants).
+
 ## Current State (2026-06-27) — batch-7 real-gap tests (PR #83, open); on `fix/batch7-infra-package-init-gaps`
 
 On `fix/batch7-infra-package-init-gaps`. **911 tests** (+ 2 xfailed), `make lint` clean.

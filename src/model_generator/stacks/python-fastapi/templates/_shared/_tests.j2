@@ -6,7 +6,7 @@
 {#- Macro to check if entity needs unique_suffix -#}
 {% macro needs_unique_suffix(entity) -%}
 {% for field_name, field in entity.fields.items() %}
-{% if not field.api_exclude_request | default(false) %}
+{% if not field.api_exclude_create | default(false) %}
 {% if field.required or (field.primary_key | default(false) and not field.auto_generate | default(true)) %}
 {% if field.type == 'text' and (field.unique | default(false) or 'email' in field_name.lower()) %}
 true
@@ -89,7 +89,7 @@ true
 -#}
 {% macro build_test_data_fields(entity, field_to_fixture, prefix='test', skip_field='', only_required=true, constraints=none, enums=none) -%}
 {% for field_name, field in entity.fields.items() %}
-{% if field_name != skip_field and not field.api_exclude_request | default(false) %}
+{% if field_name != skip_field and not field.api_exclude_create | default(false) %}
 {% set is_required = field.required or (field.primary_key | default(false) and not field.auto_generate | default(false)) %}
 {% if is_required or not only_required %}
 {% if field.type == 'reference' %}

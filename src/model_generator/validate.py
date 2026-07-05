@@ -7,7 +7,7 @@ Validates model definition JSON files against the multi-entity schema.
 Usage:
     python validate.py <model.json>
     python validate.py models/users.model.json
-    python validate.py --all models/
+    python validate.py models/
 """
 
 import argparse
@@ -25,13 +25,7 @@ from .utils.loaders import parse_model_file
 
 def load_schema() -> dict[str, Any]:
     """Load the model schema from the skill directory."""
-    script_dir = Path(__file__).parent
-    schema_path = script_dir / "schema" / "model.schema.json"
-
-    if not schema_path.exists():
-        print(f"Error: Schema not found at {schema_path}")
-        sys.exit(1)
-
+    schema_path = Path(__file__).parent / "schema" / "model.schema.json"
     with schema_path.open(encoding="utf-8") as f:
         return cast(dict[str, Any], json.load(f))
 
@@ -209,20 +203,14 @@ def main() -> None:
         type=Path,
         help="Model JSON file or directory containing model files",
     )
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Validate all *.model.json files in directory",
-    )
 
     args = parser.parse_args()
     schema = load_schema()
 
-    if args.path.is_dir() or args.all:
-        directory = args.path if args.path.is_dir() else args.path.parent
-        model_files = list(directory.glob("*.model.json"))
+    if args.path.is_dir():
+        model_files = list(args.path.glob("*.model.json"))
         if not model_files:
-            print(f"No *.model.json files found in {directory}")
+            print(f"No *.model.json files found in {args.path}")
             sys.exit(1)
     else:
         model_files = [args.path]
@@ -236,10 +224,7 @@ def main() -> None:
             for error in errors:
                 print(error)
         else:
-            # Show entity count
-            with model_path.open(encoding="utf-8") as f:
-                model = json.load(f)
-            entity_count = len(model.get("entities", {}))
+            entity_count = len(parse_model_file(model_path).get("entities", {}))
             print(f"✅ {model_path.name}: Valid ({entity_count} entities)")
 
     if not all_valid:

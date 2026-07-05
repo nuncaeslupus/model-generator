@@ -8,6 +8,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`api_exclude_create` is now honored by generated contract tests.** The
+  create-payload and input/output-assertion macros in the test templates
+  checked a stale `api_exclude_request` key that no field schema property
+  ever sets, so a required field marked `api_exclude_create` still leaked
+  into the generated create-test payload and its assertions even though the
+  real `CreateXRequest` model correctly omits it. Both templates now check
+  `api_exclude_create`, matching the request model.
 - **`encrypt` is now expressible in a valid spec.** A binary field's `encrypt`
   block (which triggers the at-rest `EncryptedBytes` type) was rejected by the
   field schema (`additionalProperties: false` with no `encrypt` property), so
@@ -88,6 +95,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the schema (`additionalProperties: false`) but was never wired to any
   template — specifying it silently did nothing. Removing it prevents users
   from adding what appeared to be a valid config key with no effect.
+- **`model-val --all` flag removed.** Passing a directory as the positional
+  `path` argument already validates every `*.model.json` file in it; `--all`
+  was a redundant way to say the same thing, with no doc/test/CI usage.
 
 ### Added
 

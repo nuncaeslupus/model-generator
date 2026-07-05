@@ -1267,6 +1267,53 @@ class TestApiTestsGenerator:
         assert "def test_post_item" in result["content"]
         assert "def test_get_item_by_id_success" in result["content"]
 
+    def test_api_exclude_create_field_omitted_from_create_test(
+        self, project_env: Any
+    ) -> None:
+        """BUG-1: the create-test macros must honor `api_exclude_create`.
+
+        They previously checked a stale `api_exclude_request` key that no spec
+        can ever set, so a required, create-excluded field still leaked into
+        the generated create payload and its input/output assertion.
+        """
+        project_root, config, env = project_env
+        model = {
+            "domain": "items",
+            "entities": {
+                "Item": {
+                    "table": "items",
+                    "fields": {
+                        "id": {
+                            "type": "uuid",
+                            "primary_key": True,
+                            "auto_generate": True,
+                        },
+                        "name": {"type": "text", "max_length": 100, "required": True},
+                        "internal_note": {
+                            "type": "text",
+                            "max_length": 100,
+                            "required": True,
+                            "api_exclude_create": True,
+                        },
+                    },
+                    "timestamps": {"created": True, "updated": True},
+                    "api": {
+                        "enabled": True,
+                        "endpoints": ["list", "create", "get"],
+                    },
+                }
+            },
+        }
+        result = generate_api_tests(
+            model, config, env, project_root, enums={}, constraints={}
+        )
+        assert isinstance(result, dict)
+        create_start = result["content"].index("def test_post_item_success")
+        create_end = result["content"].index("def ", create_start + 1)
+        create_block = result["content"][create_start:create_end]
+        assert "internal_note" not in create_block
+        assert "name" in create_block
+
 
 class TestApiTestsGeneratorScope:
     """Test contract test generation when entities declare api.scope."""
