@@ -30,8 +30,8 @@ Added `TestApiTestsGenerator::test_api_exclude_create_field_omitted_from_create_
 exercised this branch. CHANGELOG entry added — this is a real generated-output
 behavior fix, not just a cleanup.
 
-912 tests pass, `make lint` clean. Not yet committed/branched/PR'd — ask
-before doing so per repo convention (branch → PR, never push main directly).
+912 tests pass, `make lint` clean. Shipped on `fix/ponytail-bug1-and-gen-val-cleanup`,
+**PR #84 open** — merge when CI green.
 
 **Remaining batches (see the audit doc's "Suggested PR batching" section):**
 BUG-2 decision, then batches 1 (config purge), 2 (tooling hygiene),
