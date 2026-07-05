@@ -480,7 +480,7 @@ class TestStackResolution:
         original_cwd = os.getcwd()
         os.chdir(project_dir)
         try:
-            with patch("model_generator.generate._process_outputs") as mock_out:
+            with patch("model_generator.generate.write_outputs") as mock_out:
                 mock_out.return_value = []
                 # Default stack arg; project yaml overrides to flutter
                 generate(model_path, target="enums", dry_run=True)

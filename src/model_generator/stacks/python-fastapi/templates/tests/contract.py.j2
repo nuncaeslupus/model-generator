@@ -355,7 +355,7 @@ class Test{{ entity_name }}sAPI:
 
         # Validate input fields match output
 {% for field_name, field in entity.fields.items() %}
-{% if (field.required or (field.primary_key | default(false) and not field.auto_generate | default(false))) and not field.api_exclude_request | default(false) and not field.api_exclude_response | default(false) and not field.auto_generate | default(false) and not field.api_exclude_update | default(field.primary_key | default(false)) %}
+{% if (field.required or (field.primary_key | default(false) and not field.auto_generate | default(false))) and not field.api_exclude_create | default(false) and not field.api_exclude_response | default(false) and not field.auto_generate | default(false) and not field.api_exclude_update | default(field.primary_key | default(false)) %}
         assert {{ entity_name.lower() }}["{{ field.api_field_name | default(field_name) }}"] == {{ entity_name.lower() }}_data["{{ field.api_field_name | default(field_name) }}"]
 {% endif %}
 {% endfor %}
@@ -627,7 +627,7 @@ class Test{{ entity_name }}sAPI:
 {% set _miss_owner = _miss_scope.owner_field if _miss_scope else none %}
 {% set required_fields = [] %}
 {% for field_name, field in entity.fields.items() %}
-{% if (field.required or (field.primary_key | default(false) and not field.auto_generate | default(false))) and not field.api_exclude_request | default(false) and field_name != _miss_owner %}
+{% if (field.required or (field.primary_key | default(false) and not field.auto_generate | default(false))) and not field.api_exclude_create | default(false) and field_name != _miss_owner %}
 {% set _ = required_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'type': field.type, 'unique': field.unique | default(false)}) %}
 {% endif %}
 {% endfor %}
@@ -745,7 +745,7 @@ class Test{{ entity_name }}sAPI:
 
 {% set updatable_fields = [] %}
 {% for field_name, field in entity.fields.items() %}
-{% if not field.api_exclude_update | default(false) and not field.api_readonly | default(false) and not field.auto_generate | default(false) and not field.primary_key | default(false) and not field.api_exclude_request | default(false) and not field.api_exclude_response | default(false) and field.type != 'reference' %}
+{% if not field.api_exclude_update | default(false) and not field.api_readonly | default(false) and not field.auto_generate | default(false) and not field.primary_key | default(false) and not field.api_exclude_create | default(false) and not field.api_exclude_response | default(false) and field.type != 'reference' %}
 {# Use scale 4 for percentage type, 8 for financial/others #}
 {% set default_scale = 4 if field.type == 'percentage' else 8 %}
 {% set _ = updatable_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'type': field.type, 'default': field.default, 'enum_name': field.enum_name | default(''), 'max_length': field.max_length | default(none), 'constraints': field.constraints | default([]), 'scale': field.scale | default(default_scale), 'list_type': field.list_type | default('str') }) %}
@@ -1507,7 +1507,7 @@ class Test{{ entity_name }}sAPI:
 {% endfor %}
 {% endif %}
 {% for field_name, field in entity.fields.items() %}
-{% if field.constraints is defined and not field.api_exclude_request | default(false) and not field.api_readonly | default(false) %}
+{% if field.constraints is defined and not field.api_exclude_create | default(false) and not field.api_readonly | default(false) %}
 {% set _ = constraint_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'type': field.type, 'constraints': field.constraints, 'unique': field.unique | default(false), 'scale': field.scale | default(4 if field.type == 'percentage' else 8)}) %}
 {% endif %}
 {% endfor %}
@@ -1627,7 +1627,7 @@ class Test{{ entity_name }}sAPI:
 {#- Percentage fields get validators from type, not constraints - test boundaries separately -#}
 {% set percentage_fields = [] %}
 {% for field_name, field in entity.fields.items() %}
-{% if field.type == 'percentage' and not field.api_exclude_request | default(false) and not field.api_readonly | default(false) %}
+{% if field.type == 'percentage' and not field.api_exclude_create | default(false) and not field.api_readonly | default(false) %}
 {% set _ = percentage_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name)}) %}
 {% endif %}
 {% endfor %}
@@ -1721,7 +1721,7 @@ class Test{{ entity_name }}sAPI:
 
 {% set immutable_fields = [] %}
 {% for field_name, field in entity.fields.items() %}
-{% if field.api_exclude_update | default(false) and not field.auto_generate | default(false) and not field.api_exclude_request | default(false) and not field.api_exclude_response | default(false) %}
+{% if field.api_exclude_update | default(false) and not field.auto_generate | default(false) and not field.api_exclude_create | default(false) and not field.api_exclude_response | default(false) %}
 {% set _ = immutable_fields.append({'name': field_name, 'api_name': field.api_field_name | default(field_name), 'type': field.type}) %}
 {% endif %}
 {% endfor %}

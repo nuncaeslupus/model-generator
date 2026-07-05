@@ -422,11 +422,7 @@ def generate(
     print(f"   Stack: {actual_stack}")
 
     outputs = []
-    # When "all", iterate every concrete target plus the "infrastructure"
-    # aggregate (a no-op in per-model dispatch, kept for byte-identical order).
-    targets_to_generate = (
-        [*spec.generation_targets, "infrastructure"] if target == "all" else [target]
-    )
+    targets_to_generate = spec.generation_targets if target == "all" else [target]
 
     # Pre-load shared data to avoid duplicate loading
     enums = load_shared_enums(model_path)
@@ -453,7 +449,7 @@ def generate(
         else:
             outputs.append(result)
 
-    generated_files = _process_outputs(outputs, diff, dry_run)
+    generated_files = write_outputs(outputs, diff, dry_run)
 
     if generated_files and not dry_run and not diff:
         run_quality_tools(config, project_root, generated_files, spec.quality_runner)
@@ -854,12 +850,6 @@ def _generate_target(
     return generator(ctx)
 
 
-def _process_outputs(
-    outputs: list[dict[str, Any]], diff: bool, dry_run: bool
-) -> list[Path]:
-    return write_outputs(outputs, diff, dry_run)
-
-
 def _prepare_infra_modules(
     model_files: list[Path],
     config: dict[str, Any],
@@ -1074,24 +1064,10 @@ def _validate_composite_foreign_keys_v(
     _validate_composite_foreign_keys(model)
 
 
-def _validate_auth_config_v(model: dict[str, Any], config: dict[str, Any]) -> None:
-    _validate_auth_config(model, config)
-
-
 def _validate_auth_strategy_v(
     models: list[dict[str, Any]], config: dict[str, Any]
 ) -> None:
     _validate_auth_strategy(models, config)
-
-
-def _validate_auth_scope_coverage_v(
-    models: list[dict[str, Any]], config: dict[str, Any]
-) -> None:
-    _validate_auth_scope_coverage(models, config)
-
-
-def _compute_auth_extra_v(config: dict[str, Any]) -> list[str]:
-    return _compute_auth_extra(config)
 
 
 PYTHON_FASTAPI_STACK = StackSpec(
@@ -1125,16 +1101,16 @@ PYTHON_FASTAPI_STACK = StackSpec(
     # underlying validators read only one of the two; the wrappers adapt them
     # without changing their behavior or call order.
     validators=[
-        _validate_auth_config_v,
+        _validate_auth_config,
         _validate_generation_config_v,
         _validate_paths_base_v,
         _validate_composite_foreign_keys_v,
     ],
     infra_validators=[
         _validate_auth_strategy_v,
-        _validate_auth_scope_coverage_v,
+        _validate_auth_scope_coverage,
     ],
-    extra_deps_fn=_compute_auth_extra_v,
+    extra_deps_fn=_compute_auth_extra,
 )
 
 register_stack(PYTHON_FASTAPI_STACK)
