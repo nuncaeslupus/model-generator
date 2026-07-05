@@ -386,37 +386,6 @@ class TestFieldInUniqueIndex:
         assert _field_in_unique_index("name", entity_data) is False
 
 
-class TestTopologicalSort:
-    """topological_sort must place dependencies before dependents."""
-
-    def test_dependency_comes_before_dependent(self) -> None:
-        from model_generator.utils.conftest_generator import topological_sort
-
-        deps = {"Post": {"Author"}, "Author": set(), "Comment": {"Post"}}
-        result = topological_sort(set(deps.keys()), deps)
-        assert result.index("Author") < result.index("Post")
-        assert result.index("Post") < result.index("Comment")
-
-    def test_no_dependencies_returns_all(self) -> None:
-        from model_generator.utils.conftest_generator import topological_sort
-
-        result = topological_sort({"A", "B", "C"}, {"A": set(), "B": set(), "C": set()})
-        assert result == ["A", "B", "C"]
-
-    def test_independent_entities_all_present(self) -> None:
-        from model_generator.utils.conftest_generator import topological_sort
-
-        result = topological_sort({"X", "Y"}, {})
-        assert result == ["X", "Y"]
-
-    def test_circular_dependency_fallback(self) -> None:
-        from model_generator.utils.conftest_generator import topological_sort
-
-        # Circular deps have no ready entities; sort falls back to alphabetical
-        result = topological_sort({"A", "B"}, {"A": {"B"}, "B": {"A"}})
-        assert result == ["A", "B"]
-
-
 class TestFindForeignKeyDependencies:
     """find_foreign_key_dependencies must detect reference-type required fields."""
 

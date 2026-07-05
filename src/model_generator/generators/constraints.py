@@ -135,40 +135,29 @@ def generate_constraints(
 
     if file_exists:
         existing = get_existing_constraints(constraints_file)
-        new_refs = [ref for ref in all_refs if ref["name"] not in existing]
+        refs = [ref for ref in all_refs if ref["name"] not in existing]
 
-        if not new_refs:
+        if not refs:
             print(f"  ℹ️  All constraint constants already exist in {constraints_file}")
             return None
 
-        template = env.get_template("database/constraints.py.j2")
-        content = template.render(
-            mode="append",
-            section_header="CONSTRAINTS",
-            constraints=new_refs,
-            config=config,
-        )
-
-        return {
-            "path": constraints_file,
-            "content": "\n" + content,
-            "mode": "append",
-            "new_count": len(new_refs),
-            "skipped": len(all_refs) - len(new_refs),
-        }
+        mode = "append"
     else:
-        template = env.get_template("database/constraints.py.j2")
-        content = template.render(
-            mode="create",
-            section_header="CONSTRAINTS",
-            constraints=all_refs,
-            config=config,
-        )
+        refs = all_refs
+        mode = "create"
 
-        return {
-            "path": constraints_file,
-            "content": content,
-            "mode": "write",
-            "new_count": len(all_refs),
-            "skipped": 0,
-        }
+    template = env.get_template("database/constraints.py.j2")
+    content = template.render(
+        mode=mode,
+        section_header="CONSTRAINTS",
+        constraints=refs,
+        config=config,
+    )
+
+    return {
+        "path": constraints_file,
+        "content": ("\n" + content) if file_exists else content,
+        "mode": "append" if file_exists else "write",
+        "new_count": len(refs),
+        "skipped": len(all_refs) - len(refs),
+    }
