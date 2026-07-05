@@ -108,4 +108,4 @@ Define specifications once in JSON. Generate production-ready scaffolds. Then ma
 
 ---
 
-**Model Generator** | Bootstrap Tool for API Backends | v0.1.4
+**Model Generator** | Bootstrap Tool for API Backends
