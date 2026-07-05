@@ -31,12 +31,11 @@ src/model_generator/
 │       ├── fields.py               # Dart field-type resolution helpers
 │       └── paths.py                # lib/{pkg}/… path helpers
 ├── utils/
-│   ├── __init__.py                 # Re-exports: get_template_env, load_config, etc.
+│   ├── __init__.py                 # Re-exports: get_template_env, load_config, GENERATED_MARKER, etc.
 │   ├── loaders.py                  # load_model, load_config, load_shared_enums/constraints
 │   ├── templates.py                # Jinja2 env, custom filters (wrap, path_to_import, dict2items, camel_case)
 │   ├── parser.py                   # scan_model_files, scan_api_model_files
 │   ├── quality.py                  # run_config_quality (stack-driven: ruff, dart format/analyze)
-│   ├── constants.py                # GENERATED_MARKER
 │   └── conftest_generator.py       # Test conftest generation (python-fastapi only)
 └── stacks/
     ├── python-fastapi/

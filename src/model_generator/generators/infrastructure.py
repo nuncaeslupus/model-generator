@@ -7,7 +7,7 @@ from typing import Any
 
 from jinja2 import Environment
 
-from ..utils.constants import GENERATED_MARKER
+from ..utils import GENERATED_MARKER
 from ..utils.output import write_outputs
 from ..utils.templates import path_to_import
 

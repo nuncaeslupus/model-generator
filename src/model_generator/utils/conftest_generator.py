@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
-from .constants import GENERATED_MARKER
+from . import GENERATED_MARKER
 from .loaders import load_shared_constraints, parse_model_file, strip_json_comments
 
 
