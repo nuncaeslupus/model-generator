@@ -736,26 +736,6 @@
                             "field_validation"
                         ]
                     }
-                },
-                "field_validations": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": [
-                            "field",
-                            "invalid_value"
-                        ],
-                        "additionalProperties": false,
-                        "properties": {
-                            "field": {
-                                "type": "string"
-                            },
-                            "invalid_value": {},
-                            "expected_error": {
-                                "type": "string"
-                            }
-                        }
-                    }
                 }
             }
         }
