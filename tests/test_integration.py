@@ -1,5 +1,4 @@
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -56,44 +55,39 @@ def project_setup(tmp_path: Path) -> tuple[Path, Path]:
     return tmp_path, model_path
 
 
-def test_generate_all(project_setup: Any) -> None:
+def test_generate_all(project_setup: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test full generation for a simple model with custom paths."""
     project_root, model_path = project_setup
 
     # Change CWD to temp project root so generate.py finds config
-    original_cwd = os.getcwd()
-    os.chdir(project_root)
+    monkeypatch.chdir(project_root)
 
-    try:
-        # Run generation
-        generate.generate(
-            model_path=model_path,
-            target="all",
-            diff=False,
-            dry_run=False,
-            stack="python-fastapi",
-        )
+    # Run generation
+    generate.generate(
+        model_path=model_path,
+        target="all",
+        diff=False,
+        dry_run=False,
+        stack="python-fastapi",
+    )
 
-        # Verify files exist at the CUSTOM paths
-        # 1. Database Model
-        db_model = project_root / "lib/db/models/widgets.py"
-        assert db_model.exists()
-        assert "class Widget(Base):" in db_model.read_text()
+    # Verify files exist at the CUSTOM paths
+    # 1. Database Model
+    db_model = project_root / "lib/db/models/widgets.py"
+    assert db_model.exists()
+    assert "class Widget(Base):" in db_model.read_text()
 
-        # 2. API Models
-        api_req = project_root / "lib/api/schemas/widgets_request.py"
-        assert api_req.exists()
-        assert "class CreateWidgetRequest(BaseModel):" in api_req.read_text()
+    # 2. API Models
+    api_req = project_root / "lib/api/schemas/widgets_request.py"
+    assert api_req.exists()
+    assert "class CreateWidgetRequest(BaseModel):" in api_req.read_text()
 
-        # 3. API Routes
-        api_routes = project_root / "lib/api/endpoints/widgets.py"
-        assert api_routes.exists()
-        assert "@router.post" in api_routes.read_text()
+    # 3. API Routes
+    api_routes = project_root / "lib/api/endpoints/widgets.py"
+    assert api_routes.exists()
+    assert "@router.post" in api_routes.read_text()
 
-        # 4. Tests
-        tests = project_root / "tests/integration/test_widgets_api.py"
-        assert tests.exists()
-        assert "def test_post_widget_success" in tests.read_text()
-
-    finally:
-        os.chdir(original_cwd)
+    # 4. Tests
+    tests = project_root / "tests/integration/test_widgets_api.py"
+    assert tests.exists()
+    assert "def test_post_widget_success" in tests.read_text()

@@ -46,11 +46,6 @@ active
 {%- endif -%}
 {%- endmacro %}
 
-{#- Macro to format financial test values -#}
-{% macro format_test_financial(value, scale=8) -%}
-{{- value | normalize_decimal -}}
-{%- endmacro %}
-
 {#- Macro to check if a test scenario should be generated -#}
 {% macro should_generate_test(entity, scenario_keywords) -%}
 {%- if entity.tests and entity.tests.scenarios -%}

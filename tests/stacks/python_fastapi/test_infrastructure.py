@@ -1,7 +1,6 @@
 """Tests for infrastructure generators (base, engine, main, pyproject, etc.)."""
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -10,7 +9,6 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
-import yaml
 
 from model_generator.generators import (
     generate_api_models,
@@ -32,9 +30,10 @@ from model_generator.generators.infrastructure import (
     generate_utils,
     generate_validators,
 )
-from model_generator.utils import get_template_env, load_config
 from model_generator.utils.loaders import load_model
 from model_generator.validate import load_schema, validate_model
+
+from .conftest import _make_project_env
 
 
 class TestInfrastructureGenerators:
@@ -1032,42 +1031,7 @@ def project_env_with_python_root(tmp_path: Path) -> tuple[Path, dict[str, Any], 
     end-to-end from .model-generator.yaml → load_config → get_template_env
     → Jinja filter → generated file contents.
     """
-    config_data = {
-        "project": {"name": "Test Project", "version": "0.1.0"},
-        "stack": "python-fastapi",
-        "python_root": "src",
-        "generation": {"layout": "per-domain"},
-        "paths": {
-            "database_models": "src/database/models",
-            "factories": "src/database/models/factories",
-            "api_models": "src/api/models",
-            "api_routes": "src/api/routes",
-            "api_tests": "tests/api",
-            "base": "src/database/models/base.py",
-            "engine": "src/database/engine.py",
-            "main": "src/main.py",
-            "errors": "src/api/errors.py",
-            "validators": "src/api/validators.py",
-            "test_conftest_root": "tests/conftest.py",
-            "enums": "src/database/models/enums.py",
-            "constraints": "src/database/models/constraints.py",
-            "migrations": "alembic",
-        },
-    }
-
-    config_path = tmp_path / ".model-generator.yaml"
-    with open(config_path, "w") as f:
-        yaml.dump(config_data, f)
-
-    original_cwd = os.getcwd()
-    os.chdir(tmp_path)
-    try:
-        config = load_config("python-fastapi")
-        env = get_template_env("python-fastapi", config=config)
-    finally:
-        os.chdir(original_cwd)
-
-    return tmp_path, config, env
+    return _make_project_env(tmp_path, {"python_root": "src"})
 
 
 class TestPythonRootIntegration:

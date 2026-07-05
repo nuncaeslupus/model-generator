@@ -2,7 +2,7 @@
   API Contract Test Template (Multi-Entity)
   Generates comprehensive contract tests for all entities in a domain
 -#}
-{% from "_shared/_tests.j2" import needs_unique_suffix, get_enum_value, format_test_financial, should_generate_test, build_test_data_fields %}
+{% from "_shared/_tests.j2" import needs_unique_suffix, get_enum_value, should_generate_test, build_test_data_fields %}
 {% from "_shared/_base.j2" import generated_marker, section_banner %}
 {% from "_shared/_entity.j2" import get_primary_key_field %}
 {{ generated_marker() }}

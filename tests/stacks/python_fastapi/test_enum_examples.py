@@ -18,22 +18,7 @@ import yaml
 from model_generator.generators import generate_api_models
 from model_generator.utils import get_template_env, load_config
 
-_PATHS: dict[str, str] = {
-    "database_models": "src/database/models",
-    "factories": "src/database/models/factories",
-    "api_models": "src/api/models",
-    "api_routes": "src/api/routes",
-    "api_tests": "tests/api",
-    "base": "src/database/models/base.py",
-    "engine": "src/database/engine.py",
-    "main": "src/main.py",
-    "errors": "src/api/errors.py",
-    "validators": "src/api/validators.py",
-    "test_conftest_root": "tests/conftest.py",
-    "enums": "src/database/models/enums.py",
-    "constraints": "src/database/models/constraints.py",
-    "migrations": "alembic",
-}
+from .conftest import _PATHS
 
 
 @pytest.fixture

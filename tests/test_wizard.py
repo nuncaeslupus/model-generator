@@ -307,76 +307,68 @@ class TestMenuFlow:
 class TestProjectSetupAction:
     """Test the project setup wizard action."""
 
-    def test_create_config(self, tmp_path: Path) -> None:
+    def test_create_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test creating a new .model-generator.yaml via wizard."""
-        import os
-
         from model_generator.wizard.actions.project_setup import run_setup
 
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            with (
-                patch(
-                    "model_generator.wizard.actions.project_setup.text",
-                    side_effect=["My Project", "", "0.1.0"],
-                ),
-                patch(
-                    "model_generator.wizard.actions.project_setup.select",
-                    side_effect=["python-fastapi", "full-stack (backend/src/)"],
-                ),
-                patch(
-                    "model_generator.wizard.actions.project_setup.confirm",
-                    return_value=False,
-                ),
-            ):
-                run_setup()
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch(
+                "model_generator.wizard.actions.project_setup.text",
+                side_effect=["My Project", "", "0.1.0"],
+            ),
+            patch(
+                "model_generator.wizard.actions.project_setup.select",
+                side_effect=["python-fastapi", "full-stack (backend/src/)"],
+            ),
+            patch(
+                "model_generator.wizard.actions.project_setup.confirm",
+                return_value=False,
+            ),
+        ):
+            run_setup()
 
-            config_path = tmp_path / ".model-generator.yaml"
-            assert config_path.exists()
-            import yaml
+        config_path = tmp_path / ".model-generator.yaml"
+        assert config_path.exists()
+        import yaml
 
-            config = yaml.safe_load(config_path.read_text())
-            assert config["project"]["name"] == "My Project"
-            assert config["stack"] == "python-fastapi"
-            # "full-stack (backend/src/)" matches the stack's own config.yaml
-            # defaults key-for-key, so nothing is emitted for it.
-            assert "paths" not in config
-        finally:
-            os.chdir(original_cwd)
+        config = yaml.safe_load(config_path.read_text())
+        assert config["project"]["name"] == "My Project"
+        assert config["stack"] == "python-fastapi"
+        # "full-stack (backend/src/)" matches the stack's own config.yaml
+        # defaults key-for-key, so nothing is emitted for it.
+        assert "paths" not in config
 
-    def test_create_config_custom_layout(self, tmp_path: Path) -> None:
+    def test_create_config_custom_layout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that a non-default layout still emits its paths override."""
-        import os
-
         from model_generator.wizard.actions.project_setup import run_setup
 
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            with (
-                patch(
-                    "model_generator.wizard.actions.project_setup.text",
-                    side_effect=["My Project", "", "0.1.0"],
-                ),
-                patch(
-                    "model_generator.wizard.actions.project_setup.select",
-                    side_effect=["python-fastapi", "backend-only (src/)"],
-                ),
-                patch(
-                    "model_generator.wizard.actions.project_setup.confirm",
-                    return_value=False,
-                ),
-            ):
-                run_setup()
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch(
+                "model_generator.wizard.actions.project_setup.text",
+                side_effect=["My Project", "", "0.1.0"],
+            ),
+            patch(
+                "model_generator.wizard.actions.project_setup.select",
+                side_effect=["python-fastapi", "backend-only (src/)"],
+            ),
+            patch(
+                "model_generator.wizard.actions.project_setup.confirm",
+                return_value=False,
+            ),
+        ):
+            run_setup()
 
-            config_path = tmp_path / ".model-generator.yaml"
-            import yaml
+        config_path = tmp_path / ".model-generator.yaml"
+        import yaml
 
-            config = yaml.safe_load(config_path.read_text())
-            assert config["paths"]["database_models"] == "src/database/models"
-        finally:
-            os.chdir(original_cwd)
+        config = yaml.safe_load(config_path.read_text())
+        assert config["paths"]["database_models"] == "src/database/models"
 
     def test_scan_stacks_finds_real_stacks(self) -> None:
         """_scan_stacks() must resolve to the real src/model_generator/stacks/ dir."""
@@ -391,222 +383,208 @@ class TestCleanAction:
     """Test the clean wizard action."""
 
     def test_clean_no_config(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Test clean action when no config exists."""
-        import os
-
         from model_generator.wizard.actions.clean import run_clean
 
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            run_clean()
-            captured = capsys.readouterr()
-            assert "No .model-generator.yaml found" in captured.out
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        run_clean()
+        captured = capsys.readouterr()
+        assert "No .model-generator.yaml found" in captured.out
 
 
 class TestTestRunnerAction:
     """Test the test runner wizard action."""
 
     def test_no_tests_dir(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Test runner when no tests directory exists."""
-        import os
-
         from model_generator.wizard.actions.test_runner import run_tests
 
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            (tmp_path / ".model-generator.yaml").write_text("project: {name: test}")
-            run_tests()
-            captured = capsys.readouterr()
-            assert "No tests/ directory found" in captured.out
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".model-generator.yaml").write_text("project: {name: test}")
+        run_tests()
+        captured = capsys.readouterr()
+        assert "No tests/ directory found" in captured.out
 
 
 class TestPrepareInfraModules:
     """Tests for the shared _prepare_infra_modules() helper."""
 
-    def test_collects_auth_extra_deps(self) -> None:
+    def test_collects_auth_extra_deps(self, tmp_path: Path) -> None:
         """Auth extra deps appear in extra_deps when auth.strategy is configured."""
 
         import json
-        import tempfile
         from unittest.mock import patch
 
         from model_generator.generate import _prepare_infra_modules
 
-        with tempfile.TemporaryDirectory() as tmp:
-            model_path = Path(tmp) / "test.model.json"
-            model_path.write_text(
-                json.dumps(
-                    {
-                        "domain": "test",
-                        "entities": {
-                            "Widget": {
-                                "fields": {
-                                    "id": {
-                                        "type": "uuid",
-                                        "primary_key": True,
-                                        "auto_generate": True,
-                                    }
-                                },
-                            }
-                        },
-                    }
-                )
+        model_path = tmp_path / "test.model.json"
+        model_path.write_text(
+            json.dumps(
+                {
+                    "domain": "test",
+                    "entities": {
+                        "Widget": {
+                            "fields": {
+                                "id": {
+                                    "type": "uuid",
+                                    "primary_key": True,
+                                    "auto_generate": True,
+                                }
+                            },
+                        }
+                    },
+                }
             )
-            config = {
-                "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
-                "generation": {"layout": "per-entity"},
-            }
-            with patch("model_generator.generate._validate_auth_strategy"):
-                _domains, _routes, _factories, extra_deps, _models = (
-                    _prepare_infra_modules([model_path], config)
-                )
-            assert "bcrypt>=4.0.0" in extra_deps
-            assert "itsdangerous>=2.0" in extra_deps
+        )
+        config = {
+            "auth": {"strategy": "bcrypt-session", "pepper_env": "PEPPER"},
+            "generation": {"layout": "per-entity"},
+        }
+        with patch("model_generator.generate._validate_auth_strategy"):
+            _domains, _routes, _factories, extra_deps, _models = _prepare_infra_modules(
+                [model_path], config
+            )
+        assert "bcrypt>=4.0.0" in extra_deps
+        assert "itsdangerous>=2.0" in extra_deps
 
-    def test_collects_model_dependencies(self) -> None:
+    def test_collects_model_dependencies(self, tmp_path: Path) -> None:
         """Model-declared dependencies appear in extra_deps."""
         import json
-        import tempfile
         from unittest.mock import patch
 
         from model_generator.generate import _prepare_infra_modules
 
-        with tempfile.TemporaryDirectory() as tmp:
-            model_path = Path(tmp) / "test.model.json"
-            model_path.write_text(
-                json.dumps(
-                    {
-                        "domain": "test",
-                        "dependencies": ["pandas>=2.0.0"],
-                        "entities": {
-                            "Widget": {
-                                "fields": {
-                                    "id": {
-                                        "type": "uuid",
-                                        "primary_key": True,
-                                        "auto_generate": True,
-                                    }
-                                },
-                            }
-                        },
-                    }
-                )
+        model_path = tmp_path / "test.model.json"
+        model_path.write_text(
+            json.dumps(
+                {
+                    "domain": "test",
+                    "dependencies": ["pandas>=2.0.0"],
+                    "entities": {
+                        "Widget": {
+                            "fields": {
+                                "id": {
+                                    "type": "uuid",
+                                    "primary_key": True,
+                                    "auto_generate": True,
+                                }
+                            },
+                        }
+                    },
+                }
             )
-            config = {"generation": {"layout": "per-entity"}}
-            with patch("model_generator.generate._validate_auth_strategy"):
-                _, _, _, extra_deps, _ = _prepare_infra_modules([model_path], config)
-            assert "pandas>=2.0.0" in extra_deps
+        )
+        config = {"generation": {"layout": "per-entity"}}
+        with patch("model_generator.generate._validate_auth_strategy"):
+            _, _, _, extra_deps, _ = _prepare_infra_modules([model_path], config)
+        assert "pandas>=2.0.0" in extra_deps
 
-    def test_per_domain_layout_uses_domains_not_entity_stems(self) -> None:
+    def test_per_domain_layout_uses_domains_not_entity_stems(
+        self, tmp_path: Path
+    ) -> None:
         """Per-domain layout: route_modules / factory_modules = domain names."""
         import json
-        import tempfile
         from unittest.mock import patch
 
         from model_generator.generate import _prepare_infra_modules
 
-        with tempfile.TemporaryDirectory() as tmp:
-            model_path = Path(tmp) / "acme.model.json"
-            model_path.write_text(
-                json.dumps(
-                    {
-                        "domain": "acme",
-                        "entities": {
-                            "Widget": {
-                                "fields": {"id": {"type": "uuid", "primary_key": True}}
-                            },
-                            "Gadget": {
-                                "fields": {"id": {"type": "uuid", "primary_key": True}}
-                            },
+        model_path = tmp_path / "acme.model.json"
+        model_path.write_text(
+            json.dumps(
+                {
+                    "domain": "acme",
+                    "entities": {
+                        "Widget": {
+                            "fields": {"id": {"type": "uuid", "primary_key": True}}
                         },
-                    }
-                )
+                        "Gadget": {
+                            "fields": {"id": {"type": "uuid", "primary_key": True}}
+                        },
+                    },
+                }
             )
-            config = {"generation": {"layout": "per-domain"}}
-            with patch("model_generator.generate._validate_auth_strategy"):
-                domains, route_modules, factory_modules, _, _ = _prepare_infra_modules(
-                    [model_path], config
-                )
+        )
+        config = {"generation": {"layout": "per-domain"}}
+        with patch("model_generator.generate._validate_auth_strategy"):
+            domains, route_modules, factory_modules, _, _ = _prepare_infra_modules(
+                [model_path], config
+            )
         assert "acme" in domains
         assert route_modules == ["acme"]
         assert factory_modules == ["acme"]
         assert "widget" not in route_modules
         assert "gadget" not in route_modules
 
-    def test_api_disabled_entity_excluded_from_route_modules(self) -> None:
+    def test_api_disabled_entity_excluded_from_route_modules(
+        self, tmp_path: Path
+    ) -> None:
         """An entity with api.enabled=false must not appear in route_modules."""
         import json
-        import tempfile
         from unittest.mock import patch
 
         from model_generator.generate import _prepare_infra_modules
 
-        with tempfile.TemporaryDirectory() as tmp:
-            model_path = Path(tmp) / "test.model.json"
-            model_path.write_text(
+        model_path = tmp_path / "test.model.json"
+        model_path.write_text(
+            json.dumps(
+                {
+                    "domain": "test",
+                    "entities": {
+                        "Public": {
+                            "fields": {"id": {"type": "uuid", "primary_key": True}},
+                            "api": {"enabled": True},
+                        },
+                        "Internal": {
+                            "fields": {"id": {"type": "uuid", "primary_key": True}},
+                            "api": {"enabled": False},
+                        },
+                    },
+                }
+            )
+        )
+        config = {"generation": {"layout": "per-entity"}}
+        with patch("model_generator.generate._validate_auth_strategy"):
+            _, route_modules, _, _, _ = _prepare_infra_modules([model_path], config)
+        assert "public" in route_modules
+        assert "internal" not in route_modules
+
+    def test_extra_deps_deduplicated_across_models(self, tmp_path: Path) -> None:
+        """Same dependency declared in two models appears only once in extra_deps."""
+        import json
+        from unittest.mock import patch
+
+        from model_generator.generate import _prepare_infra_modules
+
+        paths = []
+        for name in ("alpha", "beta"):
+            p = tmp_path / f"{name}.model.json"
+            p.write_text(
                 json.dumps(
                     {
-                        "domain": "test",
+                        "domain": name,
+                        "dependencies": ["shared-lib>=1.0"],
                         "entities": {
-                            "Public": {
-                                "fields": {"id": {"type": "uuid", "primary_key": True}},
-                                "api": {"enabled": True},
-                            },
-                            "Internal": {
-                                "fields": {"id": {"type": "uuid", "primary_key": True}},
-                                "api": {"enabled": False},
-                            },
+                            "Item": {
+                                "fields": {"id": {"type": "uuid", "primary_key": True}}
+                            }
                         },
                     }
                 )
             )
-            config = {"generation": {"layout": "per-entity"}}
-            with patch("model_generator.generate._validate_auth_strategy"):
-                _, route_modules, _, _, _ = _prepare_infra_modules([model_path], config)
-        assert "public" in route_modules
-        assert "internal" not in route_modules
-
-    def test_extra_deps_deduplicated_across_models(self) -> None:
-        """Same dependency declared in two models appears only once in extra_deps."""
-        import json
-        import tempfile
-        from unittest.mock import patch
-
-        from model_generator.generate import _prepare_infra_modules
-
-        with tempfile.TemporaryDirectory() as tmp:
-            paths = []
-            for name in ("alpha", "beta"):
-                p = Path(tmp) / f"{name}.model.json"
-                p.write_text(
-                    json.dumps(
-                        {
-                            "domain": name,
-                            "dependencies": ["shared-lib>=1.0"],
-                            "entities": {
-                                "Item": {
-                                    "fields": {
-                                        "id": {"type": "uuid", "primary_key": True}
-                                    }
-                                }
-                            },
-                        }
-                    )
-                )
-                paths.append(p)
-            config = {"generation": {"layout": "per-entity"}}
-            with patch("model_generator.generate._validate_auth_strategy"):
-                _, _, _, extra_deps, _ = _prepare_infra_modules(paths, config)
+            paths.append(p)
+        config = {"generation": {"layout": "per-entity"}}
+        with patch("model_generator.generate._validate_auth_strategy"):
+            _, _, _, extra_deps, _ = _prepare_infra_modules(paths, config)
         assert extra_deps.count("shared-lib>=1.0") == 1
 
 
