@@ -15,7 +15,7 @@ from ._common import find_project_root as _find_project_root
 
 def _scan_stacks() -> list[str]:
     """Scan available stacks from the stacks directory."""
-    stacks_dir = Path(__file__).parent.parent / "stacks"
+    stacks_dir = Path(__file__).parent.parent.parent / "stacks"
     if not stacks_dir.exists():
         return ["python-fastapi"]
     return sorted(
@@ -26,21 +26,10 @@ def _scan_stacks() -> list[str]:
 
 
 _PATH_LAYOUTS: dict[str, dict[str, str]] = {
-    "full-stack (backend/src/)": {
-        "database_models": "backend/src/database/models",
-        "factories": "backend/tests/factories",
-        "api_models": "backend/src/api/models",
-        "api_routes": "backend/src/api/routes",
-        "api_tests": "tests/contract/api",
-        "base": "backend/src/database/models/base.py",
-        "engine": "backend/src/database/engine.py",
-        "main": "backend/src/main.py",
-        "errors": "backend/src/api/errors.py",
-        "validators": "backend/src/api/validators.py",
-        "test_conftest_root": "tests/conftest.py",
-        "enums": "backend/src/database/models/enums.py",
-        "constraints": "backend/src/database/models/constraints.py",
-    },
+    # Key-for-key identical to the python-fastapi stack's own config.yaml
+    # `paths:` defaults, so it emits nothing — absence means "use the tool
+    # default" (see _create_config below).
+    "full-stack (backend/src/)": {},
     "backend-only (src/)": {
         "database_models": "src/database/models",
         "factories": "tests/factories",
@@ -91,7 +80,7 @@ def _create_config(config_path: Path, project_root: Path) -> None:
     if description:
         config["project"]["description"] = description
 
-    if layout != "custom" and layout in _PATH_LAYOUTS:
+    if layout != "custom" and _PATH_LAYOUTS.get(layout):
         config["paths"] = _PATH_LAYOUTS[layout]
 
     config_path.write_text(

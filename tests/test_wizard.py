@@ -337,7 +337,46 @@ class TestProjectSetupAction:
         config = yaml.safe_load(config_path.read_text())
         assert config["project"]["name"] == "My Project"
         assert config["stack"] == "python-fastapi"
-        assert "paths" in config
+        # "full-stack (backend/src/)" matches the stack's own config.yaml
+        # defaults key-for-key, so nothing is emitted for it.
+        assert "paths" not in config
+
+    def test_create_config_custom_layout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that a non-default layout still emits its paths override."""
+        from model_generator.wizard.actions.project_setup import run_setup
+
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch(
+                "model_generator.wizard.actions.project_setup.text",
+                side_effect=["My Project", "", "0.1.0"],
+            ),
+            patch(
+                "model_generator.wizard.actions.project_setup.select",
+                side_effect=["python-fastapi", "backend-only (src/)"],
+            ),
+            patch(
+                "model_generator.wizard.actions.project_setup.confirm",
+                return_value=False,
+            ),
+        ):
+            run_setup()
+
+        config_path = tmp_path / ".model-generator.yaml"
+        import yaml
+
+        config = yaml.safe_load(config_path.read_text())
+        assert config["paths"]["database_models"] == "src/database/models"
+
+    def test_scan_stacks_finds_real_stacks(self) -> None:
+        """_scan_stacks() must resolve to the real src/model_generator/stacks/ dir."""
+        from model_generator.wizard.actions.project_setup import _scan_stacks
+
+        stacks = _scan_stacks()
+        assert "python-fastapi" in stacks
+        assert "flutter" in stacks
 
 
 class TestCleanAction:
