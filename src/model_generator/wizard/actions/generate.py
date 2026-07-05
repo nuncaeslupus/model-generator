@@ -4,20 +4,10 @@ Action: Generate code from model specifications.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from ..prompts import checkbox, confirm, select
 from ._common import find_project_root as _find_project_root
 
 INFRASTRUCTURE_TARGETS = {"all", "infrastructure"}
-
-
-def _find_models_dir(project_root: Path) -> Path | None:
-    """Find the models directory."""
-    models_dir = project_root / "models"
-    if models_dir.exists():
-        return models_dir
-    return None
 
 
 def run_generate() -> None:
@@ -29,8 +19,8 @@ def run_generate() -> None:
         print("Run 'Setup/update project settings' first.")
         return
 
-    models_dir = _find_models_dir(project_root)
-    if models_dir is None:
+    models_dir = project_root / "models"
+    if not models_dir.exists():
         print(f"\nNo models/ directory found in {project_root}")
         return
 
