@@ -78,6 +78,27 @@ def _is_nullable(field: dict[str, Any]) -> bool:
     return not (required and not excluded_from_response)
 
 
+def _converter_names(
+    abstract: str, field: dict[str, Any], spec: dict[str, Any]
+) -> tuple[str | None, str | None]:
+    """Resolve a field's ``from_json``/``to_json`` converter function names.
+
+    Comes from the type-map spec by default; an ``enum`` field overrides both
+    with the shared-enum converter names derived from ``enum_name`` (e.g.
+    ``Status`` → ``statusFromJson``/``statusToJson``), matching how the enums
+    barrel names its generated converters.
+    """
+    from_json = spec.get("from_json")
+    to_json = spec.get("to_json")
+    if abstract == "enum":
+        enum_name = str(field.get("enum_name") or "")
+        if enum_name:
+            fn = enum_name[0].lower() + enum_name[1:]
+            from_json = f"{fn}FromJson"
+            to_json = f"{fn}ToJson"
+    return from_json, to_json
+
+
 def _json_key(field_name: str, field: dict[str, Any]) -> str:
     """Resolve the wire JSON key for a field.
 
@@ -170,14 +191,7 @@ def resolve_fields(
         json_key = _json_key(field_name, field)
         abstract = field.get("type", "")
         spec = type_map.get(abstract, {}) or {}
-        from_json = spec.get("from_json")
-        to_json = spec.get("to_json")
-        if abstract == "enum":
-            _en = str(field.get("enum_name") or "")
-            if _en:
-                _fn = _en[0].lower() + _en[1:]
-                from_json = f"{_fn}FromJson"
-                to_json = f"{_fn}ToJson"
+        from_json, to_json = _converter_names(abstract, field, spec)
 
         descriptors.append(
             {
@@ -284,14 +298,7 @@ def resolve_dto_fields(
         # Create DTO fields follow the field's ``required`` flag; Update DTO
         # fields are always nullable (PATCH-style partial update).
         nullable = not bool(field.get("required", False)) if kind == "create" else True
-        from_json = spec.get("from_json")
-        to_json = spec.get("to_json")
-        if abstract_dto == "enum":
-            _en = str(field.get("enum_name") or "")
-            if _en:
-                _fn = _en[0].lower() + _en[1:]
-                from_json = f"{_fn}FromJson"
-                to_json = f"{_fn}ToJson"
+        from_json, to_json = _converter_names(abstract_dto, field, spec)
 
         descriptors.append(
             {
@@ -307,6 +314,18 @@ def resolve_dto_fields(
         )
 
     return descriptors
+
+
+def _field_import_flags(
+    field: dict[str, Any], type_map: dict[str, Any]
+) -> tuple[list[str], bool, bool]:
+    """Resolve one field's import contribution: (imports, has_converter, has_enum)."""
+    abstract = field.get("type", "")
+    spec = type_map.get(abstract, {}) or {}
+    imports = [str(imp) for imp in spec.get("imports", []) or []]
+    has_converter = bool(spec.get("from_json") or spec.get("to_json"))
+    has_enum = abstract == "enum"
+    return imports, has_converter, has_enum
 
 
 def collect_dto_imports(
@@ -333,14 +352,10 @@ def collect_dto_imports(
             continue
         if camel_case(field_name) not in seen:
             continue
-        abstract = field.get("type", "")
-        spec = type_map.get(abstract, {}) or {}
-        for imp in spec.get("imports", []) or []:
-            raw_imports.add(str(imp))
-        if spec.get("from_json") or spec.get("to_json"):
-            has_converter = True
-        if abstract == "enum":
-            has_enum = True
+        imports, conv, en = _field_import_flags(field, type_map)
+        raw_imports.update(imports)
+        has_converter = has_converter or conv
+        has_enum = has_enum or en
 
     return {
         "dart_imports": sorted(raw_imports),
@@ -370,14 +385,10 @@ def collect_model_imports(
     for field in (entity.get("fields") or {}).values():
         if not isinstance(field, dict):
             continue
-        abstract = field.get("type", "")
-        spec = type_map.get(abstract, {}) or {}
-        for imp in spec.get("imports", []) or []:
-            raw_imports.add(str(imp))
-        if spec.get("from_json") or spec.get("to_json"):
-            has_converter = True
-        if abstract == "enum":
-            has_enum = True
+        imports, conv, en = _field_import_flags(field, type_map)
+        raw_imports.update(imports)
+        has_converter = has_converter or conv
+        has_enum = has_enum or en
 
     return {
         "dart_imports": sorted(raw_imports),

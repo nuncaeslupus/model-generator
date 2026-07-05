@@ -27,8 +27,8 @@ from typing import Any
 
 from jinja2 import Environment
 
-from ...utils.templates import camel_case, snake_case
-from .api import _build_ops, _filters, _has_requests
+from ...utils.templates import camel_case
+from .api import _api_enabled, _build_ops, _entity_filename, _filters, _has_requests
 from .fields import _dart_type, _is_nullable, primary_key_field
 from .paths import package_uri, resolve_path
 
@@ -40,15 +40,6 @@ from .paths import package_uri, resolve_path
 def _cache_enabled(config: dict[str, Any]) -> bool:
     """Return True when ``local_cache: true`` is set in the merged config."""
     return bool(config.get("local_cache"))
-
-
-def _api_enabled(entity: dict[str, Any]) -> bool:
-    api = entity.get("api") or {}
-    return bool(api.get("enabled", True))
-
-
-def _entity_file_stem(entity_name: str) -> str:
-    return snake_case(entity_name)
 
 
 # ---------------------------------------------------------------------------
@@ -318,7 +309,7 @@ def generate_drift_tables(
         if entity is None or not _api_enabled(entity):
             continue
 
-        stem = _entity_file_stem(entity_name)
+        stem = _entity_filename(entity_name)
         cache_fields = _resolve_cache_fields(entity, config)
         pk = primary_key_field(entity, config)
         # Prefix the SQL table name with ``local_`` so it never collides with
@@ -400,7 +391,7 @@ def generate_drift_database(
     for entity_name, entity in (model.get("entities") or {}).items():
         if entity is None or not _api_enabled(entity):
             continue
-        stem = _entity_file_stem(entity_name) + "_table"
+        stem = _entity_filename(entity_name) + "_table"
         _add(table_class(entity_name), stem)
 
     # Sort for deterministic output.
@@ -450,7 +441,7 @@ def generate_cached_repositories(
         if entity is None or not _api_enabled(entity):
             continue
 
-        stem = _entity_file_stem(entity_name)
+        stem = _entity_filename(entity_name)
         ops = _build_ops(entity, entity_name, config)
         filters = _filters(entity, config)
         cache_fields = _resolve_cache_fields(entity, config)

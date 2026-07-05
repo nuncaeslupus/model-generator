@@ -22,16 +22,15 @@ from jinja2 import Environment
 
 from ...utils.loaders import load_shared_enums
 from ...utils.output import write_outputs
-from ...utils.templates import snake_case
-from .api import _has_requests
+from .api import (
+    _entity_filename,
+    _has_requests,
+    generate_auth_interceptor,
+    generate_dio_setup,
+    generate_flutter_pagination,
+)
 from .fields import collect_model_imports, resolve_fields
 from .paths import package_name, package_uri, resolve_path
-
-
-def _entity_filename(entity_name: str) -> str:
-    """Dart file stem for an entity (snake_case; ``UserProfile`` → ``user_profile``)."""
-    return snake_case(entity_name)
-
 
 # ---------------------------------------------------------------------------
 # Domain generators
@@ -52,7 +51,6 @@ def generate_flutter_models(
     """
     template = env.get_template("models/model.dart.j2")
     models_dir = project_root / resolve_path(config, "models")
-    pkg = package_name(config)
 
     outputs: list[dict[str, Any]] = []
     for entity_name, entity in (model.get("entities") or {}).items():
@@ -75,7 +73,6 @@ def generate_flutter_models(
             needs_enums=imports["has_enum"],
             converters_uri=converters_uri,
             enums_uri=enums_uri,
-            package_name=pkg,
             description=entity.get("description"),
         )
         outputs.append({"path": models_dir / f"{file_stem}.dart", "content": content})
@@ -318,14 +315,6 @@ def flutter_infra_orchestrator(
     accepted and ignored via ``**_ignored``.
     """
     print("\n🏗️  Generating Flutter infrastructure files...")
-
-    # Imported here (not at module top) to avoid a circular import: api.py imports
-    # the Phase-1 field/path helpers this module's siblings expose.
-    from .api import (
-        generate_auth_interceptor,
-        generate_dio_setup,
-        generate_flutter_pagination,
-    )
 
     candidates: list[dict[str, Any] | None] = [
         generate_pubspec(config, env, project_root),
