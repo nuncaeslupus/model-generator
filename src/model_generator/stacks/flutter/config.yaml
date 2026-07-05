@@ -5,11 +5,6 @@
 # NOTE: Project-specific config (name, description, flutter.package_name) should
 #       be overridden in <project-root>/.model-generator.yaml.
 
-stack:
-  name: flutter
-  description: Flutter (Dart) client — freezed models, retrofit API client
-  version: "1.0"
-
 # Flutter-specific settings. ``package_name`` drives both the on-disk
 # ``lib/<package_name>/…`` layout and the ``package:<package_name>/…`` imports
 # in generated Dart. Overridable per-project in .model-generator.yaml.
@@ -70,14 +65,6 @@ quality:
     command: "dart analyze"
     target: package-root
 
-# Naming conventions (documentary — enforced by the generators/templates).
-naming:
-  model: PascalCase
-  field: camelCase # Dart member; wire JSON stays snake_case via @JsonKey
-  enum: PascalCase
-  enum_value: UPPER_CASE
-  json_key: snake_case
-
 # Type mappings: abstract -> Dart. ``dart`` is the field type; ``converter`` is
 # the freezed/json_serializable JsonConverter annotation (when the wire form
 # differs from the Dart type); ``import`` lists any extra Dart imports the type
@@ -114,10 +101,6 @@ types:
       - "package:decimal/decimal.dart"
 
   counter:
-    dart: "int"
-
-  # "integer" is normalized to "counter" at load time; kept for completeness.
-  integer:
     dart: "int"
 
   boolean:
