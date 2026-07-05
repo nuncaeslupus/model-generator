@@ -45,7 +45,7 @@ def _make_project_env(
     os.chdir(tmp_path)
     try:
         config = load_config("python-fastapi")
-        env = get_template_env("python-fastapi")
+        env = get_template_env("python-fastapi", config=config)
     finally:
         os.chdir(original_cwd)
 

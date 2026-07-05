@@ -1,7 +1,7 @@
 """Tests for edge cases: missing files, invalid JSON, partial generation."""
 
+import copy
 import json
-import os
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -18,6 +18,26 @@ from model_generator.utils.loaders import (
 )
 from model_generator.utils.parser import scan_api_model_files, scan_model_files
 from model_generator.utils.quality import _find_ruff, run_quality_tools
+
+_TEST_CONFIG: dict[str, Any] = {
+    "project": {"name": "Test"},
+    "stack": "python-fastapi",
+    "generation": {"layout": "per-domain"},
+    "paths": {
+        "database_models": "src/db/models",
+        "factories": "src/db/models/factories",
+        "api_models": "src/api/models",
+        "api_routes": "src/api/routes",
+        "api_tests": "tests/api",
+        "base": "src/db/models/base.py",
+        "engine": "src/db/engine.py",
+        "main": "src/main.py",
+        "errors": "src/api/errors.py",
+        "validators": "src/api/validators.py",
+        "test_conftest_root": "tests/conftest.py",
+        "migrations": "alembic",
+    },
+}
 
 
 class TestLoadModelEdgeCases:
@@ -108,44 +128,38 @@ class TestLoadModelEdgeCases:
 class TestLoadConfigEdgeCases:
     """Test config loading edge cases."""
 
-    def test_missing_project_config_uses_defaults(self, tmp_path: Path) -> None:
+    def test_missing_project_config_uses_defaults(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When no .model-generator.yaml exists, stack defaults are used."""
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            # No .model-generator.yaml exists
-            config = load_config("python-fastapi")
-            assert "paths" in config
-            assert "project" in config
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        # No .model-generator.yaml exists
+        config = load_config("python-fastapi")
+        assert "paths" in config
+        assert "project" in config
 
-    def test_default_stack_arg_is_python_fastapi(self, tmp_path: Path) -> None:
+    def test_default_stack_arg_is_python_fastapi(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Calling load_config() with no args uses 'python-fastapi' as default."""
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            config = load_config()  # default stack argument
-            assert "paths" in config
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        config = load_config()  # default stack argument
+        assert "paths" in config
 
-    def test_project_config_stack_key_is_used(self, tmp_path: Path) -> None:
+    def test_project_config_stack_key_is_used(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """'stack' key in .model-generator.yaml overrides the function default."""
         (tmp_path / ".model-generator.yaml").write_text(
             yaml.dump({"stack": "python-fastapi"})
         )
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            # Would fail if "stack" key is not read from project config
-            config = load_config("WRONG-STACK")
-            assert "paths" in config
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        # Would fail if "stack" key is not read from project config
+        config = load_config("WRONG-STACK")
+        assert "paths" in config
 
     def test_paths_base_derives_from_overridden_database_models(
-        self, tmp_path: Path
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """If project config overrides paths.database_models but not paths.base,
         the merged config derives paths.base from the new database_models —
@@ -160,16 +174,14 @@ class TestLoadConfigEdgeCases:
                 }
             )
         )
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            config = load_config("python-fastapi")
-            assert config["paths"]["base"] == "lib/db/models/base.py"
-            assert config["paths"]["database_models"] == "lib/db/models"
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        config = load_config("python-fastapi")
+        assert config["paths"]["base"] == "lib/db/models/base.py"
+        assert config["paths"]["database_models"] == "lib/db/models"
 
-    def test_paths_base_explicit_override_is_preserved(self, tmp_path: Path) -> None:
+    def test_paths_base_explicit_override_is_preserved(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """If project config sets paths.base explicitly, the loader does not
         rewrite it — even when paths.database_models is also overridden."""
         (tmp_path / ".model-generator.yaml").write_text(
@@ -183,52 +195,44 @@ class TestLoadConfigEdgeCases:
                 }
             )
         )
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            config = load_config("python-fastapi")
-            assert config["paths"]["base"] == "lib/db/models/base.py"
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        config = load_config("python-fastapi")
+        assert config["paths"]["base"] == "lib/db/models/base.py"
 
-    def test_default_project_keys_inserted(self, tmp_path: Path) -> None:
+    def test_default_project_keys_inserted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When stack config has no 'project' key, sensible defaults are inserted."""
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            config = load_config("python-fastapi")
-            assert config["project"]["name"] == "Your Project"
-            assert config["project"]["description"] == (
-                "Database models and API for your application"
-            )
-            assert config["project"]["version"] == "0.1.0"
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        config = load_config("python-fastapi")
+        assert config["project"]["name"] == "Your Project"
+        assert config["project"]["description"] == (
+            "Database models and API for your application"
+        )
+        assert config["project"]["version"] == "0.1.0"
 
-    def test_default_generation_layout_inserted(self, tmp_path: Path) -> None:
+    def test_default_generation_layout_inserted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When project config does not pin generation.layout, default is per-entity."""
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            config = load_config("python-fastapi")
-            assert config["generation"]["layout"] == "per-entity"
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        config = load_config("python-fastapi")
+        assert config["generation"]["layout"] == "per-entity"
 
-    def test_project_config_can_pin_generation_layout(self, tmp_path: Path) -> None:
+    def test_project_config_can_pin_generation_layout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """generation.layout in .model-generator.yaml overrides the default."""
         (tmp_path / ".model-generator.yaml").write_text(
             yaml.dump({"generation": {"layout": "per-domain"}})
         )
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            config = load_config("python-fastapi")
-            assert config["generation"]["layout"] == "per-domain"
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        config = load_config("python-fastapi")
+        assert config["generation"]["layout"] == "per-domain"
 
-    def test_project_config_overrides_stack(self, tmp_path: Path) -> None:
+    def test_project_config_overrides_stack(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Project config overrides stack defaults."""
         project_config = {
             "stack": "python-fastapi",
@@ -236,42 +240,32 @@ class TestLoadConfigEdgeCases:
         }
         (tmp_path / ".model-generator.yaml").write_text(yaml.dump(project_config))
 
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            config = load_config("python-fastapi")
-            assert config["paths"]["database_models"] == "custom/db/models"
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        config = load_config("python-fastapi")
+        assert config["paths"]["database_models"] == "custom/db/models"
 
-    def test_invalid_stack_exits_with_code_1(self, tmp_path: Path) -> None:
+    def test_invalid_stack_exits_with_code_1(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """load_config with non-existent stack exits with code 1."""
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            with pytest.raises(SystemExit) as exc_info:
-                load_config("nonexistent-stack-xyz")
-            assert exc_info.value.code == 1
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(SystemExit) as exc_info:
+            load_config("nonexistent-stack-xyz")
+        assert exc_info.value.code == 1
 
     @pytest.mark.parametrize("section", ["paths", "auth", "generation", "style"])
     def test_non_dict_section_exits_with_code_1(
-        self, tmp_path: Path, section: str
+        self, tmp_path: Path, section: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """GEN-10: non-dict value for a top-level config section exits with code 1."""
         import yaml
 
         project_config = tmp_path / ".model-generator.yaml"
         project_config.write_text(yaml.dump({section: "invalid-string"}))
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            with pytest.raises(SystemExit) as exc_info:
-                load_config("python-fastapi")
-            assert exc_info.value.code == 1
-        finally:
-            os.chdir(original_cwd)
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(SystemExit) as exc_info:
+            load_config("python-fastapi")
+        assert exc_info.value.code == 1
 
 
 class TestDeepMerge:
@@ -740,27 +734,11 @@ class TestScanApiModelFiles:
 class TestPartialGeneration:
     """Test generating specific targets only."""
 
-    def test_database_only(self, tmp_path: Path) -> None:
+    def test_database_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Generate only database target."""
-        config = {
-            "project": {"name": "Test"},
-            "stack": "python-fastapi",
-            "generation": {"layout": "per-domain"},
-            "paths": {
-                "database_models": "src/db/models",
-                "factories": "src/db/models/factories",
-                "api_models": "src/api/models",
-                "api_routes": "src/api/routes",
-                "api_tests": "tests/api",
-                "base": "src/db/models/base.py",
-                "engine": "src/db/engine.py",
-                "main": "src/main.py",
-                "errors": "src/api/errors.py",
-                "validators": "src/api/validators.py",
-                "test_conftest_root": "tests/conftest.py",
-                "migrations": "alembic",
-            },
-        }
+        config = copy.deepcopy(_TEST_CONFIG)
         (tmp_path / ".model-generator.yaml").write_text(yaml.dump(config))
 
         model = {
@@ -785,39 +763,19 @@ class TestPartialGeneration:
         model_path = model_dir / "widgets.model.json"
         model_path.write_text(json.dumps(model))
 
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            generate(model_path=model_path, target="database")
+        monkeypatch.chdir(tmp_path)
+        generate(model_path=model_path, target="database")
 
-            # Database model should exist
-            assert (tmp_path / "src/db/models/widgets.py").exists()
-            # API routes should NOT exist
-            assert not (tmp_path / "src/api/routes/widgets.py").exists()
-        finally:
-            os.chdir(original_cwd)
+        # Database model should exist
+        assert (tmp_path / "src/db/models/widgets.py").exists()
+        # API routes should NOT exist
+        assert not (tmp_path / "src/api/routes/widgets.py").exists()
 
-    def test_api_tests_only(self, tmp_path: Path) -> None:
+    def test_api_tests_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Generate only api-tests target."""
-        config = {
-            "project": {"name": "Test"},
-            "stack": "python-fastapi",
-            "generation": {"layout": "per-domain"},
-            "paths": {
-                "database_models": "src/db/models",
-                "factories": "src/db/models/factories",
-                "api_models": "src/api/models",
-                "api_routes": "src/api/routes",
-                "api_tests": "tests/api",
-                "base": "src/db/models/base.py",
-                "engine": "src/db/engine.py",
-                "main": "src/main.py",
-                "errors": "src/api/errors.py",
-                "validators": "src/api/validators.py",
-                "test_conftest_root": "tests/conftest.py",
-                "migrations": "alembic",
-            },
-        }
+        config = copy.deepcopy(_TEST_CONFIG)
         (tmp_path / ".model-generator.yaml").write_text(yaml.dump(config))
 
         model = {
@@ -842,17 +800,13 @@ class TestPartialGeneration:
         model_path = model_dir / "widgets.model.json"
         model_path.write_text(json.dumps(model))
 
-        original_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            generate(model_path=model_path, target="api-tests")
+        monkeypatch.chdir(tmp_path)
+        generate(model_path=model_path, target="api-tests")
 
-            # Test file should exist
-            assert (tmp_path / "tests/api/test_widgets_api.py").exists()
-            # Database model should NOT exist
-            assert not (tmp_path / "src/db/models/widgets.py").exists()
-        finally:
-            os.chdir(original_cwd)
+        # Test file should exist
+        assert (tmp_path / "tests/api/test_widgets_api.py").exists()
+        # Database model should NOT exist
+        assert not (tmp_path / "src/db/models/widgets.py").exists()
 
 
 class TestConstraintExtraction:
