@@ -71,23 +71,6 @@ def _find_dart(project_root: Path) -> str:
     return "dart"
 
 
-def _run_ruff(cmd: list[str], project_root: Path, *, warn_on_failure: bool) -> None:
-    """Run a ruff subcommand (argv list, no shell), surfacing real failures."""
-    result = subprocess.run(
-        cmd,
-        cwd=project_root,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
-    )
-    if warn_on_failure and result.returncode != 0:
-        detail = (result.stderr or result.stdout or "").strip()
-        print(f"  ⚠️  '{' '.join(cmd)}' failed (exit {result.returncode}).")
-        if detail:
-            print(f"     {detail.splitlines()[-1]}")
-
-
 def run_ruff_quality(
     config: dict[str, Any], project_root: Path, files: list[Path]
 ) -> None:
@@ -115,13 +98,13 @@ def run_ruff_quality(
     # limit (~8 KiB on Windows → OSError "Argument list too long").
     print("\n  Running ruff format...")
     for batch in _chunked(file_args, _MAX_FILES_PER_CALL):
-        _run_ruff([ruff, "format", *batch], project_root, warn_on_failure=True)
+        _run_tool([ruff, "format", *batch], project_root, warn_on_failure=True)
 
     # `ruff check --fix` exits non-zero when residual unfixable lints remain,
     # which is expected for freshly generated code — not treated as a failure.
     print("  Running ruff check --fix...")
     for batch in _chunked(file_args, _MAX_FILES_PER_CALL):
-        _run_ruff([ruff, "check", "--fix", *batch], project_root, warn_on_failure=False)
+        _run_tool([ruff, "check", "--fix", *batch], project_root, warn_on_failure=False)
 
 
 def _run_tool(cmd: list[str], project_root: Path, *, warn_on_failure: bool) -> None:
