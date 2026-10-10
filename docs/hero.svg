@@ -178,17 +178,17 @@
   <path d="M722,389 C772,389 762,277.0 808,277.0" fill="none" stroke="#a78bfa" stroke-width="1.3" opacity="0.7"/>
   <rect x="812" y="254" width="406" height="46" rx="5" fill="#1b1d38" stroke="#43476e"/>
   <rect x="812" y="254" width="4" height="46" rx="2" fill="#c4f06b"/>
-  <text x="828" y="273" font-family="'DejaVu Sans Mono', monospace" font-size="12.5" font-weight="700" fill="#eceefb" text-anchor="start" letter-spacing="0" xml:space="preserve">src/database/models/</text>
+  <text x="828" y="273" font-family="'DejaVu Sans Mono', monospace" font-size="12.5" font-weight="700" fill="#eceefb" text-anchor="start" letter-spacing="0" xml:space="preserve">database/models/</text>
   <text x="828" y="291" font-family="Inter, 'DejaVu Sans', sans-serif" font-size="12" font-weight="400" fill="#8a8eb3" text-anchor="start" letter-spacing="0" xml:space="preserve">SQLAlchemy ORM · constraints, indexes</text>
   <path d="M722,389 C772,389 762,333.0 808,333.0" fill="none" stroke="#a78bfa" stroke-width="1.3" opacity="0.7"/>
   <rect x="812" y="310" width="406" height="46" rx="5" fill="#1b1d38" stroke="#43476e"/>
   <rect x="812" y="310" width="4" height="46" rx="2" fill="#c4f06b"/>
-  <text x="828" y="329" font-family="'DejaVu Sans Mono', monospace" font-size="12.5" font-weight="700" fill="#eceefb" text-anchor="start" letter-spacing="0" xml:space="preserve">src/api/models/</text>
+  <text x="828" y="329" font-family="'DejaVu Sans Mono', monospace" font-size="12.5" font-weight="700" fill="#eceefb" text-anchor="start" letter-spacing="0" xml:space="preserve">api/models/</text>
   <text x="828" y="347" font-family="Inter, 'DejaVu Sans', sans-serif" font-size="12" font-weight="400" fill="#8a8eb3" text-anchor="start" letter-spacing="0" xml:space="preserve">Pydantic schemas · validators</text>
   <path d="M722,389 C772,389 762,389.0 808,389.0" fill="none" stroke="#a78bfa" stroke-width="1.3" opacity="0.7"/>
   <rect x="812" y="366" width="406" height="46" rx="5" fill="#1b1d38" stroke="#43476e"/>
   <rect x="812" y="366" width="4" height="46" rx="2" fill="#c4f06b"/>
-  <text x="828" y="385" font-family="'DejaVu Sans Mono', monospace" font-size="12.5" font-weight="700" fill="#eceefb" text-anchor="start" letter-spacing="0" xml:space="preserve">src/api/routes/</text>
+  <text x="828" y="385" font-family="'DejaVu Sans Mono', monospace" font-size="12.5" font-weight="700" fill="#eceefb" text-anchor="start" letter-spacing="0" xml:space="preserve">api/routes/</text>
   <text x="828" y="403" font-family="Inter, 'DejaVu Sans', sans-serif" font-size="12" font-weight="400" fill="#8a8eb3" text-anchor="start" letter-spacing="0" xml:space="preserve">FastAPI CRUD endpoints</text>
   <path d="M722,389 C772,389 762,445.0 808,445.0" fill="none" stroke="#a78bfa" stroke-width="1.3" opacity="0.7"/>
   <rect x="812" y="422" width="406" height="46" rx="5" fill="#1b1d38" stroke="#43476e"/>

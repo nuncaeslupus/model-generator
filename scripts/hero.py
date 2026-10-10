@@ -232,9 +232,9 @@ def spec() -> list[str]:
 
 #: What one run writes: (path, what it holds).
 OUTPUTS = [
-    ("src/database/models/", "SQLAlchemy ORM · constraints, indexes"),
-    ("src/api/models/", "Pydantic schemas · validators"),
-    ("src/api/routes/", "FastAPI CRUD endpoints"),
+    ("database/models/", "SQLAlchemy ORM · constraints, indexes"),
+    ("api/models/", "Pydantic schemas · validators"),
+    ("api/routes/", "FastAPI CRUD endpoints"),
     ("tests/contract/", "pytest contract tests · FactoryBoy"),
     ("alembic/", "migrations"),
 ]
