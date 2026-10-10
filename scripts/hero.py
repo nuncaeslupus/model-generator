@@ -135,10 +135,12 @@ def sheet() -> list[str]:
 
 
 LOGO_SVG = ROOT / "docs" / "logo.svg"
-#: Logo tile: size and top-left, set so it spans the wordmark's x-height to descender.
-LOGO_SIZE, LOGO_X, LOGO_Y = 88, 64, 50
-#: Wordmark and subtitles start right of the logo.
-TEXT_X = LOGO_X + LOGO_SIZE + 20
+#: One rule in every hero: the logo tile is 0.95 x the wordmark's font size, centred on
+#: its capital band (baseline to cap height, 0.727 em), with a quarter-em gap before it.
+WORD_SIZE, WORD_BASE, LOGO_X = 72, 122, 64
+LOGO_SIZE = round(0.95 * WORD_SIZE)
+LOGO_Y = round(WORD_BASE - 0.727 * WORD_SIZE / 2 - LOGO_SIZE / 2)
+TEXT_X = LOGO_X + LOGO_SIZE + round(0.25 * WORD_SIZE)
 
 
 def logo() -> str:
@@ -158,18 +160,18 @@ def logo() -> str:
 def wordmark() -> list[str]:
     return [
         logo(),
-        f'<text x="{TEXT_X}" y="122" font-family="{DISPLAY}" font-size="72" font-weight="800" '
+        f'<text x="{TEXT_X}" y="{WORD_BASE}" font-family="{DISPLAY}" font-size="{WORD_SIZE}" font-weight="800" '
         f'letter-spacing="-2"><tspan fill="{INK}">model</tspan>'
         f'<tspan fill="{VIOLET}">-generator</tspan></text>',
         text(
-            TEXT_X + 4,
+            LOGO_X + 4,
             170,
             "JSON specs in, a production-ready API backend out.",
             size=25,
             fill=SOFT,
         ),
         text(
-            TEXT_X + 4,
+            LOGO_X + 4,
             198,
             "One-shot scaffolding: database models, API schemas, routes, tests and "
             "migrations.",
