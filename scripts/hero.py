@@ -147,9 +147,11 @@ def logo() -> str:
     inner = inner.replace(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">', "", 1
     ).removesuffix("</svg>")
+    # The tile is the same near-black as the sheet, so a FRAME outline keeps it visible.
     return (
         f'<svg x="{LOGO_X}" y="{LOGO_Y}" width="{LOGO_SIZE}" height="{LOGO_SIZE}" '
-        f'viewBox="0 0 64 64">{inner}</svg>'
+        f'viewBox="0 0 64 64">{inner}<rect x="0.5" y="0.5" width="63" height="63" rx="13.5" '
+        f'fill="none" stroke="{FRAME}" stroke-width="1"/></svg>'
     )
 
 
