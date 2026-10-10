@@ -1,5 +1,9 @@
 # Model Generator
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/nuncaeslupus/model-generator/main/docs/hero.png" width="100%" alt="model-generator: a JSON model spec, run once through model-gen, writes the SQLAlchemy models, Pydantic schemas, FastAPI routes, pytest contract tests and Alembic migrations of a backend">
+</p>
+
 A **one-shot bootstrap code generator** that turns JSON specifications into production-ready API backends — database models, API endpoints, tests, and migrations. The generator is stack-agnostic by design; it currently ships the **`python-fastapi`** stack (chosen with `--stack`, the default).
 
 ## What It Does

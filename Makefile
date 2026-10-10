@@ -1,4 +1,4 @@
-.PHONY: lint format test test-all smoke-example smoke-catalog-api smoke-flutter clean sync build publish publish-force tag-release update-skills
+.PHONY: lint format test test-all smoke-example smoke-catalog-api smoke-flutter clean sync build publish publish-force tag-release update-skills hero
 
 sync:
 	uv sync --extra dev
@@ -65,6 +65,10 @@ tag-release:
 	echo ""; \
 	echo "Pushed $$TAG. release.yml will build, publish model-generator-kit==$$VER"; \
 	echo "to PyPI, and cut the GitHub release. Watch: gh run watch (or the Actions tab)."
+
+# Redraw the README banner, docs/hero.svg and docs/hero.png (needs Chromium).
+hero:
+	uv run --with pillow python scripts/hero.py
 
 lint:
 	uv run ruff check . && uv run ruff format --check . && uv run mypy . --explicit-package-bases
