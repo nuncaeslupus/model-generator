@@ -134,20 +134,40 @@ def sheet() -> list[str]:
     return out
 
 
+LOGO_SVG = ROOT / "docs" / "logo.svg"
+#: Logo tile: size and top-left, set so it spans the wordmark's x-height to descender.
+LOGO_SIZE, LOGO_X, LOGO_Y = 88, 64, 50
+#: Wordmark and subtitles start right of the logo.
+TEXT_X = LOGO_X + LOGO_SIZE + 20
+
+
+def logo() -> str:
+    """The approved logo, nested inline so the hero stays a single file."""
+    inner = LOGO_SVG.read_text().strip()
+    inner = inner.replace(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">', "", 1
+    ).removesuffix("</svg>")
+    return (
+        f'<svg x="{LOGO_X}" y="{LOGO_Y}" width="{LOGO_SIZE}" height="{LOGO_SIZE}" '
+        f'viewBox="0 0 64 64">{inner}</svg>'
+    )
+
+
 def wordmark() -> list[str]:
     return [
-        f'<text x="64" y="122" font-family="{DISPLAY}" font-size="72" font-weight="800" '
+        logo(),
+        f'<text x="{TEXT_X}" y="122" font-family="{DISPLAY}" font-size="72" font-weight="800" '
         f'letter-spacing="-2"><tspan fill="{INK}">model</tspan>'
         f'<tspan fill="{VIOLET}">-generator</tspan></text>',
         text(
-            68,
+            TEXT_X + 4,
             170,
             "JSON specs in, a production-ready API backend out.",
             size=25,
             fill=SOFT,
         ),
         text(
-            68,
+            TEXT_X + 4,
             198,
             "One-shot scaffolding: database models, API schemas, routes, tests and "
             "migrations.",
