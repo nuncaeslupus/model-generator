@@ -28,6 +28,11 @@ dependencies = [
     "jsonschema>=4.0.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/nuncaeslupus/model-generator"
+Repository = "https://github.com/nuncaeslupus/model-generator"
+Issues = "https://github.com/nuncaeslupus/model-generator/issues"
+
 [project.optional-dependencies]
 interactive = [
     "questionary>=2.0.0",
