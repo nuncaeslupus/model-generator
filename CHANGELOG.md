@@ -6,6 +6,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Documentation
+
+- README rewritten: pitch, quick start, a real spec-to-code example, agent
+  usage, CLI reference and a docs index; the stale test-file table is gone.
+
 ### Fixed
 
 - **`api_exclude_create` is now honored by generated contract tests.** The
