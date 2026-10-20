@@ -25,8 +25,9 @@ model-gen --version                      # model-gen 0.1.4
 
 This puts `model-gen` (generator) and `model-val` (spec validator) on your PATH.
 The PyPI name is `model-generator-kit`. For the interactive wizard, install
-`"model-generator-kit[interactive]"`. The tool needs Python 3.11+; the generated
-backend uses PEP 695 generics and needs Python 3.12+.
+`"model-generator-kit[interactive]"`. The tool's Python floor is `requires-python`
+in `pyproject.toml`; the generated backend uses PEP 695 generics, so it needs a newer
+Python, stated in its own `pyproject.toml`.
 
 In a project directory with a `.model-generator.yaml` and a `models/` folder:
 
@@ -114,7 +115,7 @@ $ uv sync --extra dev && uv run pytest -q
 ```
 
 The bundled `examples/user-auth-project` (users, roles, sessions, owner-scoped
-portfolio, auth) produces 128 passing tests the same way:
+portfolio, auth) produces a passing test suite the same way:
 
 ```bash
 git clone https://github.com/nuncaeslupus/model-generator && cd model-generator
@@ -142,7 +143,7 @@ There is no MCP server; an agent drives the CLI and the docs written for it.
 
 ## Features
 
-- **Database:** SQLAlchemy 2 models with constraints, indexes, relationships,
+- **Database:** SQLAlchemy models with constraints, indexes, relationships,
   enums and cross-field check constraints.
 - **API:** Pydantic request/response models with validators, FastAPI CRUD routes,
   pagination, optional owner scoping and auth scaffolding (`auth.strategy: bcrypt-session`).
