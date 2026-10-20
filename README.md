@@ -1,44 +1,121 @@
 # Model Generator
 
+[![PyPI](https://img.shields.io/pypi/v/model-generator-kit.svg)](https://pypi.org/project/model-generator-kit/)
+[![CI](https://github.com/nuncaeslupus/model-generator/actions/workflows/ci.yml/badge.svg)](https://github.com/nuncaeslupus/model-generator/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/nuncaeslupus/model-generator/main/docs/hero.png" width="100%" alt="model-generator: a JSON model spec, run once through model-gen, writes the SQLAlchemy models, Pydantic schemas, FastAPI routes, pytest contract tests and Alembic migrations of a backend">
 </p>
 
-A **one-shot bootstrap code generator** that turns JSON specifications into production-ready API backends — database models, API endpoints, tests, and migrations. The generator is stack-agnostic by design; it currently ships the **`python-fastapi`** stack (chosen with `--stack`, the default).
+**Generate a FastAPI backend from JSON model specs, once, then own the code.**
 
-## What It Does
+Every new API backend starts with the same boilerplate: ORM models, request and
+response schemas, CRUD routes, tests and migrations, all kept consistent by hand.
+`model-gen` writes all of it from one `*.model.json` spec per domain: typed,
+linted and with a contract test suite that passes. Then you edit the generated code
+like any other code. There is no regeneration loop and no runtime dependency.
 
-- **Database models** — SQLAlchemy ORM with constraints, relationships, and indexes
-- **API models** — Pydantic request/response schemas with validators
-- **API routes** — FastAPI CRUD endpoints
-- **Tests** — pytest contract tests with FactoryBoy factories (a full contract suite in the example project)
-- **Migrations** — Alembic infrastructure
-
-## Install
-
-`model-generator` is a build-time scaffolding tool, not a runtime dependency of
-the backends it generates. Install it as an isolated global CLI:
+## Quick start
 
 ```bash
-uv tool install model-generator-kit     # or: pipx install model-generator-kit
+uv tool install model-generator-kit      # or: pipx install model-generator-kit
+model-gen --version                      # model-gen 0.1.4
 ```
 
-This puts `model-gen` and `model-val` on your PATH. For the interactive wizard,
-add the extra: `uv tool install "model-generator-kit[interactive]"`.
+This puts `model-gen` (generator) and `model-val` (spec validator) on your PATH.
+The PyPI name is `model-generator-kit`. For the interactive wizard, install
+`"model-generator-kit[interactive]"`. The tool's Python floor is `requires-python`
+in `pyproject.toml`; the generated backend uses PEP 695 generics, so it needs a newer
+Python, stated in its own `pyproject.toml`.
 
-> The PyPI package is `model-generator-kit` (the name `model-generator` was already
-> taken); the commands it installs are `model-gen` and `model-val`.
-
-## Quick Start
+In a project directory with a `.model-generator.yaml` and a `models/` folder:
 
 ```bash
-# In any project directory, scaffold from your JSON specs
-model-gen models/ --target all
-
-model-gen --version    # confirm the install
+model-val models/                 # validate the specs
+model-gen models/ --target all    # write the backend
 ```
 
-To try the bundled example from a clone of this repo:
+## Example
+
+`.model-generator.yaml`:
+
+```yaml
+project:
+  name: "Notes"
+  version: "0.1.0"
+stack: python-fastapi
+```
+
+`models/notes.model.json`:
+
+```json
+{
+  "domain": "notes",
+  "entities": {
+    "Note": {
+      "table": "notes",
+      "fields": {
+        "id": { "type": "uuid", "primary_key": true, "auto_generate": true },
+        "title": { "type": "text", "max_length": 120, "required": true },
+        "body": { "type": "text" },
+        "pinned": { "type": "boolean", "default": false }
+      },
+      "timestamps": { "created": true, "updated": true },
+      "api": { "enabled": true, "prefix": "notes", "endpoints": ["list", "get", "create", "update", "delete"], "pagination": true }
+    }
+  }
+}
+```
+
+```
+$ model-val models/
+✅ notes.model.json: Valid (1 entities)
+
+✅ All 1 model(s) valid
+$ model-gen models/ --target all
+...
+✅ Generated 15 file(s)
+```
+
+The files written for `Note`, next to the shared infrastructure (`main.py`, engine,
+base, errors, `pyproject.toml`, `alembic/`, test conftests):
+
+```
+backend/src/database/models/note.py       SQLAlchemy model
+backend/src/api/models/note_request.py    CreateNoteRequest, UpdateNoteRequest
+backend/src/api/models/note_response.py   NoteResponse
+backend/src/api/routes/note.py            GET/POST /notes, GET/PUT/DELETE /notes/{id}
+backend/tests/factories/note.py           FactoryBoy factory
+tests/contract/api/test_note_api.py       contract tests
+```
+
+`backend/src/database/models/note.py` (excerpt):
+
+```python
+class Note(Base):
+    __tablename__ = "notes"
+
+    # ====== Primary Key ======
+    id: Mapped[uuid.UUID] = mapped_column(
+        PortableUuid, primary_key=True, default=uuid.uuid4
+    )
+
+    # ====== Core Fields ======
+    title: Mapped[str] = mapped_column(String(120))
+    body: Mapped[str | None] = mapped_column(String())
+    pinned: Mapped[bool | None] = mapped_column(Boolean, default=False)
+```
+
+The generated project's own suite runs straight away:
+
+```
+$ uv sync --extra dev && uv run pytest -q
+17 passed, 1 warning in 0.41s
+```
+
+The bundled `examples/user-auth-project` (users, roles, sessions, owner-scoped
+portfolio, auth) produces a passing test suite the same way:
 
 ```bash
 git clone https://github.com/nuncaeslupus/model-generator && cd model-generator
@@ -46,70 +123,95 @@ uv sync --extra dev
 cd examples/user-auth-project
 uv run model-gen models/ --target all
 uv venv && uv sync --extra dev
-uv run pytest  # the generated contract suite passes
+uv run pytest
 ```
 
-For your own project, see the [Installation Guide](./docs/user/installation.md).
+## Use with AI agents
+
+There is no MCP server; an agent drives the CLI and the docs written for it.
+
+- **Spec writing:** [Model Design Questions](./docs/agent/model-design-questions.md)
+  is a question list for eliciting a spec from a user, and the
+  [JSON Specification Reference](./docs/agent/json-specification-reference.md)
+  documents every key.
+- **Validation loop:** `model-val <file-or-dir>` exits 1 on an invalid spec and
+  prints the error per file. Specs can point `"$schema"` at
+  `src/model_generator/schema/model.schema.json` for editor validation.
+- **Preview before writing:** `model-gen models/ --dry-run` lists the files, and
+  `--diff` shows the changes, without writing anything.
+- **Extending the generator:** [Template Extension Guide](./docs/agent/template-extension-guide.md).
+
+## Features
+
+- **Database:** SQLAlchemy models with constraints, indexes, relationships,
+  enums and cross-field check constraints.
+- **API:** Pydantic request/response models with validators, FastAPI CRUD routes,
+  pagination, optional owner scoping and auth scaffolding (`auth.strategy: bcrypt-session`).
+- **Tests:** pytest contract tests with FactoryBoy factories.
+- **Migrations:** Alembic infrastructure.
+- **Layout:** per-entity (default) or per-domain files; all paths set in `.model-generator.yaml`.
+- **Stacks:** `python-fastapi` (default). A `flutter` stack that generates a typed
+  Dart client from the same spec is on `main`, not yet released; see
+  [Flutter Stack](./docs/user/flutter.md).
+
+## Usage
+
+```
+model-gen [--target TARGET] [--stack STACK] [--dry-run] [--diff]
+          [--clean [--scope selective|full]] [--clear-only]
+          [--no-root-files] [--interactive] [model]
+```
+
+| Option | Does |
+|---|---|
+| `--target` | What to generate (default `all`); e.g. `database`, `api-routes`, `api-tests`, `migration-init` |
+| `--dry-run` / `--diff` | List files / show changes without writing |
+| `--clean`, `--scope` | Delete generated files before generating |
+| `--clear-only` | Delete generated files only |
+| `--no-root-files` | Skip `pyproject.toml`, `alembic.ini` and `.gitignore` |
+| `--stack` | Stack to use (default: from `.model-generator.yaml`, else `python-fastapi`) |
+| `--interactive` | Wizard (needs the `interactive` extra) |
+
+Run it from the project root: the config is read from the current directory. The
+full target list and spec options are in the [Quick Reference](./docs/user/quick-reference.md).
 
 ## Documentation
 
-### For Users
-
-- **[Installation Guide](./docs/user/installation.md)** — Install, configure, first project
-- **[Model Design Guide](./docs/user/model-design-guide.md)** — How to design comprehensive JSON specifications
-- **[Usage Guide](./docs/user/usage-guide.md)** — CLI workflows, generation, cleanup, interactive mode
-- **[Quick Reference](./docs/user/quick-reference.md)** — Lookup tables: field types, constraints, options
-- **[Architecture, Troubleshooting & Upgrades](./docs/user/architecture.md)** — How it works, common errors, the upgrade story
-- **[Extending Generated Code](./docs/user/extending-generated-code.md)** — Business logic, custom routes, migrations
-
-### For Agents
-
-- **[Model Design Questions](./docs/agent/model-design-questions.md)** — Systematic Q&A for eliciting model specs from users
-- **[Template Extension Guide](./docs/agent/template-extension-guide.md)** — Add types, templates, generators
-- **[JSON Specification Reference](./docs/agent/json-specification-reference.md)** — Exact format, every key, every option
-
-### Deep Dives
-
-- **[Constraints](./docs/deep-dives/constraints.md)** — DB vs API constraint placement, cross-field constraints
-- **[Completeness Guide](./docs/deep-dives/completeness-guide.md)** — JSON specification checklist
-- **[Custom Tests](./docs/deep-dives/custom-tests.md)** — Extending the generated test suite
-
-### For Contributors
-
-- **[Skill Reusability](./docs/contributor/skill-reusability.md)** — Core principles for reusable generation
-- **[Project-Agnostic Rules](./docs/contributor/project-agnostic-rules.md)** — Coding rules for templates and scripts
+- **Users:** [Installation](./docs/user/installation.md),
+  [Model Design Guide](./docs/user/model-design-guide.md),
+  [Usage Guide](./docs/user/usage-guide.md),
+  [Quick Reference](./docs/user/quick-reference.md),
+  [Architecture, Troubleshooting & Upgrades](./docs/user/architecture.md),
+  [Extending Generated Code](./docs/user/extending-generated-code.md),
+  [Flutter Stack](./docs/user/flutter.md)
+- **Agents:** [Model Design Questions](./docs/agent/model-design-questions.md),
+  [JSON Specification Reference](./docs/agent/json-specification-reference.md),
+  [Template Extension Guide](./docs/agent/template-extension-guide.md)
+- **Deep dives:** [Constraints](./docs/deep-dives/constraints.md),
+  [Completeness Guide](./docs/deep-dives/completeness-guide.md),
+  [Custom Tests](./docs/deep-dives/custom-tests.md)
+- **Contributors:** [Skill Reusability](./docs/contributor/skill-reusability.md),
+  [Project-Agnostic Rules](./docs/contributor/project-agnostic-rules.md)
+- [Changelog](./CHANGELOG.md), [full docs index](./docs/README.md)
 
 ## Development
 
 ```bash
-# Install in editable mode with dev dependencies
-uv sync --extra dev
-
-# Run the test suite
-uv run pytest tests/ -v
+make sync        # uv sync --extra dev
+make test        # pytest, skipping slow tests
+make test-all    # pytest, all tests
+make lint        # ruff check + mypy
+make smoke-example   # regenerate the bundled example in a temp tree and run its suite
 ```
 
-### Test Suite
+## Related projects
 
-| File | What It Covers |
-|------|---------------|
-| `test_generators.py` | Each generator (database, API models, routes, tests, enums, constraints, infrastructure), immutable entities |
-| `test_edge_cases.py` | JSON comments, invalid input, config loading, deep merge, shared enums/constraints, file scanners, partial generation |
-| `test_wizard.py` | Wizard imports, prompt fallbacks, menu flow, project setup, clean and test runner actions |
-| `test_template_utils.py` | `path_to_import`, `wrap_text`, template environment, custom Jinja2 filters |
-| `test_cli.py` | CLI flags: `--interactive`, `--clear-only`, `--dry-run`, `--diff`, missing model |
-| `test_cleanup.py` | `--clean` / `--clear-only` cleanup behavior and scopes |
-| `test_enum_examples.py` | Enum example generation and UPPER_CASE normalization |
-| `test_full_generation.py` | End-to-end generation from example project |
-| `test_integration.py` | Full generation pipeline |
-| `test_validate.py` | `model-val` CLI validator |
-| `test_validation.py` | JSON schema validation |
-| `test_utils.py` | Utility functions |
+- [claude-arsenal](https://github.com/nuncaeslupus/claude-arsenal) — spec-driven Claude Code workflow and gated task queue.
+- [drawspec](https://github.com/nuncaeslupus/drawspec) — declarative diagram spec → clean SVG/PNG/text, writable by LLMs; MCP server included.
+- [doc-control](https://github.com/nuncaeslupus/doc-control) — lets AI agents edit Word documents as tracked changes.
+- [literary-critic](https://github.com/nuncaeslupus/literary-critic) — LLM manuscript analysis the way a professional editor would.
+- [integral-job-search](https://github.com/nuncaeslupus/integral-job-search) — candidate-centred job search run in Claude Code.
 
-## Philosophy
+## License
 
-Define specifications once in JSON. Generate production-ready scaffolds. Then maintain and evolve manually. The generated code is yours — no lock-in, no regeneration, full control.
-
----
-
-**Model Generator** | Bootstrap Tool for API Backends
+[MIT](LICENSE)
